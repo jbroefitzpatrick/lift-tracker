@@ -1,9 +1,10 @@
 // All data lives in one JSON document in localStorage, on the device only.
 import { defaultExercises, defaultPlan, seedState, DEFAULT_INCREMENTS } from './plan.js';
 import { syncBank } from './bank.js';
+import { CARDIO } from './cardio-bank.js';
 
 const KEY = 'lift.db';
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 export function todayStr(d = new Date()) {
   const y = d.getFullYear();
@@ -39,6 +40,8 @@ export function freshDb() {
       raceBlock: false,
       rowRotation: 0,
       rotationPromptWeek: 0,
+      // lift | cardio | both | rest
+      dayModes: { mon: 'lift', tue: 'lift', wed: 'lift', thu: 'lift', fri: 'lift', sat: 'rest', sun: 'rest' },
       sound: true,
       defaultIncrements: { ...DEFAULT_INCREMENTS },
     },
@@ -48,7 +51,7 @@ export function freshDb() {
     sessions: [],
     activeSession: null,
     bodyweight: [], // { date, weight }
-    activities: [], // { date, type: 'yoga', minutes, note }
+    cardio: [], // { id, date, ts, cardioId, minutes, distance?, rpe?, note? }
     nutrition: [], // future: { date, calories, protein, carbs, fat, notes }
   };
 }
@@ -59,6 +62,17 @@ const MIGRATIONS = {
   // v2: exercise bank. Exercises gain category, pattern, primary and secondary muscles
   // (filled in by syncBank below on every load), so this step only bumps the version.
   1: (db) => { db.schemaVersion = 2; return db; },
+  // v3: cardio log + day types. Saturday yoga logs move into the cardio log.
+  2: (db) => {
+    db.cardio = db.cardio || [];
+    for (const a of db.activities || []) {
+      const ts = new Date(`${a.date}T09:00:00`).getTime();
+      db.cardio.push({ id: `c${ts}`, date: a.date, ts, cardioId: 'yoga', minutes: a.minutes || 30, note: a.note || '' });
+    }
+    delete db.activities;
+    db.schemaVersion = 3;
+    return db;
+  },
 };
 
 export function migrate(db) {
@@ -71,6 +85,7 @@ export function migrate(db) {
   for (const k of Object.keys(base)) if (db[k] === undefined) db[k] = base[k];
   db.settings = { ...base.settings, ...db.settings };
   db.settings.defaultIncrements = { ...base.settings.defaultIncrements, ...db.settings.defaultIncrements };
+  db.settings.dayModes = { ...base.settings.dayModes, ...db.settings.dayModes };
   syncBank(db.exercises, db.settings.defaultIncrements);
   return db;
 }
@@ -132,6 +147,9 @@ export function exportCsv(db) {
       });
     }
   }
+  rows.push([]);
+  rows.push(['cardio_date', 'activity', 'minutes', 'distance_mi', 'rpe', 'note']);
+  for (const c of db.cardio || []) rows.push([c.date, CARDIO[c.cardioId]?.name || c.cardioId, c.minutes, c.distance ?? '', c.rpe ?? '', c.note || '']);
   rows.push([]);
   rows.push(['bodyweight_date', 'weight_lb']);
   for (const b of db.bodyweight) rows.push([b.date, b.weight]);

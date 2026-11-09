@@ -299,3 +299,22 @@ button:active:not(:disabled) { transform: scale(0.98); }
 .pick-sub em { font-style: normal; color: var(--accent); font-weight: 600; }
 .cat { flex: none; font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 999px; background: var(--surface-2); color: var(--muted); }
 .cat.compound { color: var(--accent); background: color-mix(in srgb, var(--accent) 15%, var(--surface-2)); }
+
+/* Day types & cardio */
+.mode-line { margin: -4px 0 10px; }
+.mode-pill { font-size: 13px; font-weight: 700; padding: 4px 10px; border-radius: 999px; background: var(--surface-2); color: var(--muted); }
+.mode-pill.both, .mode-pill.cardio { color: var(--accent); background: color-mix(in srgb, var(--accent) 15%, var(--surface-2)); }
+.sub-h { margin: 14px 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+.sect-h { font-size: 18px; margin: 18px 0 10px; }
+.verdict { flex: none; font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 999px; background: var(--surface-2); }
+.verdict.good { color: var(--good); background: color-mix(in srgb, var(--good) 16%, var(--surface-2)); }
+.verdict.ok { color: var(--warn); background: color-mix(in srgb, var(--warn) 16%, var(--surface-2)); }
+.verdict.skip { color: var(--bad); background: color-mix(in srgb, var(--bad) 14%, var(--surface-2)); }
+.list-row.logged { color: var(--good); }
+.list-row.logged b { color: var(--text); }
+.small-empty { padding: 20px 16px; }
+.fresh-row { display: grid; grid-template-columns: 96px 1fr 40px; align-items: center; gap: 10px; min-height: 26px; font-size: 14px; }
+.fr-bar { height: 8px; border-radius: 4px; background: var(--surface-2); overflow: hidden; }
+.fr-bar i { display: block; height: 100%; border-radius: 4px; background: var(--accent); }
+.fr-bar i.low { background: var(--warn); }
+.fr-pct { text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); font-size: 13px; }

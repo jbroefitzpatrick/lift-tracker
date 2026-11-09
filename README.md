@@ -12,6 +12,9 @@ See [SPEC.md](SPEC.md) for the full requirements.
 | `styles.css` | All styles (dark by default, light option) |
 | `js/plan.js` | Preloaded exercises and the Mon–Fri plan |
 | `js/bank.js` | Exercise bank (~120 lifts): compound/accessory, movement, primary and secondary muscles, similarity scoring for swaps |
+| `js/fatigue.js` | Muscle fatigue/freshness model from logged sets and cardio |
+| `js/cardio-bank.js` | Cardio bank: muscles loaded, intensity, duration, impact |
+| `js/cardio.js` | Cardio suggestions scored against fatigue and upcoming lift days |
 | `js/engine.js` | Progression engine: double progression, adaptation, deloads, race block, row rotation |
 | `js/store.js` | Storage (localStorage), schema version + migrations, JSON/CSV export and import |
 | `js/chart.js` | Small SVG line chart |

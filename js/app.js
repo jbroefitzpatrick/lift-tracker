@@ -6,6 +6,9 @@ import {
 } from './engine.js';
 import { lineChart } from './chart.js';
 import { MUSCLES, CATEGORIES, PATTERNS, similarExercises } from './bank.js';
+import { CARDIO, INTENSITY, MODALITIES } from './cardio-bank.js';
+import { suggestCardio } from './cardio.js';
+import { currentFatigue, freshness, dayMode, MUSCLE_GROUPS } from './fatigue.js';
 
 let db = load();
 const ui = {
@@ -318,14 +321,16 @@ function screenToday() {
   const session = sessionFor(day);
   const other = db.activeSession && db.activeSession.day !== day ? db.activeSession : null;
   const isDeload = isDeloadFor(day);
+  const mode = dayMode(db, day);
   let html = `
     <header class="top">
       <div>
-        <h1>${day in db.plan ? `${DAY_NAMES[day]} · ${esc(db.plan[day].name)}` : day === 'sat' ? 'Saturday' : 'Sunday'}</h1>
+        <h1>${db.plan[day] && (mode === 'lift' || mode === 'both' || session) ? `${DAY_NAMES[day]} · ${esc(db.plan[day].name)}` : FULL_DAY[day]}</h1>
         <p class="muted small">Week ${wi.week} · ${wi.cyclePos} of ${wi.cycleLen} in block${wi.isDeload ? ' · deload week' : ''}</p>
       </div>
     </header>
-    ${dayTabs(day, 'day')}`;
+    ${dayTabs(day, 'day')}
+    <div class="row between mode-line"><span class="mode-pill ${mode}">${MODE_LABELS[mode]} day</span><button class="mini" data-a="edit-day-mode" data-day="${day}">Change</button></div>`;
 
   if (needsRotationPrompt(db)) {
     const nextId = nextRowCompound(db);
@@ -341,8 +346,11 @@ function screenToday() {
     </div>`;
   }
 
-  if (day === 'sat') return html + screenYoga();
-  if (day === 'sun') return html + `<div class="empty"><div class="big">Rest day</div><p class="muted">Recover. Pick another day above to train anyway.</p></div>`;
+  // Cardio-only and rest days (an unfinished workout still shows so it can be finished).
+  if (!db.plan[day] || ((mode === 'cardio' || mode === 'rest') && !session)) {
+    if (mode === 'rest') html += '<div class="empty small-empty"><div class="big">Rest day</div><p class="muted">Recover. Light recovery work is optional.</p></div>';
+    return html + cardioSection(day, mode === 'rest' ? 'Optional recovery' : 'Cardio');
+  }
 
   let items = resolveDay(db, day);
   if (session) {
@@ -371,6 +379,10 @@ function screenToday() {
         ${grp.items.map((i) => exerciseCard(i, session, isDeload, true)).join('')}</section>`;
     } else html += grp.items.map((i) => exerciseCard(i, session, isDeload, false)).join('');
   }
+
+  if (mode === 'both') html += cardioSection(day, 'Cardio · after lifting');
+  else if (ui.showCardio) html += cardioSection(day, 'Cardio');
+  else html += '<button class="btn block" data-a="show-cardio">+ Add cardio today</button>';
 
   if (session) {
     html += `<div class="finish-bar">
@@ -473,16 +485,96 @@ function exerciseCard(item, session, isDeload, inGroup) {
   </article>`;
 }
 
-function screenYoga() {
-  const recent = db.activities.filter((a) => a.type === 'yoga').slice(-5).reverse();
-  const todays = db.activities.find((a) => a.date === todayStr() && a.type === 'yoga');
-  return `<div class="card">
-    <h3>Yoga / breathwork <span class="muted small">(optional)</span></h3>
-    <div class="field"><span>Minutes</span>${stepper('yoga-min', todays?.minutes ?? 30, 5)}</div>
-    <div class="field"><span>Note</span><input id="yoga-note" type="text" value="${esc(todays?.note || '')}" placeholder="e.g. mobility flow"></div>
-    <button class="btn primary block" data-a="yoga-save">${todays ? 'Update' : 'Log'} session</button>
-  </div>
-  ${recent.length ? `<div class="card"><h3>Recent</h3>${recent.map((a) => `<p class="small">${fmtDate(a.date)} · ${a.minutes} min${a.note ? ` · ${esc(a.note)}` : ''}</p>`).join('')}</div>` : ''}`;
+// ---------- Cardio ----------
+
+const MODE_LABELS = { lift: 'Lift', both: 'Lift + cardio', cardio: 'Cardio', rest: 'Rest' };
+const FULL_DAY = { mon: 'Monday', tue: 'Tuesday', wed: 'Wednesday', thu: 'Thursday', fri: 'Friday', sat: 'Saturday', sun: 'Sunday' };
+const VERDICT = { good: 'Good', ok: 'OK', skip: 'Skip' };
+
+function cardioRow(r) {
+  const c = r.c;
+  return `<button class="pick-row" data-a="cardio-log" data-id="${c.id}">
+    <span class="grow"><b>${esc(c.name)}</b>
+      <span class="pick-sub">~${c.minutes} min · ${INTENSITY[c.intensity].label} · ${esc(r.reasons.join(' · '))}</span></span>
+    <span class="verdict ${r.verdict}">${VERDICT[r.verdict]}</span>
+  </button>`;
+}
+
+function fatigueSummary(fresh) {
+  const tired = Object.entries(fresh).filter(([, v]) => v < 0.8).sort((a, b) => a[1] - b[1]).slice(0, 3);
+  if (!tired.length) return 'All muscles fresh.';
+  return `Most fatigued: ${tired.map(([m, v]) => `${MUSCLES[m]} ${Math.round(v * 100)}%`).join(', ')}.`;
+}
+
+function cardioSection(day, title) {
+  const isToday = day === defaultDay();
+  const { ctx, list } = suggestCardio(db, day, isToday);
+  const top = list.filter((r) => r.verdict !== 'skip').slice(0, 4);
+  const tomorrow = ctx.next[0];
+  const nextLine = Object.keys(tomorrow.loads).length ? ` Tomorrow: ${esc(tomorrow.name || 'lifting')}.` : '';
+  const logged = isToday ? db.cardio.filter((c) => c.date === todayStr()) : [];
+  return `<section class="card cardio">
+    <h3>${title}</h3>
+    <p class="muted small">${isToday ? '' : 'Projected from your plan. '}${ctx.mode === 'lift' || ctx.mode === 'both' ? 'After today\'s lifting: ' : ''}${fatigueSummary(ctx.fresh)}${nextLine}</p>
+    ${logged.map((c) => `<div class="list-row logged"><span class="grow">✓ <b>${esc(CARDIO[c.cardioId]?.name || c.cardioId)}</b> · ${c.minutes} min${c.distance ? ` · ${c.distance} mi` : ''}${c.rpe ? ` · RPE ${c.rpe}` : ''}</span>
+      <button class="mini" data-a="cardio-del" data-id="${c.id}" aria-label="Delete">✕</button></div>`).join('')}
+    <h4 class="sub-h">Suggested</h4>
+    ${top.map(cardioRow).join('') || '<p class="muted small">Everything is a stretch today — consider resting.</p>'}
+    <button class="btn block" data-a="cardio-all" data-day="${day}">All cardio options</button>
+  </section>`;
+}
+
+function openCardioAll(day) {
+  const { list } = suggestCardio(db, day, day === defaultDay());
+  const sect = (v, label) => {
+    const rows = list.filter((r) => r.verdict === v);
+    return rows.length ? `<h3 class="sect">${label} <span class="muted small">${rows.length}</span></h3>${rows.map(cardioRow).join('')}` : '';
+  };
+  openSheet(`<h2>Cardio options</h2>
+    <p class="muted small">Ranked by how fresh the muscles each one uses are, and what you lift in the next two days.</p>
+    <div id="pk-list">${sect('good', 'Good fits')}${sect('ok', 'OK')}${sect('skip', 'Better another day')}</div>
+    <button class="btn block" data-a="close-sheet">Close</button>`);
+}
+
+function openCardioSheet(id) {
+  const c = CARDIO[id];
+  const r = suggestCardio(db, defaultDay(), true).list.find((x) => x.c.id === id);
+  sheetState.rpe = null;
+  openSheet(`
+    <h2>${esc(c.name)}</h2>
+    <p class="muted small">${MODALITIES[c.modality]} · ${INTENSITY[c.intensity].label} · ${c.impact === 'high' ? 'high impact' : c.impact === 'low' ? 'low impact' : 'no impact'}</p>
+    <p class="small">${esc(c.how)}</p>
+    ${r ? `<p class="small"><span class="verdict ${r.verdict}">${VERDICT[r.verdict]}</span> today: ${esc(r.reasons.join(' · '))}</p>` : ''}
+    <div class="field"><span>Minutes</span>${stepper('c-min', c.minutes, 5)}</div>
+    <div class="field"><span>Distance (miles, optional)</span><input id="c-dist" type="text" inputmode="decimal" placeholder="—"></div>
+    <div class="field"><span>Effort (RPE 1–10, optional)</span>
+      <div class="chips rir">${['–', 2, 3, 4, 5, 6, 7, 8, 9, 10].map((v) => `<button class="chip ${v === '–' ? 'on' : ''}" data-a="rpe" data-v="${v}">${v}</button>`).join('')}</div></div>
+    <div class="field"><span>Note</span><input id="c-note" type="text" placeholder="optional"></div>
+    <button class="btn primary block big" data-a="cardio-save" data-id="${id}">Log for today</button>
+    <button class="btn block" data-a="close-sheet">Cancel</button>`);
+}
+
+function freshnessCard() {
+  const fresh = freshness(currentFatigue(db));
+  const groups = Object.entries(MUSCLE_GROUPS).map(([g, ms]) => `
+    <h4 class="sub-h">${g}</h4>
+    ${ms.map((m) => {
+      const pct = Math.round(fresh[m] * 100);
+      return `<div class="fresh-row"><span class="fr-name">${MUSCLES[m]}</span>
+        <span class="fr-bar" role="img" aria-label="${MUSCLES[m]} ${pct}% fresh"><i class="${pct < 50 ? 'low' : ''}" style="width:${Math.max(pct, 2)}%"></i></span>
+        <span class="fr-pct">${pct}%</span></div>`;
+    }).join('')}`).join('');
+  return `<div class="card"><h3>Muscle freshness</h3>
+    <p class="muted small">100% = fully recovered. Counts hard sets (primary muscles 1, secondary ½) and cardio from the past week, fading over 2–3 days.</p>
+    ${groups}</div>`;
+}
+
+function cardioHistory() {
+  const recent = [...db.cardio].sort((a, b) => b.ts - a.ts).slice(0, 8);
+  if (!recent.length) return '';
+  return `<div class="card"><h3>Recent cardio</h3>${recent.map((c) => `
+    <div class="list-row"><span class="grow"><b>${fmtDate(c.date)}</b> · ${esc(CARDIO[c.cardioId]?.name || c.cardioId)}</span>
+    <span class="muted small">${c.minutes} min${c.distance ? ` · ${c.distance} mi` : ''}${c.rpe ? ` · RPE ${c.rpe}` : ''}</span></div>`).join('')}</div>`;
 }
 
 function stepper(id, value, step, opts = {}) {
@@ -732,12 +824,13 @@ function screenHistory() {
   for (const s of [...db.sessions].reverse()) for (const e of s.entries) if (!seen.has(e.exerciseId)) seen.set(e.exerciseId, s.date);
   const recent = [...db.sessions].reverse().slice(0, 8);
   return `<header class="top"><h1>History</h1></header>
-    ${!db.sessions.length ? '<div class="empty"><div class="big">No workouts yet</div><p class="muted">Finished workouts show up here.</p></div>' : ''}
+    ${!db.sessions.length && !db.cardio.length ? '<div class="empty"><div class="big">No workouts yet</div><p class="muted">Finished workouts show up here.</p></div>' : ''}
     ${recent.length ? `<div class="card"><h3>Recent workouts</h3>${recent.map((s) => `
       <button class="list-row" data-a="summary" data-id="${s.id}">
         <span class="grow"><b>${fmtDate(s.date)}</b> · ${DAY_NAMES[s.day]} ${esc(db.plan[s.day]?.name || '')}${s.isDeload ? ' · deload' : ''}</span>
         <span class="muted small">${s.results.filter((r) => r.status === 'progressed').length}↑</span><span class="chev">›</span>
       </button>`).join('')}</div>` : ''}
+    ${cardioHistory()}
     ${seen.size ? `<div class="card"><h3>By exercise</h3>${[...seen.entries()].map(([id, date]) => `
       <button class="list-row" data-a="history-ex" data-id="${id}">
         <span class="grow">${esc(db.exercises[id]?.name || id)}</span><span class="muted small">${fmtDate(date)}</span><span class="chev">›</span>
@@ -795,7 +888,9 @@ function screenBody() {
     return { x: b.date, values: [b.weight, win.reduce((a, x) => a + x.weight, 0) / win.length] };
   });
   setTimeout(() => { const el = $('#bw-chart'); if (el && pts.length) lineChart(el, { points: pts, series: [{ name: 'Weigh-in', cls: 's2' }, { name: '7-day average', cls: 's1' }] }); });
-  return `<header class="top"><h1>Bodyweight</h1></header>
+  return `<header class="top"><h1>Body</h1></header>
+    ${freshnessCard()}
+    <h2 class="sect-h">Bodyweight</h2>
     <div class="card">
       <div class="field"><span>Today's weigh-in (lb)</span>${stepper('bw-input', todays?.weight ?? last?.weight ?? '', 0.2, { placeholder: 'e.g. 185.4' })}</div>
       <button class="btn primary block" data-a="bw-save">${todays ? 'Update' : 'Save'} weigh-in</button>
@@ -823,9 +918,16 @@ function screenFood() {
 function screenPlan() {
   const day = ui.planDay;
   const plan = db.plan[day];
+  const mode = dayMode(db, day);
+  const modes = plan ? ['lift', 'both', 'cardio', 'rest'] : ['cardio', 'rest'];
+  const head = `<header class="top"><h1>Plan</h1></header>
+    ${dayTabs(day, 'plan-day')}
+    <div class="field"><span>Day type</span><div class="chips">${modes.map((m) =>
+      `<button class="chip ${m === mode ? 'on' : ''}" data-a="day-mode" data-v="${m}">${MODE_LABELS[m]}</button>`).join('')}</div></div>`;
+  if (!plan) return head + `<p class="muted small pad">No lifting is planned on ${FULL_DAY[day]}s. Cardio days get suggestions based on your fatigue and the next lift days.</p>`;
   const items = plan.items;
-  return `<header class="top"><h1>Plan</h1></header>
-    ${dayTabs(day, 'plan-day', ['mon', 'tue', 'wed', 'thu', 'fri'])}
+  return `${head}
+    ${mode === 'cardio' || mode === 'rest' ? `<p class="muted small pad">Lifting is off on ${FULL_DAY[day]}s. The plan below is kept for when you switch back.</p>` : ''}
     <div class="field inline"><span>Day name</span><input id="plan-name" type="text" value="${esc(plan.name)}" data-a="plan-name"></div>
     ${items.map((it, i) => {
       const ex = db.exercises[it.exerciseId];
@@ -1051,7 +1153,7 @@ function render() {
 
 const actions = {
   tab: (d) => { if (!$('#sheet').hidden) closeSheet(); ui.tab = d.tab; if (d.tab === 'today') ui.summaryId = null; if (d.tab === 'history') ui.historyEx = null; window.scrollTo(0, 0); render(); },
-  day: (d) => { ui.day = d.day; ui.tab = 'today'; render(); },
+  day: (d) => { ui.day = d.day; ui.tab = 'today'; ui.showCardio = false; render(); },
   'open-set': (d) => openSetSheet(d.uid, +d.i),
   check: (d) => {
     const session = sessionFor(ui.day) || ensureSession(ui.day);
@@ -1152,13 +1254,36 @@ const actions = {
     toast(`Thursday row compound: ${db.exercises[ROW_ROTATION[db.settings.rowRotation]].name}`);
   },
   'rotate-no': () => { db.settings.rotationPromptWeek = weekInfo(db).week; persist(); render(); },
-  'yoga-save': () => {
-    const minutes = num('yoga-min') || 0;
-    const note = $('#yoga-note').value.trim();
-    const date = todayStr();
-    db.activities = db.activities.filter((a) => !(a.date === date && a.type === 'yoga'));
-    db.activities.push({ date, type: 'yoga', minutes, note });
-    persist(); render(); toast('Logged.');
+  'show-cardio': () => { ui.showCardio = true; render(); },
+  'edit-day-mode': (d) => { ui.planDay = d.day; ui.tab = 'plan'; window.scrollTo(0, 0); render(); },
+  'day-mode': (d) => {
+    db.settings.dayModes[ui.planDay] = d.v;
+    persist(); render();
+    toast(`${FULL_DAY[ui.planDay]}s are now ${MODE_LABELS[d.v].toLowerCase()} days.`);
+  },
+  'cardio-log': (d) => openCardioSheet(d.id),
+  'cardio-all': (d) => openCardioAll(d.day),
+  rpe: (d, el) => {
+    sheetState.rpe = d.v === '–' ? null : +d.v;
+    el.parentElement.querySelectorAll('.chip').forEach((c) => c.classList.toggle('on', c === el));
+  },
+  'cardio-save': (d) => {
+    const minutes = Math.round(num('c-min') || 0);
+    if (!minutes) return toast('Enter minutes.');
+    const entry = { id: `c${Date.now()}`, date: todayStr(), ts: Date.now(), cardioId: d.id, minutes };
+    const dist = num('c-dist');
+    if (dist) entry.distance = dist;
+    if (sheetState.rpe != null) entry.rpe = sheetState.rpe;
+    const note = $('#c-note').value.trim();
+    if (note) entry.note = note;
+    db.cardio.push(entry);
+    persist(); closeSheet(); render(); haptic();
+    toast(`Logged ${CARDIO[d.id].name}, ${minutes} min.`);
+  },
+  'cardio-del': (d) => {
+    if (!confirm('Delete this cardio entry?')) return;
+    db.cardio = db.cardio.filter((c) => c.id !== d.id);
+    persist(); render();
   },
   summary: (d) => { ui.summaryId = d.id; ui.tab = 'summary'; render(); },
   'history-ex': (d) => { ui.historyEx = d.id; window.scrollTo(0, 0); render(); },
