@@ -1,4 +1,5 @@
 // Plan → Year: phases over the calendar, with nutrition, cardio and training blocks lined up.
+import { icon } from './icons.js';
 import { PHASE_TYPES, PHASE_GUIDE, activePhase, suggestYear, newPhase, yearWeeks, projection, phaseWeeksTotal } from './year.js';
 import { estimatedMaintenance, latestWeight } from './nutrition.js';
 import { todayStr, addDays, mondayOf, parseDate } from './store.js';
@@ -44,7 +45,7 @@ export function createYear(ctx) {
           <span class="muted small">${fmt(start)} – ${fmt(end)}${isNow ? ` · <b>now (wk ${now.weekInPhase})</b>` : ''}</span></div>
         <div class="row between controls">
           <div class="row"><button class="mini" data-a="yr-weeks" data-id="${p.id}" data-v="-1" aria-label="Fewer weeks">−</button><b class="tnum">${p.weeks} wk</b><button class="mini" data-a="yr-weeks" data-id="${p.id}" data-v="1" aria-label="More weeks">+</button></div>
-          <div class="row"><button class="mini" data-a="yr-move" data-id="${p.id}" data-v="-1" ${i === 0 ? 'disabled' : ''} aria-label="Move earlier">↑</button><button class="mini" data-a="yr-move" data-id="${p.id}" data-v="1" ${i === plan.phases.length - 1 ? 'disabled' : ''} aria-label="Move later">↓</button><button class="mini danger" data-a="yr-del" data-id="${p.id}" aria-label="Remove">✕</button></div>
+          <div class="row"><button class="mini" data-a="yr-move" data-id="${p.id}" data-v="-1" ${i === 0 ? 'disabled' : ''} aria-label="Move earlier">${icon('up')}</button><button class="mini" data-a="yr-move" data-id="${p.id}" data-v="1" ${i === plan.phases.length - 1 ? 'disabled' : ''} aria-label="Move later">${icon('arrowDown')}</button><button class="mini danger" data-a="yr-del" data-id="${p.id}" aria-label="Remove">${icon('x')}</button></div>
         </div>
         <input type="text" class="note-input" data-yr="note" data-id="${p.id}" value="${esc(p.note || '')}" placeholder="Note (optional)">
       </div>`;
@@ -91,7 +92,7 @@ export function createYear(ctx) {
       <h2 class="sect-h">Phases</h2>
       <div class="field inline"><span>Start date (a Monday)</span><input type="date" data-yr="start" value="${plan.start}"></div>
       ${phaseCards}
-      <button class="btn block" data-a="yr-add">+ Add phase</button>
+      <button class="btn block" data-a="yr-add">Add phase</button>
       <h2 class="sect-h">Week by week</h2>
       <p class="muted small">Calories are estimates at the projected bodyweight. "B2·3" = training block 2, week 3.</p>
       ${monthHtml}

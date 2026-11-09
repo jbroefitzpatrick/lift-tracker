@@ -13,6 +13,7 @@ See [SPEC.md](SPEC.md) for the original requirements.
 - **Nutrition:** calorie and macro targets from your phase, adaptive maintenance from your logs, weekly check-ins with suggested adjustments, a 138-food USDA database plus your own foods, meal logging, saved meals and scaled meal ideas.
 - **Body:** bodyweight with 7-day average and target rate, measurements, and private progress photos.
 - **Data:** IndexedDB + localStorage mirror, daily snapshots, encrypted backups. See [docs/DATA-SECURITY.md](docs/DATA-SECURITY.md).
+- **Design:** simple cards with details on demand, four tabs, 44 pt targets, WCAG AA contrast, Dynamic Type. See [docs/DESIGN.md](docs/DESIGN.md).
 
 Every recommendation links to its sources in the app (Plan builder → Why these numbers, Food → How these are set).
 
@@ -23,6 +24,8 @@ Every recommendation links to its sources in the app (Plan builder → Why these
 | `index.html` | App shell, home-screen meta tags, Content-Security-Policy |
 | `styles.css` | All styles (dark by default, light option) |
 | `js/app.js` | Main screens, workout logging and event handling |
+| `js/drag.js` | Drag-to-reorder with keyboard alternative |
+| `js/icons.js` | Line icon set |
 | `js/ui-food.js` | Food tab |
 | `js/ui-year.js` | Plan → Year view |
 | `js/ui-extra.js` | Exercise detail, gyms, data & security, measurements & photos, weekly volume |

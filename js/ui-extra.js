@@ -1,4 +1,5 @@
 // Exercise detail, gyms & equipment, data & security, measurements & photos, weekly volume, backups.
+import { icon } from './icons.js';
 import { EX_INFO } from './exercise-info.js';
 import { bestRecords } from './records.js';
 import { activeGym } from './gym.js';
@@ -35,11 +36,11 @@ export function createExtras(ctx) {
         <p class="muted small">${info.approx ? `Photos show a close variation (${esc(info.src)}). ` : ''}Images & steps: <a href="https://github.com/yuhonas/free-exercise-db" target="_blank" rel="noopener">free-exercise-db</a> (public domain).</p>` : ''}
       ${info.cues ? `<h3 class="sect">Key cues</h3><ul class="cues">${info.cues.split(' · ').map((c) => `<li>${esc(c)}</li>`).join('')}</ul>` : ''}
       ${info.steps ? `<details class="refs"><summary>Step by step${info.level ? ` · ${esc(info.level)}` : ''}</summary><ol>${info.steps.map((s) => `<li>${esc(s)}</li>`).join('')}</ol></details>` : ''}
-      <a class="btn block demo-link" href="${demo}" target="_blank" rel="noopener">▶ Watch a demo (YouTube search)</a>
+      <a class="btn block demo-link" href="${demo}" target="_blank" rel="noopener">Watch a demo on YouTube</a>
       <div class="row wrap controls">
-        <button class="mini ${pref === 'fav' ? 'on-good' : ''}" data-a="pref" data-id="${ex.id}" data-v="fav">${pref === 'fav' ? '★ Favorite' : '☆ Favorite'}</button>
-        <button class="mini ${pref === 'never' ? 'on-bad' : ''}" data-a="pref" data-id="${ex.id}" data-v="never">${pref === 'never' ? '🚫 Never suggested' : 'Never suggest'}</button>
-        <button class="mini ${unavailable ? 'on-bad' : ''}" data-a="unavail" data-id="${ex.id}">${unavailable ? `Not at ${esc(gym.name)} ✓` : `Not at ${esc(gym.name)}`}</button>
+        <button class="mini ${pref === 'fav' ? 'on-good' : ''}" data-a="pref" data-id="${ex.id}" data-v="fav">${pref === 'fav' ? 'Favorited' : 'Favorite'}</button>
+        <button class="mini ${pref === 'never' ? 'on-bad' : ''}" data-a="pref" data-id="${ex.id}" data-v="never">${pref === 'never' ? 'Never suggested' : 'Never suggest'}</button>
+        <button class="mini ${unavailable ? 'on-bad' : ''}" data-a="unavail" data-id="${ex.id}">${unavailable ? `Not at ${esc(gym.name)}` : `Not at ${esc(gym.name)}`}</button>
       </div>
     </div>
     ${rec ? `<div class="card"><h3>Personal records</h3>
@@ -76,7 +77,7 @@ export function createExtras(ctx) {
         <span class="fr-bar target" style="--lo:${(lo / hi) * 100}%"><i class="${v < lo ? 'low' : ''}" style="width:${Math.max(pct, 2)}%"></i></span>
         <span class="fr-pct">${v}/${lo}–${hi}</span></div>`;
     }).join('');
-    return `<div class="card"><h3>Last 7 days: sets per muscle</h3>
+    return `<div class="card"><h3>Sets per muscle, last 7 days</h3>
       <p class="muted small">Hard sets, counting ½ for assisting muscles, against your weekly target${db.profile ? '' : ' (default 10–20)'}. The tick marks the low end of the target. ${ctx.refChips(['pelland2026', 'schoenfeld2017vol'])}</p>${rows}</div>`;
   }
 
@@ -91,15 +92,15 @@ export function createExtras(ctx) {
     const delta = (k) => (last && first && last !== first && last[k] != null && first[k] != null ? last[k] - first[k] : null);
     const photos = [...db.photos].sort((a, b) => b.date.localeCompare(a.date));
     setTimeout(loadThumbs);
-    return `<div class="card"><h3>Measurements <span class="muted small">(inches)</span></h3>
+    return `<div class="card"><h3>Measurements</h3><p class="muted small">Inches</p>
         <div class="grid3">${Object.entries(MEASURES).map(([k, v]) => `<div class="field"><span>${v}</span><input id="ms-${k}" type="text" inputmode="decimal" value="${today[k] ?? ''}" placeholder="${last?.[k] ?? ''}"></div>`).join('')}</div>
         <button class="btn primary block" data-a="ms-save">${today.date ? 'Update' : 'Save'} today's measurements</button>
         ${list.length > 1 ? `<p class="small">Since ${ctx.fmtDate(first.date)}: ${Object.entries(MEASURES).map(([k, v]) => { const d = delta(k); return d == null ? '' : `${v} ${d >= 0 ? '+' : ''}${d.toFixed(1)}`; }).filter(Boolean).join(' · ')}</p>` : ''}
-        ${list.slice(0, 5).map((m) => `<div class="list-row small"><span class="grow">${ctx.fmtDate(m.date)}</span><span class="muted">${Object.keys(MEASURES).filter((k) => m[k] != null).map((k) => `${MEASURES[k][0]} ${m[k]}`).join(' · ')}</span><button class="mini" data-a="ms-del" data-date="${m.date}" aria-label="Delete">✕</button></div>`).join('')}
+        ${list.slice(0, 5).map((m) => `<div class="list-row small"><span class="grow">${ctx.fmtDate(m.date)}</span><span class="muted">${Object.keys(MEASURES).filter((k) => m[k] != null).map((k) => `${MEASURES[k][0]} ${m[k]}`).join(' · ')}</span><button class="mini" data-a="ms-del" data-date="${m.date}" aria-label="Delete">${icon('x')}</button></div>`).join('')}
       </div>
       <div class="card"><h3>Progress photos</h3>
         <p class="muted small">Stored only on this phone (resized to save space). Same pose and lighting each time makes them easier to compare.</p>
-        <label class="btn block file-btn">+ Add photo<input id="photo-file" type="file" accept="image/*" hidden></label>
+        <label class="btn block file-btn">Add photo<input id="photo-file" type="file" accept="image/*" hidden></label>
         ${photos.length >= 2 ? '<button class="btn block" data-a="photo-compare">Compare first and latest</button>' : ''}
         <div class="photo-grid">${photos.map((p) => `<button class="photo-thumb" data-a="photo-open" data-id="${p.id}"><img data-photo="${p.id}" alt="Progress photo ${ctx.fmtDate(p.date)}"><span>${ctx.fmtDate(p.date)}</span></button>`).join('')}</div>
       </div>`;
@@ -133,13 +134,11 @@ export function createExtras(ctx) {
   function gymCard() {
     const db = ctx.db;
     const g = activeGym(db);
-    return `<div class="card"><h3>Gym & equipment</h3>
+    return `<div class="card">
       <div class="chips wrap">${db.gyms.map((x) => `<button class="chip ${x.id === g.id ? 'on' : ''}" data-a="gym-use" data-id="${x.id}">${esc(x.name)}</button>`).join('')}
-        <button class="chip" data-a="gym-add">+ Add gym</button></div>
+        <button class="chip" data-a="gym-add">Add gym</button></div>
       <p class="small">${esc(g.name)}: ${g.barWeight} lb bar · plates ${g.plates.join(', ')} · dumbbells every ${g.dbStep} lb up to ${g.dbMax} · machines every ${g.machineStep} lb${g.unavailable.length ? ` · ${g.unavailable.length} exercises marked unavailable` : ''}</p>
       <button class="btn block" data-a="gym-edit" data-id="${g.id}">Edit ${esc(g.name)}</button>
-      <label class="toggle"><input type="checkbox" data-a="set-warmups" ${db.settings.warmups ? 'checked' : ''}><span>Warm-up sets on the first main lift</span></label>
-      <label class="toggle"><input type="checkbox" data-a="set-ramp" ${db.settings.rampEffort ? 'checked' : ''}><span>Ramp effort through each block (reps in reserve 3 → 1)</span></label>
     </div>`;
   }
 
@@ -177,21 +176,24 @@ export function createExtras(ctx) {
       if (!el) return;
       const s = await storageInfo();
       const mb = (x) => (x / 1048576).toFixed(1);
-      el.innerHTML = `${s.idb ? 'Saved in IndexedDB with a localStorage mirror' : 'Saved in localStorage'} · ${s.persisted ? '<b>protected from automatic clearing</b>' : 'browser may clear it if storage runs low'}${s.usage != null ? ` · using ${mb(s.usage)} MB` : ''}`;
+      el.textContent = `Stored on this device in two copies${s.usage != null ? ` (${mb(s.usage)} MB)` : ''}. ${s.persisted ? 'Protected from automatic clearing.' : 'The browser may clear it if storage runs low.'}`;
     });
-    return `<div class="card"><h3>Data & security</h3>
+    const chev = icon('right', 'chev');
+    return `<div class="card">
+      <div class="kv-list"><div class="kv"><span>Last backup</span><b>${last ? ctx.fmtDate(todayStr(new Date(last))) : 'Never'}</b></div></div>
       <p class="muted small" id="storage-status">Checking storage…</p>
-      <p class="small">Last backup: <b>${last ? ctx.fmtDate(todayStr(new Date(last))) : 'never'}</b></p>
       <label class="toggle"><input type="checkbox" data-a="set-backup-remind" ${db.settings.backupReminder ? 'checked' : ''}><span>Remind me to back up weekly</span></label>
       <label class="toggle"><input type="checkbox" id="bk-photos"><span>Include progress photos in backups</span></label>
-      <button class="btn primary block" data-a="export-enc">Export encrypted backup</button>
-      <button class="btn block" data-a="export-json">Export backup (unencrypted)</button>
-      <button class="btn block" data-a="export-csv">Export history (CSV)</button>
-      <label class="btn block file-btn">Import backup…<input id="import-file" type="file" accept="application/json,.json" hidden></label>
-      <button class="btn block" data-a="snapshots">Restore an automatic snapshot</button>
-      <button class="btn block" data-a="persist-req">Ask the phone to keep data permanently</button>
-      <p class="muted small">Everything stays on this device. Encrypted backups use AES-256 with your passphrase — keep it somewhere safe; it can't be recovered. A daily snapshot is kept for 7 days, plus one before every import, erase or plan change.</p>
-    </div>`;
+      <button class="btn primary block" data-a="export-enc">Back up now (encrypted)</button>
+    </div>
+    <div class="list-group">
+      <button class="list-row" data-a="export-json"><span class="grow">Export unencrypted backup</span>${chev}</button>
+      <button class="list-row" data-a="export-csv"><span class="grow">Export history as CSV</span>${chev}</button>
+      <label class="list-row"><span class="grow">Import a backup</span>${chev}<input id="import-file" type="file" accept="application/json,.json" hidden></label>
+      <button class="list-row" data-a="snapshots"><span class="grow">Restore an automatic snapshot</span>${chev}</button>
+      <button class="list-row" data-a="persist-req"><span class="grow">Keep data permanently</span>${chev}</button>
+    </div>
+    <p class="muted small pad">Everything stays on this device. Encrypted backups use AES-256 with your passphrase. Keep it somewhere safe; it can't be recovered. A snapshot is kept each day for a week, and before every import, erase or plan change.</p>`;
   }
 
   function backupBanner() {

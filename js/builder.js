@@ -175,7 +175,7 @@ export function prescription(p) {
 }
 
 export function fmtSec(s) {
-  if (s < 120) return `${s}s`;
+  if (s < 120) return `${s} sec`;
   const m = Math.floor(s / 60);
   const r = s % 60;
   return r ? `${m}:${String(r).padStart(2, '0')} min` : `${m} min`;

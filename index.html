@@ -7,7 +7,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Lift Tracker</title>
   <meta name="description" content="Personal lifting tracker with built-in progression.">
-  <meta name="theme-color" content="#111214">
+  <meta name="theme-color" content="#0c0e12">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -20,9 +20,9 @@
 <body>
   <main id="main"></main>
 
-  <div id="rest" hidden role="timer" aria-live="polite">
+  <div id="rest" hidden role="timer" aria-label="Rest timer">
     <div class="row">
-      <div class="grow"><div id="rest-label">Rest</div><div id="rest-time">0:00</div></div>
+      <div class="grow"><div id="rest-label">Rest</div><div id="rest-time" class="tnum">0:00</div></div>
       <button id="rest-minus" class="mini" aria-label="15 seconds less">−15</button>
       <button id="rest-plus" class="mini" aria-label="15 seconds more">+15</button>
       <button id="rest-skip" class="mini">Skip</button>
@@ -31,8 +31,9 @@
   </div>
 
   <nav id="tabs" aria-label="Sections"></nav>
-  <div id="sheet" hidden><div id="sheet-body" role="dialog" aria-modal="true"></div></div>
-  <div id="toast" hidden role="status"></div>
+  <div id="sheet" hidden><div id="sheet-body" role="dialog" aria-modal="true" tabindex="-1"></div></div>
+  <div id="toast" hidden role="status" aria-live="polite"></div>
+  <div id="sr-live" class="sr-only" aria-live="polite"></div>
 
   <script type="module" src="js/app.js"></script>
 </body>

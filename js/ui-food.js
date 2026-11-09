@@ -1,4 +1,5 @@
 // Food tab: daily targets, meal logging, saved meals, meal ideas and the weekly check-in.
+import { icon } from './icons.js';
 import { FOODS } from './foods.js';
 import { targets, dayTotals, weeklyCheckin, MEAL_TEMPLATES, solveMeal, macrosFor, foodById, ACTIVITY } from './nutrition.js';
 import { PHASE_TYPES } from './year.js';
@@ -16,68 +17,81 @@ export function createFood(ctx) {
   const date = () => ui.foodDate || todayStr();
   const fmtDay = (d) => (d === todayStr() ? 'Today' : d === addDays(todayStr(), -1) ? 'Yesterday' : ctx.fmtDate(d));
 
-  function bar(label, val, target, unit = 'g') {
-    const pct = target ? Math.min(100, (val / target) * 100) : 0;
-    const over = target && val > target * 1.1;
-    return `<div class="macro-row"><span>${label}</span><span class="fr-bar"><i class="${over ? 'low' : ''}" style="width:${Math.max(pct, 2)}%"></i></span>
-      <span class="tnum small">${r0(val)}<span class="muted"> / ${r0(target)}${unit}</span></span></div>`;
-  }
-
   function screen() {
     const db = ctx.db;
     const d = date();
     const t = targets(db, d);
     const tot = dayTotals(db, d);
     const ph = t.goal.phase;
-    const goalChip = ph ? `${PHASE_TYPES[ph.phase.type].label} · week ${ph.weekInPhase} of ${ph.weeks}` : `${PHASE_TYPES[t.goal.type].label}${db.profile ? '' : ' (default)'}`;
+    const goalChip = ph ? `${PHASE_TYPES[ph.phase.type].label} · week ${ph.weekInPhase} of ${ph.weeks}` : `${PHASE_TYPES[t.goal.type].label}${db.profile ? '' : ' · default targets'}`;
     const entries = db.foodLog.filter((x) => x.date === d);
+    const left = t.kcal - r0(tot.kcal);
+    const pct = Math.min(100, (tot.kcal / t.kcal) * 100);
     const meals = Array.from({ length: t.meals }, (_, i) => i + 1);
     const mealCards = meals.map((m) => {
       const items = entries.filter((x) => Math.min(x.meal, t.meals) === m);
       const mt = items.reduce((a, x) => ({ kcal: a.kcal + x.kcal, p: a.p + x.p }), { kcal: 0, p: 0 });
-      return `<div class="card meal">
-        <div class="row between"><h3>Meal ${m}</h3><span class="muted small">${r0(mt.kcal)} kcal · ${r0(mt.p)} g protein${mt.p < t.perMealProtein * 0.8 ? ` <span class="hint">aim ~${t.perMealProtein} g</span>` : ''}</span></div>
+      const low = items.length && mt.p < t.perMealProtein * 0.8;
+      return `<section class="card meal" aria-label="Meal ${m}">
+        <div class="meal-head">
+          <div class="grow"><h3>Meal ${m}</h3><p class="muted small">${items.length ? `${r0(mt.kcal)} kcal · ${r0(mt.p)} g protein${low ? ` · <span class="hint">aim ~${t.perMealProtein} g</span>` : ''}` : `Aim ~${Math.round(t.kcal / t.meals / 10) * 10} kcal · ${t.perMealProtein} g protein`}</p></div>
+          <button class="icon-btn accent" data-a="food-add" data-meal="${m}" aria-label="Add food to meal ${m}">${icon('plus')}</button>
+        </div>
         ${items.map((x) => `<div class="list-row food-row"><span class="grow"><b>${esc(x.name)}</b><span class="pick-sub">${esc(fmtQty(x))} · ${r0(x.kcal)} kcal · P ${r0(x.p)} · C ${r0(x.c)} · F ${r0(x.f)}</span></span>
-          <button class="mini" data-a="food-del" data-id="${x.id}" aria-label="Remove">✕</button></div>`).join('')}
+          <button class="icon-btn subtle" data-a="food-del" data-id="${x.id}" aria-label="Remove ${esc(x.name)}">${icon('x')}</button></div>`).join('')}
         <div class="row wrap controls">
-          <button class="mini" data-a="food-add" data-meal="${m}">+ Add food</button>
           <button class="mini" data-a="food-ideas" data-meal="${m}">Meal ideas</button>
           ${items.length ? `<button class="mini" data-a="meal-save" data-meal="${m}">Save meal</button>` : `<button class="mini" data-a="meal-saved" data-meal="${m}">Saved meals</button>`}
         </div>
-      </div>`;
+      </section>`;
     }).join('');
     const yEntries = db.foodLog.filter((x) => x.date === addDays(d, -1));
+    const macro = (label, val, target, cls) => {
+      const p = target ? Math.min(100, (val / target) * 100) : 0;
+      return `<div class="macro ${cls}"><div class="row between"><span>${label}</span><span class="tnum small">${r0(val)}<span class="muted">/${r0(target)} g</span></span></div>
+        <span class="progress thin" role="progressbar" aria-label="${label}" aria-valuemin="0" aria-valuemax="${r0(target)}" aria-valuenow="${r0(val)}"><i style="width:${Math.max(p, 2)}%"></i></span></div>`;
+    };
 
-    return `<header class="top"><div class="grow"><h1>Nutrition</h1><p class="muted small">${esc(goalChip)}</p></div></header>
-      <div class="row between date-nav">
-        <button class="mini" data-a="food-day" data-v="-1" aria-label="Previous day">‹</button>
+    return `<header class="top"><div class="grow"><h1>Nutrition</h1><p class="subtitle">${esc(goalChip)}</p></div></header>
+      <div class="date-nav" role="group" aria-label="Day">
+        <button class="icon-btn" data-a="food-day" data-v="-1" aria-label="Previous day">${icon('left')}</button>
         <b>${fmtDay(d)}</b>
-        <button class="mini" data-a="food-day" data-v="1" aria-label="Next day" ${d >= todayStr() ? 'disabled' : ''}>›</button>
+        <button class="icon-btn" data-a="food-day" data-v="1" aria-label="Next day" ${d >= todayStr() ? 'disabled' : ''}>${icon('right')}</button>
       </div>
-      ${db.profile ? '' : '<div class="banner"><p>Targets use default values. <b>Build your plan</b> (Plan tab) to set age, height and goals for personal targets.</p></div>'}
-      <div class="card">
-        <div class="row between"><h3>Targets</h3><button class="mini" data-a="food-why">How these are set</button></div>
-        ${bar('Calories', tot.kcal, t.kcal, '')}
-        ${bar('Protein', tot.p, t.protein)}
-        ${bar('Carbs', tot.c, t.carbs)}
-        ${bar('Fat', tot.f, t.fat)}
-        ${bar('Fiber', tot.fiber, t.fiber)}
-        <p class="muted small">${t.kcal - r0(tot.kcal) >= 0 ? `${t.kcal - r0(tot.kcal)} kcal left` : `${r0(tot.kcal) - t.kcal} kcal over`} · ${Math.max(0, t.protein - r0(tot.p))} g protein to go${t.floored ? ' · calories held at a safe minimum' : ''}</p>
+      ${db.profile ? '' : '<div class="banner"><p>These targets use defaults. Set up the <b>plan builder</b> (Plan tab) for personal targets.</p></div>'}
+      <section class="card hero" aria-label="Today's targets">
+        <div class="row between">
+          <div><span class="hero-num tnum ${left < 0 ? 'over' : ''}">${Math.abs(left).toLocaleString()}</span> <span class="muted">kcal ${left >= 0 ? 'left' : 'over'}</span></div>
+          <button class="link-btn" data-a="food-why">How it's set</button>
+        </div>
+        <span class="progress" role="progressbar" aria-label="Calories" aria-valuemin="0" aria-valuemax="${t.kcal}" aria-valuenow="${r0(tot.kcal)}"><i style="width:${Math.max(pct, 2)}%"></i></span>
+        <p class="muted small">${r0(tot.kcal).toLocaleString()} of ${t.kcal.toLocaleString()} kcal${t.floored ? ' · held at a safe minimum' : ''}</p>
+        <div class="macro-grid">
+          ${macro('Protein', tot.p, t.protein, 'm-p')}
+          ${macro('Carbs', tot.c, t.carbs, 'm-c')}
+          ${macro('Fat', tot.f, t.fat, 'm-f')}
+          ${macro('Fiber', tot.fiber, t.fiber, 'm-fi')}
+        </div>
+      </section>
+      <div class="chips quick-row">
+        <button class="chip" data-a="food-quick">Quick add</button>
+        ${!entries.length && yEntries.length ? '<button class="chip" data-a="food-copy">Copy yesterday</button>' : ''}
+        <button class="chip" data-a="food-mine">My foods</button>
+        <button class="chip" data-a="food-settings">Settings</button>
       </div>
       ${mealCards}
-      <div class="row wrap controls">
-        <button class="btn grow" data-a="food-quick">Quick add</button>
-        ${!entries.length && yEntries.length ? '<button class="btn grow" data-a="food-copy">Copy yesterday</button>' : ''}
-        <button class="btn grow" data-a="food-mine">My foods</button>
-      </div>
       ${checkinCard()}
-      <div class="card">
-        <h3>Settings</h3>
-        <div class="field"><span>Meals per day</span><div class="chips">${[3, 4, 5, 6].map((n) => `<button class="chip ${t.meals === n ? 'on' : ''}" data-a="food-meals" data-v="${n}">${n}</button>`).join('')}</div></div>
-        <div class="field"><span>Daily activity outside workouts</span><div class="chips wrap">${Object.entries(ACTIVITY).map(([k, v]) => `<button class="chip ${db.nutrition.activity === k ? 'on' : ''}" data-a="food-activity" data-v="${k}">${v.label}</button>`).join('')}</div></div>
-        ${db.nutrition.kcalOffset ? `<p class="small">Check-in adjustment: ${db.nutrition.kcalOffset > 0 ? '+' : ''}${db.nutrition.kcalOffset} kcal/day <button class="mini" data-a="food-offset-reset">Reset</button></p>` : ''}
-        <p class="muted small">Food data: USDA FoodData Central (public domain). Plan phases are set in Plan → Year.</p>
-      </div>`;
+      <p class="muted small center pad">Food data: USDA FoodData Central (public domain). Phases are set in Plan → Year.</p>`;
+  }
+
+  function openSettings() {
+    const db = ctx.db;
+    const t = targets(db, date());
+    ctx.openSheet(`<h2>Nutrition settings</h2>
+      <div class="field"><span>Meals per day</span><div class="segmented small-seg" role="radiogroup" aria-label="Meals per day">${[3, 4, 5, 6].map((n) => `<button class="${t.meals === n ? 'on' : ''}" data-a="food-meals" data-v="${n}" role="radio" aria-checked="${t.meals === n}">${n}</button>`).join('')}</div></div>
+      <div class="field"><span>Daily activity outside workouts</span><div class="list-group">${Object.entries(ACTIVITY).map(([k, v]) => `<button class="list-row" data-a="food-activity" data-v="${k}" aria-pressed="${db.nutrition.activity === k}"><span class="grow">${v.label}</span>${db.nutrition.activity === k ? `<span class="chev accent">${icon('check')}</span>` : ''}</button>`).join('')}</div></div>
+      ${db.nutrition.kcalOffset ? `<div class="list-group"><div class="list-row"><span class="grow">Check-in adjustment: <b>${db.nutrition.kcalOffset > 0 ? '+' : ''}${db.nutrition.kcalOffset} kcal/day</b></span><button class="mini" data-a="food-offset-reset">Reset</button></div></div>` : ''}
+      <button class="btn ghost block" data-a="close-sheet">Done</button>`);
   }
 
   function fmtQty(x) {
@@ -140,7 +154,7 @@ export function createFood(ctx) {
     ctx.openSheet(`<h2>Add to meal ${meal}</h2>
       <input id="food-q" class="search" type="search" placeholder="Search foods" autocomplete="off">
       <div class="chips pk-filters">${[['all', 'All'], ['mine', 'Mine'], ...Object.entries(CATS)].map(([k, v]) => `<button class="chip ${k === 'all' ? 'on' : ''}" data-a="food-cat" data-v="${k}">${v}</button>`).join('')}</div>
-      <button class="btn block" data-a="food-custom">+ Create your own food</button>
+      <button class="btn block" data-a="food-custom">Create your own food</button>
       <div id="food-list">${foodList()}</div>`);
   }
 
@@ -226,10 +240,10 @@ export function createFood(ctx) {
     const db = ctx.db;
     ctx.openSheet(`<h2>My foods & meals</h2>
       <h3 class="sect">Saved meals</h3>
-      ${db.meals.map((m) => `<div class="list-row"><span class="grow"><b>${esc(m.name)}</b><span class="pick-sub">${m.items.length} items · ${r0(m.items.reduce((a, x) => a + x.kcal, 0))} kcal</span></span><button class="mini danger" data-a="meal-del" data-id="${m.id}">✕</button></div>`).join('') || '<p class="muted small">None yet — use "Save meal" on a meal.</p>'}
+      ${db.meals.map((m) => `<div class="list-row"><span class="grow"><b>${esc(m.name)}</b><span class="pick-sub">${m.items.length} items · ${r0(m.items.reduce((a, x) => a + x.kcal, 0))} kcal</span></span><button class="mini danger" data-a="meal-del" data-id="${m.id}">${icon('x')}</button></div>`).join('') || '<p class="muted small">None yet — use "Save meal" on a meal.</p>'}
       <h3 class="sect">My foods</h3>
-      ${db.customFoods.map((f) => `<div class="list-row"><span class="grow"><b>${esc(f.name)}</b><span class="pick-sub">${esc(f.serving)} · ${f.kcal} kcal</span></span><button class="mini" data-a="cf-edit" data-id="${f.id}">Edit</button><button class="mini danger" data-a="cf-del" data-id="${f.id}">✕</button></div>`).join('') || '<p class="muted small">None yet.</p>'}
-      <button class="btn block" data-a="food-custom">+ Create your own food</button>
+      ${db.customFoods.map((f) => `<div class="list-row"><span class="grow"><b>${esc(f.name)}</b><span class="pick-sub">${esc(f.serving)} · ${f.kcal} kcal</span></span><button class="mini" data-a="cf-edit" data-id="${f.id}">Edit</button><button class="mini danger" data-a="cf-del" data-id="${f.id}">${icon('x')}</button></div>`).join('') || '<p class="muted small">None yet.</p>'}
+      <button class="btn block" data-a="food-custom">Create your own food</button>
       <button class="btn block" data-a="close-sheet">Close</button>`);
   }
 
@@ -331,15 +345,16 @@ export function createFood(ctx) {
       }
       ctx.persist(); ctx.closeSheet(); ctx.render(); ctx.toast(`Logged ${tpl.name}. Adjust portions if you ate a different amount.`);
     },
-    'food-meals': (d) => { ctx.db.nutrition.mealsPerDay = +d.v; ctx.persist(); ctx.render(); },
-    'food-activity': (d) => { ctx.db.nutrition.activity = d.v; ctx.persist(); ctx.render(); },
+    'food-settings': () => openSettings(),
+    'food-meals': (d) => { ctx.db.nutrition.mealsPerDay = +d.v; ctx.persist(); ctx.render(); openSettings(); },
+    'food-activity': (d) => { ctx.db.nutrition.activity = d.v; ctx.persist(); ctx.render(); openSettings(); },
     'food-apply': (d) => {
       const v = +d.v;
       ctx.db.nutrition.kcalOffset = (ctx.db.nutrition.kcalOffset || 0) + v;
       (ctx.db.nutrition.checkins ||= []).push({ date: todayStr(), kcal: v });
       ctx.persist(); ctx.render(); ctx.toast(`Daily calories ${v > 0 ? 'raised' : 'lowered'} by ${Math.abs(v)}.`);
     },
-    'food-offset-reset': () => { ctx.db.nutrition.kcalOffset = 0; ctx.persist(); ctx.render(); },
+    'food-offset-reset': () => { ctx.db.nutrition.kcalOffset = 0; ctx.persist(); ctx.render(); openSettings(); },
   };
 
   function onInput(e) {
