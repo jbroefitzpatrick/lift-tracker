@@ -493,7 +493,10 @@ function placeCardio(liftDays, legDays, cardioDays) {
 export function generatePlan(db, p, rx, liftDays, cardioDays, splitId) {
   const templates = LAYOUT[liftDays]?.[splitId];
   if (!templates) throw new Error('That split does not fit that many days.');
-  const days = WEEK_LAYOUT[liftDays];
+  // The lifter's chosen weekdays if they match the day count, otherwise the default layout.
+  const order = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+  const chosen = (p.liftDayKeys || []).filter((d) => order.includes(d)).sort((a, b) => order.indexOf(a) - order.indexOf(b));
+  const days = chosen.length === liftDays ? chosen : WEEK_LAYOUT[liftDays];
   const plan = {};
   const legDays = [];
   const easier = p.experience === 'beginner' || (+p.age || 30) >= 65;

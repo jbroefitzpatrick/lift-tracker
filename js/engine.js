@@ -34,7 +34,7 @@ export function weekInfo(db, date = todayStr()) {
   const days = daysBetween(db.settings.programStart, date);
   const week = Math.max(1, Math.floor(days / 7) + 1);
   const cyclePos = ((week - 1) % n) + 1;
-  return { week, cyclePos, cycleLen: n, isDeload: cyclePos === n };
+  return { week, cyclePos, cycleLen: n, isDeload: cyclePos === n && !db.settings.deloadOff };
 }
 
 // True during the week right after a deload, until the user answers the prompt.

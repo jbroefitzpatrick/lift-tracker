@@ -2,6 +2,7 @@ import { loadDb, save, onSaveError, dailySnapshot, safetySnapshot, requestPersis
 import { onReorder, setAnnouncer } from './drag.js';
 import { icon } from './icons.js';
 import { EX_INFO } from './exercise-info.js';
+import { blockInfo, focusFor, liftProgress, checkinDue, planCompounds, adherence } from './blocks.js';
 import { TYPES, ROW_ROTATION, defaultPlan } from './plan.js';
 import {
   DAY_KEYS, DAY_NAMES, dayKeyOf, weekInfo, needsRotationPrompt, nextRowCompound, resolveDay,
@@ -11,7 +12,8 @@ import { lineChart } from './chart.js';
 import { MUSCLES, CATEGORIES, PATTERNS, similarExercises } from './bank.js';
 import { CARDIO, INTENSITY, MODALITIES } from './cardio-bank.js';
 import { suggestCardio } from './cardio.js';
-import { currentFatigue, freshness, dayMode, MUSCLE_GROUPS } from './fatigue.js';
+import { currentFatigue, freshness, dayMode, MUSCLE_GROUPS, liftLoads } from './fatigue.js';
+import { bodyPair, bodySvg, muscleIcon } from './body.js';
 import {
   GOALS, EXPERIENCE, EQUIPMENT, LIMITS, WEIGHT_GOALS, WEEK_LAYOUT, VOLUME_MUSCLES, defaultProfile, prescription, suggestDays,
   splitOptions, generatePlan, goalWeights, suggestedWeightGoal, volumeTarget, fmtSec,
@@ -387,11 +389,41 @@ function dayTabs(current, action, days = DAY_KEYS) {
 function rirTarget(wi) {
   if (!db.settings.rampEffort) return null;
   if (wi.isDeload) return null;
-  const end = Math.max(0, db.profile?.rx?.rirLo ?? 1);
-  const start = Math.max(end + 1, 3);
+  const end = Math.max(0, db.settings.rampEnd ?? db.profile?.rx?.rirLo ?? 1);
+  const start = Math.max(end + 1, db.settings.rampStart ?? 3);
   const work = Math.max(2, wi.cycleLen - 1);
   const v = Math.round(start - ((start - end) * (wi.cyclePos - 1)) / (work - 1));
   return String(Math.max(end, Math.min(start, v)));
+}
+
+// The day's exercises in display order: the session once started, otherwise the plan.
+function todayItems(day = ui.day) {
+  const session = sessionFor(day);
+  if (!session) return resolveDay(db, day);
+  const items = session.freestyle ? [] : resolveDay(db, day);
+  syncSession(session, items);
+  return sessionItems(session, items);
+}
+
+// Consecutive items sharing a slot number form a superset (2) or circuit (3+).
+function groupsOf(items) {
+  const groups = [];
+  for (const item of items) {
+    const g = groupNum(item.group);
+    const last = groups[groups.length - 1];
+    if (last && last.g === g) last.items.push(item);
+    else groups.push({ g, items: [item] });
+  }
+  return groups.map((grp) => ({ ...grp, linked: grp.items.filter((i) => !i.extra).length > 1 }));
+}
+
+const linkLabel = (n) => (n > 2 ? 'Circuit' : 'Superset');
+
+function thumb(ex) {
+  const img = EX_INFO[ex.id]?.images?.[0];
+  return img
+    ? `<img src="${img}" alt="" loading="lazy" referrerpolicy="no-referrer" data-fb='${muscleIcon(ex.primary[0] || 'chest').replace(/'/g, '&#39;')}'>`
+    : muscleIcon(ex.primary[0] || 'chest');
 }
 
 function screenToday() {
@@ -408,7 +440,7 @@ function screenToday() {
   const dateLabel = parseDate(addDays(mondayOf(todayStr()), DAY_KEYS.indexOf(day))).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
   const subtitle = [
     dateLabel,
-    `Week ${wi.cyclePos} of ${wi.cycleLen}${wi.isDeload ? ' (deload)' : ''}`,
+    db.settings.deloadOff ? `Week ${wi.week}` : `Week ${wi.cyclePos} of ${wi.cycleLen}${wi.isDeload ? ' (deload)' : ''}`,
     ph ? `${PHASE_TYPES[ph.phase.type].label}, week ${ph.weekInPhase}` : '',
   ].filter(Boolean).join(' · ');
   let html = `
@@ -425,6 +457,7 @@ function screenToday() {
     </div>`;
   }
   html += extras.backupBanner();
+  html += blockCheckinBanner();
   if (needsRotationPrompt(db)) {
     const nextId = nextRowCompound(db);
     html += `<div class="notice-card">
@@ -446,12 +479,8 @@ function screenToday() {
     return html;
   }
 
-  let items = session?.freestyle ? [] : resolveDay(db, day);
-  if (session) {
-    syncSession(session, items);
-    items = sessionItems(session, items);
-    if (session.date !== todayStr()) html += `<div class="notice-card"><p>This workout was started on ${fmtDate(session.date)}. Finish or discard it to start a new one.</p></div>`;
-  }
+  const items = todayItems(day);
+  if (session && session.date !== todayStr()) html += `<div class="notice-card"><p>This workout was started on ${fmtDate(session.date)}. Finish or discard it to start a new one.</p></div>`;
 
   // Overview: what's ahead, or progress once started.
   const counts = items.map((i) => {
@@ -463,40 +492,48 @@ function screenToday() {
   const done = counts.reduce((a, c) => a + c.done, 0);
   const est = estimateMinutes(items.map((i, k) => ({ group: i.group, sets: counts[k].total || i.sets, restSec: i.restSec })));
   const left = Math.max(0, Math.round(est * (1 - (total ? done / total : 0))));
-  html += session
-    ? `<section class="overview">
-        <div class="row between"><div><b>${done} of ${total} sets</b><p class="muted small">About ${left} min left</p></div>
-          <button class="btn primary" data-a="finish">Finish</button></div>
-        <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="${total}" aria-valuenow="${done}" aria-label="Sets completed"><i style="width:${total ? (done / total) * 100 : 0}%"></i></div>
-      </section>`
-    : items.length ? `<section class="overview">
-        <div class="row between"><div><b>${items.length} exercises · ${total} sets</b><p class="muted small">About ${est} min${isDeload ? ' · deload' : ''}${rir ? ` · aim for ${rir} reps in reserve` : ''}</p></div>
-          <button class="btn primary" data-a="start-workout">Start</button></div>
-      </section>` : '';
-
-  const firstCompound = items.find((i) => i.ex.category === 'compound' && i.ex.type !== 'bodyweight');
-
-  // Group consecutive items by superset number.
-  const groups = [];
-  for (const item of items) {
-    const g = groupNum(item.group);
-    const last = groups[groups.length - 1];
-    if (last && last.g === g) last.items.push(item);
-    else groups.push({ g, items: [item] });
+  if (items.length) {
+    html += session
+      ? `<section class="overview">
+          <div class="row between"><div><b>${done} of ${total} sets</b><p class="muted small">About ${left} min left</p></div>
+            <button class="btn primary" data-a="finish">Finish</button></div>
+          <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="${total}" aria-valuenow="${done}" aria-label="Sets completed"><i style="width:${total ? (done / total) * 100 : 0}%"></i></div>
+        </section>`
+      : `<section class="overview">
+          <div class="row between"><div><b>About ${est} min</b><p class="muted small">${total} sets${isDeload ? ' · deload' : ''}${rir ? ` · aim for ${rir} reps in reserve` : ''}</p></div>
+            <button class="btn primary" data-a="start-workout">Start</button></div>
+        </section>`;
+    html += targetMuscles(items);
   }
-  const card = (i, inGroup) => exerciseCard(i, session, isDeload, inGroup, { rir, warm: db.settings.warmups && i === firstCompound });
+
+  // Exercise list
+  const selecting = !!ui.selecting;
+  const sel = ui.selected || new Set();
+  html += `<div class="list-head">
+    <h2>${items.length} exercise${items.length === 1 ? '' : 's'}</h2>
+    <div class="row">
+      ${items.length > 1 ? `<button class="link-btn" data-a="select-mode">${selecting ? 'Done' : 'Edit'}</button>` : ''}
+      <button class="icon-btn accent" data-a="today-add" aria-label="Add exercise">${icon('plus')}</button>
+    </div>
+  </div>`;
+  if (selecting) html += `<p class="muted small">Select exercises to link into a superset or circuit, or drag to reorder. ${session ? 'Changes apply to today\'s workout.' : `Changes apply to every ${FULL_DAY[day]}.`}</p>`;
   html += '<div class="ex-list">';
-  for (const grp of groups) {
-    // A swapped-in exercise shares its slot number but doesn't make a superset on its own.
-    if (grp.items.filter((i) => !i.extra).length > 1) {
+  for (const grp of groupsOf(items)) {
+    const rows = grp.items.map((i) => exerciseRow(i, session, isDeload, selecting, sel)).join('');
+    if (grp.linked) {
       const restSec = Math.max(...grp.items.map((i) => i.restSec || 0));
-      html += `<section class="superset" aria-label="Superset">
-        <div class="superset-head"><b>Superset</b><span class="muted">Rest ${fmtRest(restSec)} after each round</span></div>
-        ${grp.items.map((i) => card(i, true)).join('')}</section>`;
-    } else html += grp.items.map((i) => card(i, false)).join('');
+      html += `<section class="link-group" aria-label="${linkLabel(grp.items.length)}">
+        <div class="link-label"><b>${linkLabel(grp.items.length)}</b> · rest ${fmtRest(restSec)} after each round</div>${rows}</section>`;
+    } else html += rows;
   }
   html += '</div>';
-  if (session) html += `<button class="btn block" data-a="session-add">${icon('plus')} Add exercise</button>`;
+  if (selecting) {
+    html += `<div class="select-bar" role="toolbar" aria-label="Selection actions">
+      <span class="muted small">${sel.size} selected</span>
+      <button class="btn sm" data-a="unlink-selected" ${sel.size ? '' : 'disabled'}>Unlink</button>
+      <button class="btn sm primary" data-a="link-selected" ${sel.size < 2 ? 'disabled' : ''}>Link ${sel.size > 2 ? 'as circuit' : 'as superset'}</button>
+    </div>`;
+  }
   if (session?.freestyle && !items.length) html += '<p class="muted small center pad">Add exercises from the library to build this workout.</p>';
 
   if (mode === 'both') html += cardioSection(day, 'Cardio after lifting', true);
@@ -509,6 +546,177 @@ function screenToday() {
     </div>`;
   }
   return html;
+}
+
+// The muscles today's exercises train, with how recovered each one is.
+function targetMuscles(items) {
+  const loads = liftLoads(db, items.map((i) => ({ exerciseId: i.exerciseId, sets: i.sets || 3 })));
+  const top = Object.entries(loads).filter(([, v]) => v >= 2).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([m]) => m);
+  if (!top.length) return '';
+  const fresh = freshness(currentFatigue(db));
+  return `<section class="targets" aria-label="Target muscles">
+    <h2>Target muscles</h2>
+    <div class="target-strip">${top.map((m) => {
+      const pct = Math.round((fresh[m] ?? 1) * 100);
+      return `<div class="target-tile"><span class="tile-art">${muscleIcon(m)}<span class="pct-badge ${pct < 50 ? 'low' : pct < 80 ? 'mid' : ''}">${pct}%</span></span><span class="tile-name">${MUSCLES[m]}</span></div>`;
+    }).join('')}</div>
+  </section>`;
+}
+
+function exerciseRow(item, session, isDeload, selecting, sel) {
+  const ex = item.ex;
+  const { t, target, entry, sets, notices } = cardModel(item, session, isDeload);
+  const doneN = sets.filter((s) => s.done).length;
+  const allDone = entry && sets.length && doneN === sets.length;
+  const reps = item.repMin === item.repMax ? item.repMin : `${item.repMin}–${item.repMax}`;
+  const weight = target != null ? ` · ${fmtW(target, ex)}` : '';
+  const meta = entry && doneN ? `${doneN} of ${sets.length} sets${weight}` : `${t.sets} sets · ${reps} reps${weight}`;
+  const checked = sel.has(item.uid);
+  return `<div class="ex-item ${allDone ? 'is-done' : ''} ${checked ? 'is-selected' : ''}" data-drag-item data-drag-list="session" data-drag-id="${item.uid}">
+    ${selecting ? `<label class="sel"><input type="checkbox" data-a="sel-toggle" data-uid="${item.uid}" ${checked ? 'checked' : ''} aria-label="Select ${esc(ex.name)}"></label>` : ''}
+    <button class="ex-item-main" data-a="ex-open" data-uid="${item.uid}" ${selecting ? 'tabindex="-1"' : ''}>
+      <span class="thumb">${thumb(ex)}</span>
+      <span class="grow"><span class="ex-name2">${esc(ex.name)}</span><span class="ex-meta">${meta}</span>
+        ${notices.length ? `<span class="row-notice ${notices[0][0]}">${esc(notices[0][1])}</span>` : ''}</span>
+    </button>
+    ${allDone ? `<span class="status-done" aria-label="Done">${icon('check')}</span>` : ''}
+    ${selecting
+      ? `<button class="drag-handle" data-drag-handle aria-label="Reorder ${esc(ex.name)} (arrow keys move it)">${GRIP}</button>`
+      : `<button class="icon-btn plain" data-a="ex-sheet" data-uid="${item.uid}" aria-label="Options for ${esc(ex.name)}">${icon('more')}</button>`}
+  </div>`;
+}
+
+// ---------- Exercise screen: log sets for one exercise ----------
+
+function screenExercise() {
+  const day = ui.day;
+  const session = sessionFor(day);
+  const isDeload = isDeloadFor(day);
+  const items = todayItems(day);
+  const idx = items.findIndex((i) => i.uid === ui.exUid);
+  if (idx < 0) { ui.tab = 'today'; return screenToday(); }
+  const item = items[idx];
+  const { ex, gym, t, target, entry, sets, notices } = cardModel(item, session, isDeload);
+  const info = EX_INFO[ex.id] || {};
+  const ended = entry?.pain;
+  const barbell = ex.type?.startsWith('barbell');
+  const grp = groupsOf(items).find((g) => g.items.includes(item));
+  const firstCompound = items.find((i) => i.ex.category === 'compound' && i.ex.type !== 'bodyweight');
+  const warm = db.settings.warmups && item === firstCompound && target ? warmupSets(ex, target, gym) : [];
+  const rir = rirTarget(weekInfo(db));
+  const allDone = entry && sets.every((s) => s.done);
+  const prev = items[idx - 1];
+  const next = items[idx + 1];
+  const aim = t.weight == null ? 'Pick a working weight to set your baseline'
+    : t.total ? `Aim for ${t.reps}+ reps · beat ${t.total - 1} total` : `Aim for ${t.reps} reps`;
+
+  const rows = sets.map((s, i) => {
+    const disabled = ended && !s.done && !s.pain;
+    return `<div class="set-row ${s.done ? 'done' : ''} ${s.pain ? 'pain' : ''} ${disabled ? 'disabled' : ''}">
+      <button class="set-badge" data-a="open-set" data-uid="${item.uid}" data-i="${i}" aria-label="Set ${i + 1} options: effort, pain">${i + 1}</button>
+      <input class="cell" type="text" inputmode="numeric" data-set="${item.uid}:${i}:reps" value="${s.reps ?? ''}" aria-label="Set ${i + 1} reps" ${disabled ? 'disabled' : ''}>
+      <input class="cell" type="text" inputmode="decimal" data-set="${item.uid}:${i}:weight" value="${s.weight ?? ''}" placeholder="—" aria-label="Set ${i + 1} weight in pounds" ${disabled ? 'disabled' : ''}>
+      <button class="check" data-a="check-inline" data-uid="${item.uid}" data-i="${i}" ${disabled || s.pain ? 'disabled' : ''} aria-pressed="${s.done}" aria-label="${s.done ? 'Undo' : 'Complete'} set ${i + 1}">${icon('check')}</button>
+    </div>${s.rir != null || s.pain ? `<p class="set-extra">${s.pain ? 'Pain flagged' : `${s.rir} reps in reserve`}</p>` : ''}`;
+  }).join('');
+
+  const checkin = entry && allDone && !ended && !session.isDeload ? `<div class="checkin" role="group" aria-label="How did that feel">
+    <span class="muted small">How did that feel?</span>
+    <div class="seg-mini">${[['easy', 'Easy'], ['right', 'Right'], ['hard', 'Too hard']].map(([v, l]) => `<button class="${entry.feedback === v ? 'on' : ''}" data-a="fb" data-uid="${item.uid}" data-v="${v}" aria-pressed="${entry.feedback === v}">${l}</button>`).join('')}</div>
+    <button class="text-btn ${entry.joint ? 'is-bad' : ''}" data-a="fb-joint" data-uid="${item.uid}" aria-pressed="${!!entry.joint}">${entry.joint ? 'Joint pain noted' : 'Joint pain?'}</button>
+  </div>` : '';
+
+  const img = info.images?.[0];
+  return `<div class="ex-screen">
+    <div class="ex-hero">${img ? `<img src="${img}" alt="${esc(ex.name)}" referrerpolicy="no-referrer">` : `<div class="hero-body">${bodyPair(Object.fromEntries(ex.primary.map((m) => [m, 1])))}</div>`}
+      <button class="icon-btn hero-btn" data-a="ex-close" aria-label="Back to workout">${icon('left')}</button>
+      <button class="icon-btn hero-btn right" data-a="ex-sheet" data-uid="${item.uid}" aria-label="More options">${icon('more')}</button>
+    </div>
+    <div class="ex-title-row"><h1>${esc(ex.name)}</h1><button class="btn sm" data-a="ex-info" data-id="${ex.id}">${icon('play')}How-to</button></div>
+    <p class="subtitle">${CATEGORIES[ex.category]} · ${esc(muscleLine(ex))}</p>
+    <div class="chips quick-row">
+      <button class="chip" data-a="ex-rest" data-uid="${item.uid}">Rest ${fmtRest(item.restSec || grp.items.reduce((a, i) => Math.max(a, i.restSec || 0), 0)) || 'off'}</button>
+      <button class="chip" data-a="ex-info" data-id="${ex.id}">History</button>
+      <button class="chip" data-a="swap" data-uid="${item.uid}">Replace</button>
+      ${grp.linked ? `<button class="chip" data-a="unlink-one" data-uid="${item.uid}">Unlink</button>` : next ? `<button class="chip" data-a="link-next" data-uid="${item.uid}">Link with next</button>` : ''}
+    </div>
+    ${grp.linked ? `<div class="group-note"><b>${linkLabel(grp.items.length)}</b> · ${grp.items.map((i) => (i === item ? `<span class="cur">${esc(i.ex.name)}</span>` : esc(i.ex.name))).join(' → ')}</div>` : ''}
+    <p class="aim-line">${aim}${t.rir ? ` · ${t.rir} RIR` : rir ? ` · about ${rir} in reserve` : ''}</p>
+    ${t.st.last ? `<p class="muted small">Last time: ${fmtLast(t.st.last, ex)}</p>` : ''}
+    ${notices.map(([c, m]) => `<p class="notice ${c}">${esc(m)}</p>`).join('')}
+    ${warm.length ? `<details class="warmup"><summary>Warm-up · ${warm.length} sets</summary>${warm.map((w) => `<div class="wu-row"><span>${fmtW(w.weight, ex)} × ${w.reps}</span><span class="muted small">${barbell ? plateText(w.weight, gym) : ''}</span></div>`).join('')}</details>` : ''}
+    <div class="set-table" role="group" aria-label="Sets">
+      <div class="set-head" aria-hidden="true"><span>Set</span><span>Reps</span><span>${ex.type === 'bodyweight' ? 'Added lb' : ex.type === 'dumbbell' ? 'Lb per DB' : 'Weight (lb)'}</span><span></span></div>
+      ${rows}
+    </div>
+    ${barbell && target ? `<p class="muted small plates">Plates: ${plateText(target, gym)}</p>` : ''}
+    ${!ended ? `<button class="text-btn" data-a="add-set" data-uid="${item.uid}">${icon('plus')} Add set</button>` : ''}
+    ${ex.rules?.rehab && !ended ? `<label class="toggle"><input type="checkbox" data-a="painfree" data-uid="${item.uid}" ${entry?.painFree ? 'checked' : ''}><span>Pain-free today (needed to increase weight)</span></label>` : ''}
+    ${checkin}
+    <div class="ex-nav">
+      ${prev ? `<button class="btn" data-a="ex-go" data-uid="${prev.uid}" aria-label="Previous: ${esc(prev.ex.name)}">${icon('left')}</button>` : ''}
+      ${!session ? '<button class="btn primary grow" data-a="start-workout">Start workout</button>'
+        : next ? `<button class="btn primary grow" data-a="ex-go" data-uid="${next.uid}">Next: ${esc(next.ex.name)}</button>`
+          : '<button class="btn primary grow" data-a="finish">Finish workout</button>'}
+    </div>
+  </div>`;
+}
+
+// ---------- Linking supersets and circuits ----------
+
+// Relabel slots after a change: runs that share a key become 3a/3b/3c, singles become 3.
+function relabel(list, keyOf) {
+  let n = 0;
+  let i = 0;
+  while (i < list.length) {
+    const k = keyOf(list[i]);
+    let j = i + 1;
+    while (j < list.length && keyOf(list[j]) === k) j++;
+    n += 1;
+    const run = list.slice(i, j);
+    run.forEach((x, r) => { x.group = run.length > 1 ? `${n}${'abcdefgh'[r] || r}` : String(n); });
+    // Linked exercises rest after the round: only the last one carries the rest.
+    if (run.length > 1) {
+      const rest = Math.max(...run.map((x) => x.restSec || 0)) || 90;
+      run.forEach((x, r) => { x.restSec = r === run.length - 1 ? rest : 0; });
+    }
+    i = j;
+  }
+}
+
+// Where today's list lives: the workout once started, otherwise the plan for this weekday.
+function editableList() {
+  const session = sessionFor(ui.day);
+  if (session) return { list: session.order.map((u) => session.entries[u]), save: (list) => { session.order = list.map((e) => e.uid); } };
+  const plan = db.plan[ui.day];
+  return { list: plan.items, save: (list) => { plan.items = list; } };
+}
+
+// The plan for the day open in Plan → Week.
+function planDayList() {
+  const plan = db.plan[ui.planDay];
+  return { list: plan.items, save: (list) => { plan.items = list; } };
+}
+
+// Link the chosen exercises: they move together (to where the first one was) and share a slot.
+function linkUids(uids, src = editableList()) {
+  const { list, save } = src;
+  const chosen = list.filter((x) => uids.includes(x.uid));
+  if (chosen.length < 2) return;
+  const prevKey = new Map(list.map((x) => [x, groupNum(x.group)]));
+  const first = list.indexOf(chosen[0]);
+  const rest = list.filter((x) => !uids.includes(x.uid));
+  const before = list.slice(0, first).filter((x) => !uids.includes(x.uid)).length;
+  const next = [...rest.slice(0, before), ...chosen, ...rest.slice(before)];
+  relabel(next, (x) => (uids.includes(x.uid) ? 'link' : `g${prevKey.get(x)}`));
+  save(next);
+}
+
+function unlinkUids(uids, src = editableList()) {
+  const { list, save } = src;
+  const prevKey = new Map(list.map((x) => [x, groupNum(x.group)]));
+  relabel(list, (x) => (uids.includes(x.uid) ? `solo:${x.uid}` : `g${prevKey.get(x)}`));
+  save(list);
 }
 
 // Day options: the less frequent controls live here instead of on the screen.
@@ -584,66 +792,12 @@ function cardModel(item, session, isDeload) {
   return { ex, gym, t, target, entry, sets, notices };
 }
 
-function exerciseCard(item, session, isDeload, inGroup, opts = {}) {
-  const { ex, t, target, entry, sets, notices } = cardModel(item, session, isDeload);
-  const ended = entry?.pain;
-  const doneSets = sets.filter((s) => s.done);
-  const allDone = entry && sets.every((s) => s.done);
-  // Finished exercises collapse; any card can be opened or closed by hand.
-  const open = ui.exOpen?.[item.uid] ?? !(allDone || ended);
-  const targetLine = `${t.sets} × ${item.repMin}–${item.repMax}${target != null ? ` · ${fmtW(target, ex)}` : ''}`;
-  const summary = ended ? 'Stopped for pain' : `${doneSets.length} of ${sets.length} sets done`;
-  const label = inGroup ? `<span class="slot">${esc(item.group)}</span>` : '';
-
-  const head = `<div class="ex-row">
-      <button class="drag-handle" data-drag-handle aria-label="Reorder ${esc(ex.name)} (arrow keys move it)">${GRIP}</button>
-      <button class="ex-title" data-a="ex-sheet" data-uid="${item.uid}" aria-haspopup="dialog" aria-label="${esc(ex.name)}: details and options">
-        <span class="ex-name">${label}${esc(ex.name)}</span>
-        <span class="ex-meta">${open ? targetLine : summary}</span>
-      </button>
-      ${allDone ? `<span class="status-done" aria-label="Done">${icon('check')}</span>` : ''}
-      <button class="icon-btn plain" data-a="ex-toggle" data-uid="${item.uid}" data-open="${open ? 1 : 0}" aria-expanded="${open}" aria-label="${open ? 'Collapse' : 'Expand'} ${esc(ex.name)}">${CHEVRON}</button>
-    </div>`;
-  const cls = `exercise ${inGroup ? 'in-group' : ''} ${allDone ? 'is-done' : ''} ${ended ? 'is-ended' : ''} ${open ? '' : 'is-collapsed'}`;
-  const shell = (body) => `<article class="${cls}" data-drag-item data-drag-list="session" data-drag-id="${item.uid}">${head}${body}</article>`;
-  if (!open) return shell('');
-
-  const rows = sets.map((s, i) => {
-    const disabled = ended && !s.done && !s.pain;
-    return `<div class="set ${s.done ? 'done' : ''} ${s.pain ? 'pain' : ''} ${disabled ? 'disabled' : ''}">
-      <button class="set-main" data-a="open-set" data-uid="${item.uid}" data-i="${i}" ${disabled ? 'disabled' : ''} aria-label="Set ${i + 1}: ${s.weight == null ? 'weight not set' : fmtW(s.weight, ex)} by ${s.reps}. Tap to edit.">
-        <span class="set-n">${i + 1}</span>
-        <span class="set-val">${s.weight == null ? '—' : fmtW(s.weight, ex)} <span class="x">×</span> ${s.reps}</span>
-        <span class="set-rir">${s.pain ? 'Pain' : s.rir != null ? `${s.rir} RIR` : ''}</span>
-      </button>
-      <button class="check" data-a="check" data-uid="${item.uid}" data-i="${i}" ${disabled || s.pain ? 'disabled' : ''} aria-pressed="${s.done}" aria-label="${s.done ? 'Undo' : 'Complete'} set ${i + 1}">${icon('check')}</button>
-    </div>`;
-  }).join('');
-
-  const warm = opts.warm && target ? warmupSets(ex, target, activeGym(db)) : [];
-  const checkin = entry && allDone && !ended && !session.isDeload ? `<div class="checkin" role="group" aria-label="How did that feel">
-    <span class="muted small">How did that feel?</span>
-    <div class="seg-mini">${[['easy', 'Easy'], ['right', 'Right'], ['hard', 'Too hard']].map(([v, l]) => `<button class="${entry.feedback === v ? 'on' : ''}" data-a="fb" data-uid="${item.uid}" data-v="${v}" aria-pressed="${entry.feedback === v}">${l}</button>`).join('')}</div>
-    <button class="text-btn ${entry.joint ? 'is-bad' : ''}" data-a="fb-joint" data-uid="${item.uid}" aria-pressed="${!!entry.joint}">${entry.joint ? 'Joint pain noted' : 'Joint pain?'}</button>
-  </div>` : '';
-
-  return shell(`
-    ${notices.length ? `<p class="notice ${notices[0][0]}">${esc(notices[0][1])}</p>` : ''}
-    <div class="sets">${rows}</div>
-    <div class="ex-foot">
-      ${!ended ? `<button class="text-btn" data-a="add-set" data-uid="${item.uid}">${icon('plus')} Add set</button>` : ''}
-      ${warm.length ? `<button class="text-btn" data-a="ex-sheet" data-uid="${item.uid}" data-focus="warmup">Warm-up</button>` : ''}
-      ${ex.rules?.rehab && !ended ? `<label class="text-btn toggle-inline"><input type="checkbox" data-a="painfree" data-uid="${item.uid}" ${entry?.painFree ? 'checked' : ''}>Pain-free</label>` : ''}
-    </div>
-    ${checkin}`);
-}
-
 // Details & options for one exercise: kept off the card so the card stays simple.
 function openExerciseSheet(uid, focus) {
   const day = ui.day;
   const session = sessionFor(day);
   const isDeload = isDeloadFor(day);
-  const items = session ? sessionItems(session, session.freestyle ? [] : resolveDay(db, day)) : resolveDay(db, day);
+  const items = todayItems(day);
   const item = items.find((i) => i.uid === uid);
   if (!item) return;
   const { ex, gym, t, target, entry, notices } = cardModel(item, session, isDeload);
@@ -686,6 +840,9 @@ function openExerciseSheet(uid, focus) {
 
     <div class="list-group">
       <button class="list-row" data-a="swap" data-uid="${uid}">${icon('swap')}<span class="grow">Swap exercise</span>${icon('right', 'chev')}</button>
+      ${groupsOf(items).find((g) => g.items.includes(item))?.linked
+        ? `<button class="list-row" data-a="unlink-one" data-uid="${uid}">${icon('x')}<span class="grow">Unlink from group</span></button>`
+        : i < count - 1 ? `<button class="list-row" data-a="link-next" data-uid="${uid}">${icon('plus')}<span class="grow">Link with next exercise</span></button>` : ''}
       <button class="list-row" data-a="ex-move" data-uid="${uid}" data-v="-1" ${i <= 0 ? 'disabled' : ''}>${icon('up')}<span class="grow">Move up</span></button>
       <button class="list-row" data-a="ex-move" data-uid="${uid}" data-v="1" ${i >= count - 1 ? 'disabled' : ''}>${icon('arrowDown')}<span class="grow">Move down</span></button>
       ${lastUndone ? `<button class="list-row" data-a="remove-set" data-uid="${uid}">${icon('minus')}<span class="grow">Remove last set</span></button>` : ''}
@@ -693,6 +850,85 @@ function openExerciseSheet(uid, focus) {
       <button class="list-row danger-row" data-a="ex-remove" data-uid="${uid}">${icon('trash')}<span class="grow">Remove from today</span></button>
     </div>`);
   if (focus) requestAnimationFrame(() => document.getElementById(focus)?.scrollIntoView({ block: 'start' }));
+}
+
+// ---------- Training blocks: focus lifts and check-ins ----------
+
+function blockCheckinBanner() {
+  const b = checkinDue(db);
+  if (!b) return '';
+  return `<div class="notice-card">
+    <p><b>Block ${b.index} check-in.</b> It's your deload week — review how your focus lifts moved and pick the next block's focus.</p>
+    <div class="row"><button class="btn primary" data-a="block-review" data-i="${b.index}">Review block</button></div>
+  </div>`;
+}
+
+function progressText(p) {
+  if (!p.now) return 'Not trained yet this block';
+  if (p.pct == null) return `Est. 1RM ${p.now} lb`;
+  const sign = p.pct >= 0 ? '+' : '';
+  return `Est. 1RM ${p.base} → ${p.now} lb (${sign}${p.pct.toFixed(1)}%)`;
+}
+
+// Plan → Week: where you are in the block and how the focus lifts are moving.
+function blockCard() {
+  const b = blockInfo(db);
+  const focus = focusFor(db, b.index);
+  return `<section class="card block-card">
+    <div class="row between"><div><h3>Block ${b.index}</h3>
+      <p class="muted small">${db.settings.deloadOff ? `Week ${b.weekInBlock} of ${b.n} · no scheduled deloads` : b.isDeload ? 'Deload week' : `Week ${b.weekInBlock} of ${b.n} · deload in ${b.weeksToDeload} week${b.weeksToDeload === 1 ? '' : 's'}`}</p></div>
+      <button class="link-btn" data-a="block-focus" data-i="${b.index}">Edit focus</button></div>
+    ${focus.length ? focus.map((id) => {
+      const ex = db.exercises[id];
+      if (!ex) return '';
+      const p = liftProgress(db, id, b);
+      return `<div class="list-row focus-row"><span class="thumb sm">${thumb(ex)}</span><span class="grow"><b>${esc(ex.name)}</b><span class="pick-sub">${progressText(p)}</span></span>
+        ${p.pct != null ? `<span class="delta ${p.pct >= 0 ? 'up' : 'down'}">${p.pct >= 0 ? '+' : ''}${p.pct.toFixed(1)}%</span>` : ''}</div>`;
+    }).join('') : '<p class="muted small">No focus lifts yet.</p>'}
+    ${b.isDeload && !db.blocks.reviews[b.index] ? `<button class="btn primary block" data-a="block-review" data-i="${b.index}">Review this block</button>` : ''}
+  </section>`;
+}
+
+function focusChooser(selected) {
+  const options = planCompounds(db);
+  return `<div class="chips wrap" role="group" aria-label="Focus lifts">${options.map((ex) => {
+    const on = selected.includes(ex.id);
+    return `<button class="chip ${on ? 'on' : ''}" data-a="focus-toggle" data-id="${ex.id}" aria-pressed="${on}">${esc(ex.name)}</button>`;
+  }).join('')}</div>`;
+}
+
+function openFocusPicker(index) {
+  ui.focusDraft = [...focusFor(db, index)];
+  ui.focusIndex = index;
+  openSheet(`<h2>Focus lifts · block ${index}</h2>
+    <p class="muted small">Pick the compound lifts you want to push this block (up to 4). Their progress is tracked from block to block and reviewed at each deload.</p>
+    <div id="focus-chooser">${focusChooser(ui.focusDraft)}</div>
+    <button class="btn primary block" data-a="focus-save">Save</button>
+    <button class="btn plain block" data-a="close-sheet">Cancel</button>`);
+}
+
+function openBlockReview(index) {
+  const b = blockInfo(db);
+  const blk = b.index === index ? b : { ...b, index, start: addDays(db.settings.programStart, (index - 1) * b.n * 7), end: addDays(db.settings.programStart, index * b.n * 7 - 1) };
+  const focus = focusFor(db, index);
+  const adh = adherence(db, blk);
+  const prs = db.sessions.filter((s) => s.date >= blk.start && s.date <= blk.end).reduce((a, s) => a + (s.prs?.length || 0), 0);
+  ui.focusDraft = [...focus];
+  ui.focusIndex = index + 1;
+  openSheet(`<h2>Block ${index} check-in</h2>
+    <div class="kv-list">
+      <div class="kv"><span>Workouts</span><b>${adh.done} of ${adh.planned} planned</b></div>
+      <div class="kv"><span>Personal records</span><b>${prs}</b></div>
+    </div>
+    <h3 class="sheet-h">Focus lifts</h3>
+    ${focus.map((id) => { const ex = db.exercises[id]; const p = liftProgress(db, id, blk); return ex ? `<div class="list-row focus-row"><span class="thumb sm">${thumb(ex)}</span><span class="grow"><b>${esc(ex.name)}</b><span class="pick-sub">${progressText(p)} · ${p.sessions} sessions</span></span></div>` : ''; }).join('')}
+    <h3 class="sheet-h">How did the block feel?</h3>
+    <div class="seg-mini wide" role="group" aria-label="How did the block feel">${['Too easy', 'About right', 'Too much'].map((l, i) => `<button data-a="block-feel" data-v="${i}" class="${ui.blockFeel === i ? 'on' : ''}">${l}</button>`).join('')}</div>
+    <h3 class="sheet-h">Focus for block ${index + 1}</h3>
+    <div id="focus-chooser">${focusChooser(ui.focusDraft)}</div>
+    <div class="field"><span>Notes</span><textarea id="block-note" rows="2" placeholder="What worked, what to change"></textarea></div>
+    <button class="btn primary block big" data-a="block-save" data-i="${index}">Save check-in</button>
+    <p class="muted small">Want different exercises or rep ranges for the next block? Rebuild from Goals & plan builder, or edit days in Plan.</p>`);
 }
 
 // ---------- Cardio ----------
@@ -781,19 +1017,50 @@ function openCardioSheet(id) {
     <button class="btn block" data-a="close-sheet">Cancel</button>`);
 }
 
+// When each muscle was last trained (newest workout first), for the recovery list.
+function lastTrainedMap() {
+  const out = {};
+  for (const s of [...db.sessions].sort((a, b) => (b.finishedAt || 0) - (a.finishedAt || 0))) {
+    for (const e of s.entries) {
+      const ex = db.exercises[e.exerciseId];
+      if (!ex) continue;
+      for (const m of ex.primary) if (!out[m]) out[m] = { name: ex.name, ts: s.finishedAt || s.startedAt };
+    }
+  }
+  return out;
+}
+
+function ago(ts) {
+  const d = Math.floor((Date.now() - ts) / 86400000);
+  return d <= 0 ? 'today' : d === 1 ? 'yesterday' : `${d} days ago`;
+}
+
+function muscleRow(m, fresh, last) {
+  const pct = Math.round(fresh[m] * 100);
+  return `<div class="list-row muscle-row">
+    <span class="mi" aria-hidden="true">${muscleIcon(m)}</span>
+    <span class="grow"><b>${MUSCLES[m]}</b><span class="pick-sub">${last[m] ? `${esc(last[m].name)}, ${ago(last[m].ts)}` : 'Not trained this week'}</span></span>
+    <span class="pct ${pct < 50 ? 'low' : pct < 80 ? 'mid' : ''}">${pct}%</span>
+  </div>`;
+}
+
+// Recovery: body map coloured by fatigue, then only the muscles still recovering.
 function freshnessCard() {
   const fresh = freshness(currentFatigue(db));
-  const groups = Object.entries(MUSCLE_GROUPS).map(([g, ms]) => `
-    <h4 class="sub-h">${g}</h4>
-    ${ms.map((m) => {
-      const pct = Math.round(fresh[m] * 100);
-      return `<div class="fresh-row"><span class="fr-name">${MUSCLES[m]}</span>
-        <span class="fr-bar" role="img" aria-label="${MUSCLES[m]} ${pct}% fresh"><i class="${pct < 50 ? 'low' : ''}" style="width:${Math.max(pct, 2)}%"></i></span>
-        <span class="fr-pct">${pct}%</span></div>`;
-    }).join('')}`).join('');
-  return `<div class="card"><h3>Muscle freshness</h3>
-    <p class="muted small">100% = fully recovered. Counts hard sets (primary muscles 1, secondary ½) and cardio from the past week, fading over 2–3 days.</p>
-    ${groups}</div>`;
+  const all = Object.values(MUSCLE_GROUPS).flat();
+  // Full colour at about 60% fatigue so moderately tired muscles still stand out.
+  const fatigue = Object.fromEntries(all.map((m) => [m, Math.min(1, (1 - fresh[m]) / 0.6)]));
+  const recovering = all.filter((m) => fresh[m] < 0.8).sort((a, b) => fresh[a] - fresh[b]);
+  const others = all.filter((m) => !recovering.includes(m));
+  const last = lastTrainedMap();
+  return `<section class="card recovery">
+    <div class="row between"><h3>Muscle recovery</h3><span class="muted small">${recovering.length ? `${recovering.length} recovering · ${others.length} fresh` : 'All fresh'}</span></div>
+    ${bodyPair(fatigue, { label: 'Muscle fatigue' })}
+    <div class="scale" aria-hidden="true"><span>Fresh</span><i></i><span>Recovering</span></div>
+    ${recovering.length ? recovering.map((m) => muscleRow(m, fresh, last)).join('') : '<p class="muted small">Every muscle group is recovered.</p>'}
+    <details class="sub-details"><summary>All muscle groups</summary>${others.map((m) => muscleRow(m, fresh, last)).join('')}</details>
+    <p class="muted small">Based on hard sets (assisting muscles count half) and cardio from the past week; recovery takes about 2–3 days.</p>
+  </section>`;
 }
 
 function cardioHistory() {
@@ -884,7 +1151,7 @@ const num = (id) => {
 // ---------- Exercise bank picker ----------
 
 const picker = { mode: null, uid: null, currentId: null, scope: 'today', q: '', cat: 'all', muscle: 'all' };
-const PICKER_TITLES = { swap: 'Swap exercise', 'plan-swap': 'Swap in plan', add: 'Add exercise', browse: 'Exercise library', 'session-add': 'Add to today' };
+const PICKER_TITLES = { swap: 'Swap exercise', 'plan-swap': 'Swap in plan', add: 'Add exercise', browse: 'Exercise library', 'session-add': 'Add to today', 'today-add': 'Add exercise' };
 
 function openPicker(opts) {
   Object.assign(picker, { uid: null, currentId: null, scope: 'today', q: '', cat: 'all', muscle: 'all', showHidden: false }, opts);
@@ -990,6 +1257,17 @@ function swapInSession(uid, newId) {
     session.entries[newUid] = { ...fresh, parentUid: baseUid, swappedFrom: entry.exerciseId };
     session.order.splice(session.order.indexOf(uid) + 1, 0, newUid);
   }
+  persist();
+}
+
+// Add an exercise to a weekday's plan with sensible defaults for its type.
+function addToPlanDay(day, exId) {
+  const plan = db.plan[day];
+  if (!plan) return;
+  const ex = db.exercises[exId];
+  const compound = ex.category === 'compound';
+  const nextGroup = Math.max(0, ...plan.items.map((i) => parseInt(groupNum(i.group), 10) || 0)) + 1;
+  plan.items.push({ uid: `${day}-${Date.now()}`, exerciseId: exId, group: String(nextGroup), sets: 3, repMin: compound ? 6 : 10, repMax: compound ? 10 : 15, restSec: compound ? 150 : 90, note: '' });
   persist();
 }
 
@@ -1269,7 +1547,7 @@ function screenPlan() {
   const items = plan.items;
   const est = estimateMinutes(items);
   const totalSets = items.reduce((a, i) => a + i.sets, 0);
-  return `${planViewTabs()}${head}
+  return `${planViewTabs()}${blockCard()}${head}
     ${mode === 'cardio' || mode === 'rest' ? `<p class="muted small pad">Lifting is off on ${FULL_DAY[day]}s. The exercises below are kept for when you switch back.</p>` : ''}
     <div class="card plan-day">
       <div class="row between"><input id="plan-name" class="title-input" type="text" value="${esc(plan.name)}" data-a="plan-name" aria-label="Day name">
@@ -1339,6 +1617,9 @@ function openPlanEdit(i) {
     <button class="btn primary block big" data-a="pe-save" data-i="${i}">Save</button>
     ${isNew ? '' : `<div class="list-group">
       <button class="list-row" data-a="plan-swap" data-i="${i}"><span class="grow">Swap for a similar exercise</span></button>
+      ${(() => { const items = db.plan[day].items; const linked = items.filter((x) => groupNum(x.group) === groupNum(it.group)).length > 1;
+        return linked ? `<button class="list-row" data-a="plan-unlink" data-i="${i}"><span class="grow">Unlink from group</span></button>`
+          : i < items.length - 1 ? `<button class="list-row" data-a="plan-link-next" data-i="${i}"><span class="grow">Link with next exercise</span></button>` : ''; })()}
       <button class="list-row" data-a="plan-up" data-i="${i}" ${i === 0 ? 'disabled' : ''}><span class="grow">Move up</span></button>
       <button class="list-row" data-a="plan-down" data-i="${i}" ${i === db.plan[day].items.length - 1 ? 'disabled' : ''}><span class="grow">Move down</span></button>
       <button class="list-row danger-row" data-a="plan-del" data-i="${i}"><span class="grow">Remove from this day</span></button>
@@ -1434,6 +1715,34 @@ function savePlanEdit(i) {
 
 // ---------- Plan builder ----------
 
+// Weekdays the builder will place lifting on: the lifter's picks if they match the count.
+function liftDayKeys(p) {
+  const chosen = (p.liftDayKeys || []).filter((d) => DAY_KEYS.includes(d));
+  return chosen.length === p.liftDays ? chosen : WEEK_LAYOUT[p.liftDays] || [];
+}
+
+function builderCompounds(out) {
+  if (!out) return [];
+  const seen = new Map();
+  for (const d of Object.values(out.plan)) for (const it of d.items) {
+    const ex = db.exercises[it.exerciseId];
+    if (ex?.category === 'compound' && !seen.has(ex.id)) seen.set(ex.id, ex);
+  }
+  return [...seen.values()];
+}
+
+// Focus defaults to each day's first compound (the main lifts), up to three.
+function builderFocus(p, out) {
+  const valid = builderCompounds(out).map((e) => e.id);
+  if (p.focus?.length) return p.focus.filter((id) => valid.includes(id));
+  const firsts = [];
+  for (const d of Object.values(out?.plan || {})) {
+    const it = d.items.find((x) => db.exercises[x.exerciseId]?.category === 'compound');
+    if (it && !firsts.includes(it.exerciseId)) firsts.push(it.exerciseId);
+  }
+  return firsts.slice(0, 3);
+}
+
 const B_STEPS = ['About you', 'Goals', 'Schedule', 'Split', 'Review'];
 const BUILD_LABELS = { lean: 'Lean', average: 'Average', higher: 'Higher body fat' };
 
@@ -1521,18 +1830,22 @@ function screenBuilder() {
     body = `
       <div class="card">
         <div class="field"><span>Lifting days per week · suggested <b>${sug.lift}</b></span>${dayChips('liftDays', 2, 6, p.liftDays)}</div>
+        <div class="field"><span>Which days</span><div class="chips wrap" role="group" aria-label="Lifting days">${DAY_KEYS.map((d) => {
+          const on = liftDayKeys(p).includes(d);
+          return `<button class="chip ${on ? 'on' : ''}" data-a="b-weekday" data-v="${d}" aria-pressed="${on}">${DAY_NAMES[d]}</button>`;
+        }).join('')}</div></div>
         <div class="field"><span>Cardio sessions per week · suggested <b>${sug.cardio}</b> (${rx.cardioMin} min)</span>${dayChips('cardioDays', 0, 7, p.cardioDays)}</div>
         ${ui.b.liftEdited || ui.b.cardioEdited ? '<button class="mini" data-a="b-suggested">Use suggested days</button>' : ''}
         <ul class="reasons small muted">${sug.reasons.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>
         <p class="muted small">Cardio sessions go on non-lifting days first, then after lifting on upper-body days.</p>
       </div>
       <div class="card">
-        <div class="field"><span>Session length</span>${bChips('sessionMin', { 30: '30 min', 45: '45 min', 60: '60 min', 75: '75 min', 90: '90 min' }, p.sessionMin)}</div>
+        <div class="field"><span>Session length</span>${bChips('sessionMin', { 30: '30 min', 45: '45 min', 60: '60 min', 75: '75 min', 90: '90 min', 105: '105 min', 120: '120 min' }, p.sessionMin)}</div>
         <div class="field"><span>Equipment you have</span>${bChips('equipment', EQUIPMENT, p.equipment, true)}</div>
         <div class="field"><span>Go easy on <span class="muted">(skips exercises that commonly bother these)</span></span>${bChips('limits', LIMITS, p.limits, true)}</div>
       </div>`;
   } else if (step === 3) {
-    const days = WEEK_LAYOUT[p.liftDays];
+    const days = liftDayKeys(p);
     body = `<p class="muted small pad">${p.liftDays} lifting days. Pick how to split the work — the recommended option trains each muscle about twice a week ${refLinks(['schoenfeld2016freq', 'pelland2026'])}.</p>
       ${opts.map((o) => `<button class="card split-card ${p.split === o.id ? 'picked' : ''}" data-a="b-split" data-v="${o.id}">
         <div class="row between"><b>${o.label}</b>${o.recommended ? '<span class="verdict good">Recommended</span>' : ''}</div>
@@ -1594,6 +1907,12 @@ function reviewHtml(p, rx, out) {
       <p class="muted small">Starting weights are blank: your first session sets them. Pick a weight you could do for about ${rx.rirLo + 2} more reps than the bottom of the range.</p>
     </div>
     <div class="card"><h3>Your week</h3>${week}<p class="muted small">You can swap any exercise or edit sets and reps after applying.</p></div>
+    <div class="card"><h3>Focus lifts for your first block</h3>
+      <p class="muted small">The compounds you want to push before the first deload. Their progress is tracked each block and reviewed at every deload.</p>
+      <div class="chips wrap" role="group" aria-label="Focus lifts">${builderCompounds(out).map((ex) => {
+        const on = builderFocus(p, out).includes(ex.id);
+        return `<button class="chip ${on ? 'on' : ''}" data-a="b-focus" data-id="${ex.id}" aria-pressed="${on}">${esc(ex.name)}</button>`;
+      }).join('')}</div></div>
     <div class="card"><h3>Weekly sets per muscle</h3>
       <div class="vol-row head"><span>Muscle</span><span>Planned</span><span>Target</span><span></span></div>${vol}
       <p class="muted small">A set counts ½ for muscles that only assist ${refLinks(['pelland2026'])}. Some low counts are a trade-off for your session length.</p></div>
@@ -1643,6 +1962,7 @@ function applyBuilt() {
     },
   };
   retargetWeights(out.plan);
+  db.blocks.focus[blockInfo(db).index] = builderFocus(p, out);
   persist();
   ui.b = null;
   ui.tab = 'plan';
@@ -1685,7 +2005,13 @@ function screenSettings() {
 
     <h2 class="group-title">Training</h2>
     <div class="card">
-      <div class="field"><span>Deload every</span><div class="segmented small-seg" role="radiogroup" aria-label="Deload every">${[4, 5, 6].map((n) => `<button class="${s.deloadEvery === n ? 'on' : ''}" data-a="deload-every" data-v="${n}" role="radio" aria-checked="${s.deloadEvery === n}">${n} weeks</button>`).join('')}</div></div>
+      <div class="field"><span>Block length (deload in the last week)</span>
+        <div class="row stepper-row"><button class="step" data-a="deload-weeks" data-v="-1" aria-label="Shorter block" ${s.deloadEvery <= 3 ? 'disabled' : ''}>−</button><b class="tnum">${s.deloadEvery} weeks</b><button class="step" data-a="deload-weeks" data-v="1" aria-label="Longer block" ${s.deloadEvery >= 8 ? 'disabled' : ''}>+</button></div></div>
+      <label class="toggle"><input type="checkbox" data-a="deload-off" ${s.deloadOff ? 'checked' : ''}><span>No scheduled deloads (deload when you choose, from day options)</span></label>
+      <div class="field"><span>Effort ramp · reps in reserve in week 1 → before deload</span>
+        <div class="row"><div class="segmented small-seg grow" role="radiogroup" aria-label="Week 1 reps in reserve">${[2, 3, 4].map((n) => `<button class="${(s.rampStart ?? 3) === n ? 'on' : ''}" data-a="ramp-start" data-v="${n}" role="radio" aria-checked="${(s.rampStart ?? 3) === n}">${n}</button>`).join('')}</div>
+        <span class="muted">→</span>
+        <div class="segmented small-seg grow" role="radiogroup" aria-label="Last week reps in reserve">${[0, 1, 2].map((n) => `<button class="${(s.rampEnd ?? db.profile?.rx?.rirLo ?? 1) === n ? 'on' : ''}" data-a="ramp-end" data-v="${n}" role="radio" aria-checked="${(s.rampEnd ?? db.profile?.rx?.rirLo ?? 1) === n}">${n}</button>`).join('')}</div></div></div>
       <div class="field"><span>Current week of program · week ${wi.cyclePos} of ${wi.cycleLen} in this block${wi.isDeload ? ' (deload)' : ''}</span>
         <div class="row">${stepper('set-week', wi.week, 1)}<button class="btn" data-a="set-week">Set</button></div></div>
       <label class="toggle"><input type="checkbox" data-a="set-warmups" ${s.warmups ? 'checked' : ''}><span>Warm-up sets on the first main lift</span></label>
@@ -1764,7 +2090,7 @@ function render() {
   if (!db) return;
   const screens = {
     today: screenToday, summary: screenSummary, history: screenHistory, body: screenBody, food: () => food.screen(),
-    plan: screenPlan, settings: screenSettings, builder: screenBuilder, 'edit-session': screenEditSession,
+    plan: screenPlan, settings: screenSettings, builder: screenBuilder, 'edit-session': screenEditSession, exercise: screenExercise,
   };
   $('#main').innerHTML = (screens[ui.tab] || screenToday)();
   // Settings is reached from a gear in the header of each main screen.
@@ -1772,7 +2098,7 @@ function render() {
   if (header && MAIN_SCREENS.includes(ui.tab) && !(ui.tab === 'history' && ui.historyEx)) {
     header.insertAdjacentHTML('beforeend', `<button class="icon-btn" data-a="open-settings" aria-label="Settings">${GEAR}</button>`);
   }
-  const active = { summary: ui.summaryFresh ? 'today' : 'progress', builder: 'plan', 'edit-session': 'progress', history: 'progress', body: 'progress', settings: ui.prevTab === 'history' || ui.prevTab === 'body' ? 'progress' : ui.prevTab }[ui.tab] || ui.tab;
+  const active = { exercise: 'today', summary: ui.summaryFresh ? 'today' : 'progress', builder: 'plan', 'edit-session': 'progress', history: 'progress', body: 'progress', settings: ui.prevTab === 'history' || ui.prevTab === 'body' ? 'progress' : ui.prevTab }[ui.tab] || ui.tab;
   $('#tabs').innerHTML = TABS.map(([k, label, icon]) => `
     <button class="tab ${k === active ? 'on' : ''}" data-a="tab" data-tab="${k}" aria-current="${k === active ? 'page' : 'false'}">
       <svg viewBox="0 0 24 24" aria-hidden="true">${icon}</svg><span>${label}</span>
@@ -1783,8 +2109,8 @@ function render() {
 // ---------- Events ----------
 
 const actions = {
-  tab: (d) => { if (!$('#sheet').hidden) closeSheet(); ui.summaryFresh = false; ui.tab = d.tab === 'progress' ? ui.progressTab || 'history' : d.tab; if (d.tab === 'today') ui.summaryId = null; if (d.tab === 'history') ui.historyEx = null; window.scrollTo(0, 0); render(); },
-  day: (d) => { ui.day = d.day; ui.tab = 'today'; ui.showCardio = false; render(); },
+  tab: (d) => { if (!$('#sheet').hidden) closeSheet(); ui.summaryFresh = false; ui.selecting = false; ui.tab = d.tab === 'progress' ? ui.progressTab || 'history' : d.tab; if (d.tab === 'today') ui.summaryId = null; if (d.tab === 'history') ui.historyEx = null; window.scrollTo(0, 0); render(); },
+  day: (d) => { ui.day = d.day; ui.tab = 'today'; ui.showCardio = false; ui.selecting = false; render(); },
   'open-set': (d) => openSetSheet(d.uid, +d.i),
   check: (d) => {
     const session = sessionFor(ui.day) || ensureSession(ui.day);
@@ -1896,6 +2222,82 @@ const actions = {
   'progress-view': (d) => { ui.tab = d.v; ui.progressTab = d.v; ui.historyEx = null; render(); },
   'start-empty': () => { if (db.activeSession) return toast('Finish or discard the current workout first.'); startSession(ui.day, true); render(); openPicker({ mode: 'session-add' }); },
   'session-add': () => openPicker({ mode: 'session-add' }),
+  'ex-open': (d) => { ui.exUid = d.uid; ui.tab = 'exercise'; window.scrollTo(0, 0); render(); },
+  'ex-go': (d) => { ui.exUid = d.uid; window.scrollTo(0, 0); render(); },
+  'ex-close': () => { ui.tab = 'today'; render(); },
+  'check-inline': (d) => {
+    const sx = ensureSession(ui.day);
+    if (!sx) return;
+    const s = sx.entries[d.uid].sets[+d.i];
+    if (s.done) { s.done = false; persist(); render(); return; }
+    const reps = parseInt($(`[data-set="${d.uid}:${d.i}:reps"]`)?.value, 10);
+    const weight = parseFloat($(`[data-set="${d.uid}:${d.i}:weight"]`)?.value);
+    if (!reps || !Number.isFinite(weight)) return toast('Enter reps and weight first.');
+    logSet(d.uid, +d.i, { reps, weight });
+  },
+  'today-add': () => openPicker({ mode: 'today-add' }),
+  'sel-toggle': (d, el) => {
+    ui.selected ||= new Set();
+    if (el.checked) ui.selected.add(d.uid); else ui.selected.delete(d.uid);
+    render();
+  },
+  'select-mode': () => { ui.selecting = !ui.selecting; ui.selected = new Set(); render(); },
+  'link-selected': () => {
+    linkUids([...ui.selected]);
+    const n = ui.selected.size;
+    ui.selecting = false; ui.selected = new Set();
+    persist(); render(); toast(`Linked as a ${n > 2 ? 'circuit' : 'superset'}.`);
+  },
+  'unlink-selected': () => { unlinkUids([...ui.selected]); ui.selecting = false; ui.selected = new Set(); persist(); render(); toast('Unlinked.'); },
+  'link-next': (d) => {
+    const items = todayItems();
+    const i = items.findIndex((x) => x.uid === d.uid);
+    const grp = groupsOf(items).find((g) => g.items.some((x) => x.uid === items[i + 1]?.uid));
+    const uids = [d.uid, ...(grp ? grp.items.map((x) => x.uid) : [items[i + 1].uid])];
+    if (!$('#sheet').hidden) closeSheet();
+    linkUids(uids); persist(); render(); toast('Linked with the next exercise.');
+  },
+  'unlink-one': (d) => { if (!$('#sheet').hidden) closeSheet(); unlinkUids([d.uid]); persist(); render(); toast('Unlinked.'); },
+  'ex-rest': (d) => {
+    const opts = [0, 30, 45, 60, 75, 90, 120, 150, 180, 240, 300];
+    openSheet(`<h2>Rest timer</h2><p class="muted small">Rest after this exercise${groupsOf(todayItems()).find((g) => g.items.some((x) => x.uid === d.uid))?.linked ? ' (after each round of the group)' : ''}.</p>
+      <div class="chips wrap">${opts.map((s) => `<button class="chip" data-a="rest-set" data-uid="${d.uid}" data-v="${s}">${s ? fmtRest(s) : 'Off'}</button>`).join('')}</div>
+      <button class="btn plain block" data-a="close-sheet">Cancel</button>`);
+  },
+  'rest-set': (d) => {
+    const { list } = editableList();
+    const items = todayItems();
+    const grp = groupsOf(items).find((g) => g.items.some((x) => x.uid === d.uid));
+    const target = grp?.linked ? grp.items[grp.items.length - 1].uid : d.uid;
+    const it = list.find((x) => x.uid === target);
+    if (it) it.restSec = +d.v;
+    persist(); closeSheet(); render(); toast(+d.v ? `Rest set to ${fmtRest(+d.v)}.` : 'Rest timer off.');
+  },
+  'block-focus': (d) => openFocusPicker(+d.i),
+  'block-review': (d) => openBlockReview(+d.i),
+  'block-feel': (d, el) => { ui.blockFeel = +d.v; el.parentElement.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b === el)); },
+  'focus-toggle': (d) => {
+    const f = ui.focusDraft;
+    const i = f.indexOf(d.id);
+    if (i >= 0) f.splice(i, 1); else if (f.length < 4) f.push(d.id); else return toast('Pick up to 4 focus lifts.');
+    $('#focus-chooser').innerHTML = focusChooser(f);
+  },
+  'focus-save': () => { db.blocks.focus[ui.focusIndex] = [...ui.focusDraft]; persist(); closeSheet(); render(); toast('Focus lifts saved.'); },
+  'block-save': (d) => {
+    const index = +d.i;
+    const b = blockInfo(db);
+    db.blocks.reviews[index] = {
+      date: todayStr(), feel: ['too-easy', 'right', 'too-much'][ui.blockFeel ?? 1], note: $('#block-note').value.trim(),
+      results: focusFor(db, index).map((id) => ({ exerciseId: id, ...liftProgress(db, id, b.index === index ? b : { ...b, index }) })),
+    };
+    db.blocks.focus[index + 1] = [...ui.focusDraft];
+    ui.blockFeel = undefined;
+    persist(); closeSheet(); render(); toast(`Block ${index} saved. Block ${index + 1} focus is set.`);
+  },
+  'deload-weeks': (d) => { db.settings.deloadEvery = Math.max(3, Math.min(8, db.settings.deloadEvery + +d.v)); persist(); render(); },
+  'deload-off': (d, el) => { db.settings.deloadOff = el.checked; persist(); render(); },
+  'ramp-start': (d) => { db.settings.rampStart = +d.v; persist(); render(); },
+  'ramp-end': (d) => { db.settings.rampEnd = +d.v; persist(); render(); },
   'ex-sheet': (d) => openExerciseSheet(d.uid, d.focus),
   'ex-more': (d) => openExerciseSheet(d.uid),
   'day-options': () => openDayOptions(),
@@ -1986,11 +2388,30 @@ const actions = {
   },
   'b-days': (d) => {
     ui.b.draft[d.k] = +d.v;
+    if (d.k === 'liftDays') ui.b.draft.liftDayKeys = null;
     if (d.k === 'liftDays') ui.b.liftEdited = true; else ui.b.cardioEdited = true;
     render();
   },
   'b-suggested': () => { ui.b.liftEdited = false; ui.b.cardioEdited = false; ui.b.splitEdited = false; render(); },
   'b-split': (d) => { ui.b.draft.split = d.v; ui.b.splitEdited = true; render(); },
+  'b-weekday': (d) => {
+    const p = ui.b.draft;
+    const set = new Set(liftDayKeys(p));
+    if (set.has(d.v)) set.delete(d.v); else set.add(d.v);
+    if (set.size < 2 || set.size > 6) return toast('Pick 2 to 6 lifting days.');
+    p.liftDayKeys = DAY_KEYS.filter((k) => set.has(k));
+    p.liftDays = set.size;
+    ui.b.liftEdited = true;
+    render();
+  },
+  'b-focus': (d) => {
+    const p = ui.b.draft;
+    const f = [...builderFocus(p, ui.b.out)];
+    const i = f.indexOf(d.id);
+    if (i >= 0) f.splice(i, 1); else if (f.length < 4) f.push(d.id); else return toast('Pick up to 4 focus lifts.');
+    p.focus = f;
+    render();
+  },
   'b-apply': () => applyBuilt(),
   'b-ref': (d) => {
     const det = $('details.refs');
@@ -2073,6 +2494,13 @@ const actions = {
     it.splice(+d.i, 1); persist(); render();
   },
   'plan-edit': (d) => openPlanEdit(+d.i),
+  'plan-link-next': (d) => {
+    const items = db.plan[ui.planDay].items; const i = +d.i;
+    const nextG = groupNum(items[i + 1].group);
+    const uids = [items[i].uid, ...items.filter((x, k) => k > i && groupNum(x.group) === nextG).map((x) => x.uid)];
+    closeSheet(); linkUids(uids, planDayList()); persist(); render(); toast('Linked.');
+  },
+  'plan-unlink': (d) => { closeSheet(); unlinkUids([db.plan[ui.planDay].items[+d.i].uid], planDayList()); persist(); render(); toast('Unlinked.'); },
   'plan-add': () => openPicker({ mode: 'add' }),
   'plan-swap': (d) => {
     const it = db.plan[ui.planDay].items[+d.i];
@@ -2101,7 +2529,8 @@ const actions = {
     const ex = db.exercises[d.id];
     if (picker.mode === 'browse') { closeSheet(); ui.tab = 'history'; ui.historyEx = d.id; window.scrollTo(0, 0); render(); return; }
     if (picker.mode === 'add') { closeSheet(); setTimeout(() => addPlanItem(d.id), 200); return; }
-    if (picker.mode === 'session-add') { addToSession(d.id); closeSheet(); render(); toast(`Added ${ex.name}.`); return; }
+    if (picker.mode === 'session-add' || (picker.mode === 'today-add' && sessionFor(ui.day))) { addToSession(d.id); closeSheet(); render(); toast(`Added ${ex.name}.`); return; }
+    if (picker.mode === 'today-add') { addToPlanDay(ui.day, d.id); closeSheet(); render(); toast(`Added ${ex.name} to ${FULL_DAY[ui.day]}s.`); return; }
     if (picker.mode === 'plan-swap') {
       swapInPlan(ui.planDay, picker.uid, d.id);
       closeSheet(); render(); toast(`${DAY_NAMES[ui.planDay]} plan now uses ${ex.name}.`);
@@ -2146,11 +2575,12 @@ const actions = {
 Object.assign(actions, food.actions, year.actions, extras.actions);
 
 onReorder('session', (uid, to) => {
-  const sx = ensureSession(ui.day);
-  if (!sx) return;
-  const o = sx.order.filter((u) => u !== uid);
-  o.splice(to, 0, uid);
-  sx.order = o;
+  const { list, save } = editableList();
+  const it = list.find((x) => x.uid === uid);
+  if (!it) return;
+  const rest = list.filter((x) => x !== it);
+  rest.splice(to, 0, it);
+  save(rest);
   persist(); render();
 });
 onReorder('plan', (uid, to) => {
@@ -2175,6 +2605,25 @@ document.addEventListener('change', (e) => {
   const a = el.dataset?.a;
   if (el.id === 'import-file' || el.id === 'photo-file') { extras.onChange(e); return; }
   if (food.onChange(e) || year.onChange(e)) return;
+  if (el.dataset?.set) {
+    const [uid, i, k] = el.dataset.set.split(':');
+    const sx = ensureSession(ui.day);
+    if (!sx) return;
+    const entry = sx.entries[uid];
+    const v = k === 'reps' ? parseInt(el.value, 10) : parseFloat(el.value);
+    if (!entry || !Number.isFinite(v)) return;
+    entry.sets[+i][k] = v;
+    if (k === 'weight') {
+      for (let j = +i + 1; j < entry.sets.length; j++) {
+        if (entry.sets[j].done) continue;
+        entry.sets[j].weight = entry.dropSet ? Math.max(0, v - 10 * (j - +i)) : v;
+        const cell = document.querySelector(`[data-set="${uid}:${j}:weight"]`);
+        if (cell) cell.value = entry.sets[j].weight;
+      }
+    }
+    persist();
+    return;
+  }
   if (el.id === 'session-note') { const sx = db.sessions.find((x) => x.id === el.dataset.sid); if (sx) { sx.note = el.value.trim(); persist(); } return; }
   if (el.dataset?.bgoal && ui.b) { render(); return; }
   if (a === 'pk-muscle') { picker.muscle = el.value; renderPickerList(); return; }
@@ -2200,6 +2649,11 @@ $('#rest-minus').addEventListener('click', () => adjustRest(-15));
 $('#rest-plus').addEventListener('click', () => adjustRest(15));
 $('#rest-skip').addEventListener('click', stopRest);
 document.addEventListener('pointerdown', unlockAudio, { once: true });
+// Exercise photos that fail to load (offline, first time) fall back to a muscle icon.
+document.addEventListener('error', (e) => {
+  const img = e.target;
+  if (img?.tagName === 'IMG' && img.dataset.fb) img.replaceWith(document.createRange().createContextualFragment(img.dataset.fb));
+}, true);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) renderRest(); });
 matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', applyTheme);
 

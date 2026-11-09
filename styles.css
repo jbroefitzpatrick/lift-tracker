@@ -625,3 +625,124 @@ body.is-dragging .drag-handle { cursor: grabbing; }
 .segmented button { flex: 1 1 auto; padding: 0 10px; white-space: nowrap; }
 .title-input { border-bottom: 1px solid transparent; }
 .title-input:focus { border-bottom-color: var(--accent); outline: none; }
+
+/* ==========================================================================
+   v8: list + exercise screen, linking, body map, blocks
+   ========================================================================== */
+:root { --fatigue: #f0605a; --muscle: #3a4150; --silhouette: #232833; }
+:root[data-theme="light"] { --fatigue: #d93f3f; --muscle: #c9ced8; --silhouette: #e3e6ec; }
+@media (prefers-color-scheme: light) { :root:not([data-theme]) { --fatigue: #d93f3f; --muscle: #c9ced8; --silhouette: #e3e6ec; } }
+
+/* Body map */
+.body-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; max-width: 320px; margin: 8px auto 4px; }
+.body-map { width: 100%; height: auto; display: block; }
+.body-map .sil path, .body-map .sil ellipse { fill: var(--silhouette); }
+.body-map .mus { fill: var(--muscle); stroke: var(--bg); stroke-width: 1.2; stroke-linejoin: round; }
+.body-map .mus.on { fill: color-mix(in srgb, var(--fatigue) calc(var(--v) * 100%), var(--muscle)); }
+.mini-body .mus.on { fill: var(--text); }
+.mini-body .mus, .mini-body .sil path, .mini-body .sil ellipse { stroke: var(--surface-2); }
+.scale { display: flex; align-items: center; gap: 8px; justify-content: center; font-size: 0.75rem; color: var(--muted); margin: 4px 0 8px; }
+.scale i { width: 90px; height: 6px; border-radius: 3px; background: linear-gradient(90deg, var(--muscle), var(--fatigue)); }
+.muscle-row .mi { width: 40px; height: 40px; border-radius: 10px; background: var(--surface-2); overflow: hidden; flex: none; display: inline-flex; }
+.muscle-row .mi svg { width: 100%; height: 100%; }
+.pct { font-weight: 700; font-variant-numeric: tabular-nums; color: var(--good); }
+.pct.mid { color: var(--warn); }
+.pct.low { color: var(--bad); }
+
+/* Target muscles strip */
+.targets h2, .list-head h2 { font-size: 1.25rem; margin: 0; }
+.targets { margin: 4px 0 18px; }
+.target-strip { display: flex; gap: 12px; overflow-x: auto; scrollbar-width: none; padding: 10px 0 2px; }
+.target-strip::-webkit-scrollbar { display: none; }
+.target-tile { flex: none; width: 76px; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.tile-art { position: relative; width: 72px; height: 72px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); display: block; }
+.tile-art svg { width: 100%; height: 100%; }
+.pct-badge { position: absolute; right: -4px; bottom: -6px; font-size: 0.6875rem; font-weight: 700; padding: 2px 6px; border-radius: 999px; background: var(--surface-3); color: var(--text); border: 2px solid var(--bg); font-variant-numeric: tabular-nums; }
+.pct-badge.mid { color: var(--warn); }
+.pct-badge.low { color: var(--bad); }
+.tile-name { font-size: 0.8125rem; font-weight: 600; text-align: center; }
+
+/* Exercise list */
+.list-head { display: flex; align-items: center; justify-content: space-between; margin: 6px 0 8px; }
+.ex-item { position: relative; display: flex; align-items: center; gap: 6px; padding: 6px 0; }
+.ex-item + .ex-item, .link-group + .ex-item, .ex-item + .link-group { border-top: 1px solid var(--line); }
+.ex-item-main { flex: 1; min-width: 0; display: flex; align-items: center; gap: 14px; border: 0; background: none; text-align: left; padding: 4px 0; min-height: 64px; }
+.thumb { width: 64px; height: 64px; border-radius: 14px; overflow: hidden; flex: none; background: var(--surface-2); display: inline-flex; }
+.thumb img { width: 100%; height: 100%; object-fit: cover; }
+.thumb svg { width: 100%; height: 100%; }
+.thumb.sm { width: 44px; height: 44px; border-radius: 10px; }
+.ex-name2 { display: block; font-weight: 600; font-size: 1rem; line-height: 1.25; }
+.ex-item .ex-meta { display: block; margin-top: 3px; }
+.ex-item.is-done .ex-name2 { color: var(--muted); }
+.row-notice { display: block; font-size: 0.75rem; margin-top: 3px; color: var(--muted); }
+.row-notice.warn { color: var(--warn); }
+.row-notice.bad { color: var(--bad); }
+.ex-item.is-selected { background: var(--accent-soft); border-radius: 14px; }
+.sel { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: var(--tap); flex: none; }
+.sel input { width: 22px; height: 22px; accent-color: var(--accent-strong); }
+.link-group { position: relative; padding: 4px 0 4px 14px; margin: 4px 0; }
+.link-group::before { content: ""; position: absolute; left: 0; top: 30px; bottom: 14px; width: 2px; border-radius: 1px; background: var(--accent); opacity: 0.7; }
+.link-group .ex-item + .ex-item { border-top: 0; }
+.link-label { font-size: 0.8125rem; color: var(--muted); padding: 6px 0 2px; }
+.link-label b { color: var(--accent); font-weight: 600; }
+.select-bar {
+  position: sticky; bottom: calc(var(--tabbar-h) + 8px + env(safe-area-inset-bottom)); z-index: 6; display: flex; align-items: center; gap: 8px;
+  background: var(--surface-3); border: 1px solid var(--line-strong); border-radius: 16px; padding: 8px 8px 8px 14px; margin: 10px 0; box-shadow: var(--shadow);
+}
+.select-bar .muted { flex: 1; }
+.select-bar .btn { margin: 0; }
+
+/* Exercise screen */
+.ex-screen { margin-top: calc(-1 * (env(safe-area-inset-top) + 14px)); }
+.ex-hero { position: relative; margin: 0 -16px 14px; height: 240px; background: var(--surface-2); overflow: hidden; }
+.ex-hero img { width: 100%; height: 100%; object-fit: cover; }
+.hero-body { height: 100%; display: flex; align-items: center; justify-content: center; }
+.hero-body .body-pair { width: 200px; }
+.hero-btn { position: absolute; top: calc(env(safe-area-inset-top) + 10px); left: 12px; background: rgb(12 14 18 / 0.6); color: #fff; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+.hero-btn.right { left: auto; right: 12px; }
+.ex-title-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.ex-title-row h1 { font-size: 1.625rem; }
+.ex-title-row .btn { flex: none; display: inline-flex; align-items: center; gap: 4px; }
+.ex-title-row .btn .ic { width: 14px; height: 14px; fill: currentColor; margin: 0; }
+.ex-screen .quick-row { margin: 14px 0 10px; }
+.group-note { font-size: 0.875rem; color: var(--muted); margin: 0 0 10px; }
+.group-note b { color: var(--accent); font-weight: 600; }
+.group-note .cur { color: var(--text); font-weight: 600; }
+.aim-line { font-weight: 600; margin: 6px 0 2px; }
+.set-table { margin: 14px 0 4px; }
+.set-head { display: grid; grid-template-columns: 40px 1fr 1fr 52px; gap: 8px; font-size: 0.75rem; color: var(--muted); padding: 0 0 6px; }
+.set-row { display: grid; grid-template-columns: 40px 1fr 1fr 52px; gap: 8px; align-items: center; margin-bottom: 8px; }
+.set-badge { width: 34px; height: 34px; border-radius: 50%; border: 0; background: var(--surface-2); color: var(--muted); font-weight: 700; font-size: 0.875rem; justify-self: start; }
+.set-row.done .set-badge { background: var(--good); color: var(--on-good); }
+.cell {
+  width: 100%; min-height: 52px; border-radius: 12px; border: 1.5px solid var(--line); background: var(--surface);
+  text-align: center; font-size: 1.25rem; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text);
+}
+.cell:focus { border-color: var(--accent); outline: none; }
+.set-row.done .cell { border-color: transparent; background: var(--surface-2); color: var(--muted); }
+.set-row .check { width: 52px; min-height: 52px; }
+.set-row.pain .cell { border-color: var(--bad); }
+.set-row.disabled { opacity: 0.4; }
+.set-extra { margin: -4px 0 8px 48px; font-size: 0.75rem; color: var(--muted); }
+.plates { margin: 0 0 4px; }
+.ex-nav {
+  position: sticky; bottom: calc(var(--tabbar-h) + 8px + env(safe-area-inset-bottom)); z-index: 6; display: flex; gap: 8px;
+  margin-top: 20px; padding: 10px 0; background: var(--bg);
+}
+.ex-nav .btn { margin: 0; min-height: 52px; }
+.ex-nav .btn .ic { margin: 0; }
+body.resting .ex-nav { bottom: calc(var(--tabbar-h) + 104px + env(safe-area-inset-bottom)); }
+
+/* Blocks */
+.block-card h3 { margin: 0; }
+.focus-row { gap: 12px; }
+.delta { font-weight: 700; font-size: 0.875rem; font-variant-numeric: tabular-nums; }
+.delta.up { color: var(--good); }
+.delta.down { color: var(--bad); }
+.seg-mini.wide { display: flex; }
+.seg-mini.wide button { flex: 1; }
+.stepper-row { gap: 14px; }
+.stepper-row .step { width: var(--tap); min-height: var(--tap); font-size: 1.3rem; }
+
+.set-row.done .check { background: var(--good); border-color: var(--good); color: var(--on-good); }
+.ex-screen { padding-bottom: 8px; }

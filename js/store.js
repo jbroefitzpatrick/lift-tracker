@@ -10,7 +10,7 @@ import { syncBank } from './bank.js';
 import { CARDIO } from './cardio-bank.js';
 
 const KEY = 'lift.db';
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
 // ---------- Dates ----------
 
@@ -77,6 +77,9 @@ export function freshDb() {
       activeGym: 'gym-1',
       warmups: true, // warm-up sets on the first main lift
       rampEffort: true, // reps-in-reserve target tightens across each block
+      rampStart: 3, // reps in reserve in week 1 of a block
+      rampEnd: null, // reps in reserve in the last week before deload (null = from profile)
+      deloadOff: false, // no scheduled deloads
       lastBackupAt: null,
       backupReminder: true,
     },
@@ -96,6 +99,7 @@ export function freshDb() {
     meals: [], // saved meals: { id, name, items: [{ ref, name, qty, unit, grams, kcal, p, c, f, fiber }] }
     nutrition: { mealsPerDay: 4, activity: 'some', kcalOffset: 0, checkins: [] },
     yearPlan: null, // { start, phases: [{ id, type, weeks, note }] }
+    blocks: { focus: {}, reviews: {} }, // focus lifts and check-ins per training block
     profile: null, // plan builder answers + prescription summary
     previousPlan: null, // last plan replaced by the builder, for undo
   };
@@ -140,6 +144,8 @@ const MIGRATIONS = {
     db.schemaVersion = 5;
     return db;
   },
+  // v6: training blocks (focus lifts, check-ins) and more training settings; defaults fill in below.
+  5: (db) => { db.blocks = db.blocks || { focus: {}, reviews: {} }; db.schemaVersion = 6; return db; },
 };
 
 export function migrate(db) {

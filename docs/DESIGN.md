@@ -12,6 +12,13 @@ The principles behind the interface, and the guidance they come from.
 6. **Readable contrast.** All text meets WCAG 2.2 AA (4.5:1) in both themes; the palette was checked numerically.
 7. **Consistent language.** Sentence case for every title, button and label; plain words over jargon; no emoji or decorative symbols. Units are written the same way everywhere ("90 sec", "2 min", "105 lb").
 
+## Patterns
+
+- **Workout list → exercise screen.** Train shows each exercise as a row (photo, name, sets · reps · weight). Tapping opens the exercise screen to log sets inline (reps and weight fields, check to complete), with How-to, History, Replace, Rest and Link controls and a Next button that walks through the workout.
+- **Linking.** Supersets (2) and circuits (3+) are made by selecting exercises in Edit mode and tapping Link, or with “Link with next” on an exercise. Unlink works the same way. Before a workout starts, changes apply to that weekday's plan; during a workout, to today only.
+- **Body map.** Muscle recovery is shown on a front/back body diagram (fatigue in one warm hue, with a scale), followed by only the muscles still recovering. Every coloured state is repeated in text.
+- **Blocks.** Each training block (the weeks up to a deload) has focus lifts. Plan shows block progress; the deload week brings a check-in to review the block and choose the next focus.
+
 ## Accessibility
 
 - **Text size:** type is set in rem from the iOS body text style, so the app follows Settings → Display & Brightness → Text Size.
