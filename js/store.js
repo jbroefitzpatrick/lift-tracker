@@ -1,8 +1,9 @@
 // All data lives in one JSON document in localStorage, on the device only.
 import { defaultExercises, defaultPlan, seedState, DEFAULT_INCREMENTS } from './plan.js';
+import { syncBank } from './bank.js';
 
 const KEY = 'lift.db';
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 export function todayStr(d = new Date()) {
   const y = d.getFullYear();
@@ -41,7 +42,7 @@ export function freshDb() {
       sound: true,
       defaultIncrements: { ...DEFAULT_INCREMENTS },
     },
-    exercises: defaultExercises(),
+    exercises: syncBank(defaultExercises(), DEFAULT_INCREMENTS),
     plan: defaultPlan(),
     state: seedState(),
     sessions: [],
@@ -55,7 +56,9 @@ export function freshDb() {
 // Each step takes a db at version N and returns version N+1.
 // New collections are added with defaults, so older backups keep working.
 const MIGRATIONS = {
-  // 1: (db) => { db.something = []; db.schemaVersion = 2; return db; },
+  // v2: exercise bank. Exercises gain category, pattern, primary and secondary muscles
+  // (filled in by syncBank below on every load), so this step only bumps the version.
+  1: (db) => { db.schemaVersion = 2; return db; },
 };
 
 export function migrate(db) {
@@ -68,13 +71,18 @@ export function migrate(db) {
   for (const k of Object.keys(base)) if (db[k] === undefined) db[k] = base[k];
   db.settings = { ...base.settings, ...db.settings };
   db.settings.defaultIncrements = { ...base.settings.defaultIncrements, ...db.settings.defaultIncrements };
+  syncBank(db.exercises, db.settings.defaultIncrements);
   return db;
 }
 
 export function load() {
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw) return migrate(JSON.parse(raw));
+    if (raw) {
+      const db = migrate(JSON.parse(raw));
+      save(db); // write upgrades back right away
+      return db;
+    }
   } catch (e) {
     console.error('Could not read saved data', e);
   }

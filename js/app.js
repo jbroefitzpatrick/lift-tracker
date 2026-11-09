@@ -5,6 +5,7 @@ import {
   targetsFor, getState, painWarning, evaluate, groupNum, e1rm,
 } from './engine.js';
 import { lineChart } from './chart.js';
+import { MUSCLES, CATEGORIES, PATTERNS, similarExercises } from './bank.js';
 
 let db = load();
 const ui = {
@@ -343,9 +344,10 @@ function screenToday() {
   if (day === 'sat') return html + screenYoga();
   if (day === 'sun') return html + `<div class="empty"><div class="big">Rest day</div><p class="muted">Recover. Pick another day above to train anyway.</p></div>`;
 
-  const items = resolveDay(db, day);
+  let items = resolveDay(db, day);
   if (session) {
     syncSession(session, items);
+    items = sessionItems(session, items);
     if (session.date !== todayStr()) html += `<div class="banner"><p>This workout was started on <b>${fmtDate(session.date)}</b>. Finish or discard it to start fresh.</p></div>`;
   }
   html += `<div class="row between deload-row">
@@ -362,11 +364,12 @@ function screenToday() {
     else groups.push({ g, items: [item] });
   }
   for (const grp of groups) {
-    if (grp.items.length > 1) {
+    // A swapped-in exercise shares its slot number but doesn't make a superset on its own.
+    if (grp.items.filter((i) => !i.extra).length > 1) {
       const restSec = Math.max(...grp.items.map((i) => i.restSec || 0));
       html += `<section class="group"><div class="group-label">Superset ${grp.g} · rest ${fmtRest(restSec)} after each round</div>
         ${grp.items.map((i) => exerciseCard(i, session, isDeload, true)).join('')}</section>`;
-    } else html += exerciseCard(grp.items[0], session, isDeload, false);
+    } else html += grp.items.map((i) => exerciseCard(i, session, isDeload, false)).join('');
   }
 
   if (session) {
@@ -378,6 +381,33 @@ function screenToday() {
     html += `<p class="muted small center pad">Tap a set to log it. The workout starts with your first set.</p>`;
   }
   return html;
+}
+
+// Apply today-only swaps, and show exercises swapped in mid-workout right after the one they replaced.
+function sessionItems(session, items) {
+  const out = [];
+  for (const item of items) {
+    const e = session.entries[item.uid];
+    if (e && e.exerciseId !== item.exerciseId && db.exercises[e.exerciseId]) {
+      out.push({ ...item, exerciseId: e.exerciseId, ex: db.exercises[e.exerciseId], swappedFrom: item.ex.name });
+    } else out.push(item);
+    for (const u of session.order) {
+      const x = session.entries[u];
+      if (x.parentUid !== item.uid || !db.exercises[x.exerciseId]) continue;
+      out.push({
+        uid: u, exerciseId: x.exerciseId, ex: db.exercises[x.exerciseId], group: x.group,
+        repMin: x.repMin, repMax: x.repMax, restSec: x.restSec, sets: x.sets.length, note: '',
+        swappedFrom: db.exercises[x.swappedFrom]?.name || item.ex.name, extra: true,
+      });
+    }
+  }
+  return out;
+}
+
+function muscleLine(ex) {
+  const p = ex.primary.map((m) => MUSCLES[m] || m).join(', ') || 'No muscles set';
+  const s = ex.secondary.map((m) => (MUSCLES[m] || m).toLowerCase()).join(', ');
+  return s ? `${p} · also ${s}` : p;
 }
 
 function exerciseCard(item, session, isDeload, inGroup) {
@@ -414,6 +444,7 @@ function exerciseCard(item, session, isDeload, inGroup) {
   }).join('');
 
   const controls = [];
+  controls.push(`<button class="mini" data-a="swap" data-uid="${item.uid}">⇄ Swap</button>`);
   if (!ended) {
     controls.push(`<button class="mini" data-a="add-set" data-uid="${item.uid}">+ Set</button>`);
     if (sets.length > 1) controls.push(`<button class="mini" data-a="remove-set" data-uid="${item.uid}">− Set</button>`);
@@ -426,14 +457,16 @@ function exerciseCard(item, session, isDeload, inGroup) {
       <span class="tag">${esc(item.group)}</span>
       <div class="grow">
         <h3>${esc(ex.name)}</h3>
+        <p class="muscles">${esc(muscleLine(ex))}</p>
         <p class="sub">${targetLine}</p>
       </div>
     </div>
     <p class="aim">${aim}${t.rir ? ` · RIR ${t.rir}` : ''}</p>
     ${t.st.last ? `<p class="muted small">Last: ${fmtLast(t.st.last, ex)}</p>` : ''}
+    ${item.swappedFrom ? `<p class="note">Swapped in for ${esc(item.swappedFrom)} today</p>` : ''}
     ${item.note || ex.notes ? `<p class="note">${esc([item.note, ex.notes].filter(Boolean).join(' · '))}</p>` : ''}
     ${flags.join('')}
-    ${ended ? `<div class="flag bad">Stopped for pain — not counted toward progression.${ex.substitute ? ` Substitute: <b>${esc(ex.substitute)}</b>` : ''}</div>` : ''}
+    ${ended ? `<div class="flag bad">Stopped for pain — not counted toward progression.${ex.substitute ? ` Substitute: <b>${esc(ex.substitute)}</b>.` : ''} Tap Swap for alternatives.</div>` : ''}
     <div class="sets">${rows}</div>
     ${controls.length ? `<div class="row wrap controls">${controls.join('')}</div>` : ''}
     ${rehab}
@@ -508,6 +541,126 @@ const num = (id) => {
   const v = parseFloat(String($(`#${id}`)?.value ?? '').replace(',', '.'));
   return Number.isFinite(v) ? v : null;
 };
+
+// ---------- Exercise bank picker ----------
+
+const picker = { mode: null, uid: null, currentId: null, scope: 'today', q: '', cat: 'all', muscle: 'all' };
+const PICKER_TITLES = { swap: 'Swap exercise', 'plan-swap': 'Swap in plan', add: 'Add exercise', browse: 'Exercise bank' };
+
+function openPicker(opts) {
+  Object.assign(picker, { uid: null, currentId: null, scope: 'today', q: '', cat: 'all', muscle: 'all' }, opts);
+  const cur = picker.currentId ? db.exercises[picker.currentId] : null;
+  openSheet(`
+    <h2>${PICKER_TITLES[picker.mode]}</h2>
+    ${cur ? `<p class="muted small">Replacing <b>${esc(cur.name)}</b> · ${esc(muscleLine(cur))}</p>` : ''}
+    ${picker.mode === 'swap' ? `<div class="chips seg">
+      <button class="chip on" data-a="pk-scope" data-v="today">Today only</button>
+      <button class="chip" data-a="pk-scope" data-v="plan">Replace in plan</button>
+    </div>` : ''}
+    <input id="pk-q" class="search" type="search" placeholder="Search name, muscle or movement" autocomplete="off" enterkeyhint="search">
+    <div class="chips pk-filters">${[['all', 'All'], ['compound', 'Compound'], ['accessory', 'Accessory']].map(([v, l]) =>
+      `<button class="chip ${v === 'all' ? 'on' : ''}" data-a="pk-cat" data-v="${v}">${l}</button>`).join('')}</div>
+    <select id="pk-muscle" class="pk-muscle" data-a="pk-muscle" aria-label="Muscle">
+      <option value="all">All muscles</option>
+      ${Object.entries(MUSCLES).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}
+    </select>
+    ${picker.mode === 'add' ? '<button class="btn block" data-a="pk-custom">+ Create a custom exercise</button>' : ''}
+    <div id="pk-list"></div>`);
+  renderPickerList();
+}
+
+function pickRow(ex, why) {
+  return `<button class="pick-row" data-a="pick" data-id="${ex.id}">
+    <span class="grow"><b>${esc(ex.name)}</b><span class="pick-sub">${why ? `<em>${why}</em> · ` : ''}${esc(muscleLine(ex))}</span></span>
+    <span class="cat ${ex.category}">${CATEGORIES[ex.category]}</span>
+  </button>`;
+}
+
+function renderPickerList() {
+  const el = $('#pk-list');
+  if (!el) return;
+  const q = picker.q.trim().toLowerCase();
+  const match = (ex) => (picker.cat === 'all' || ex.category === picker.cat)
+    && (picker.muscle === 'all' || ex.primary.includes(picker.muscle) || ex.secondary.includes(picker.muscle))
+    && (!q || ex.name.toLowerCase().includes(q)
+      || [...ex.primary, ...ex.secondary].some((m) => (MUSCLES[m] || '').toLowerCase().includes(q))
+      || (PATTERNS[ex.pattern] || '').toLowerCase().includes(q));
+  let html = '';
+  if (picker.currentId) {
+    const sugg = similarExercises(db.exercises, picker.currentId, 8).filter((x) => match(x.ex));
+    if (sugg.length) {
+      html += `<h3 class="sect">Most similar</h3>${sugg.map((x) => pickRow(x.ex, x.samePattern ? 'Same movement' : 'Similar muscles')).join('')}`;
+    }
+  }
+  // Group the full list by main (first) primary muscle; compounds first within each group.
+  const groups = {};
+  for (const ex of Object.values(db.exercises)) {
+    if (ex.id === picker.currentId || !match(ex)) continue;
+    const key = picker.muscle !== 'all' ? (ex.primary.includes(picker.muscle) ? picker.muscle : '_secondary') : ex.primary[0] || '_other';
+    (groups[key] ||= []).push(ex);
+  }
+  const label = (k) => MUSCLES[k] || (k === '_secondary' ? `${MUSCLES[picker.muscle]} as a secondary muscle` : 'Other');
+  const keys = [...Object.keys(MUSCLES), '_secondary', '_other'].filter((k) => groups[k]);
+  html += keys.map((k) => {
+    const list = groups[k].sort((a, b) => (a.category === b.category ? a.name.localeCompare(b.name) : a.category === 'compound' ? -1 : 1));
+    return `<h3 class="sect">${label(k)} <span class="muted small">${list.length}</span></h3>${list.map((ex) => pickRow(ex)).join('')}`;
+  }).join('');
+  el.innerHTML = html || '<p class="muted small pad">No matches.</p>';
+}
+
+function planItemFor(day, uid) {
+  return db.plan[day]?.items.find((i) => i.uid === uid);
+}
+
+// Point a plan slot at a different exercise. A rotating slot stops rotating.
+function swapInPlan(day, uid, newId) {
+  const baseUid = db.activeSession?.entries[uid]?.parentUid || uid;
+  const it = planItemFor(day, baseUid);
+  if (!it) return;
+  delete it.role;
+  it.exerciseId = newId;
+  persist();
+}
+
+// Swap within today's workout. If sets were already logged, those stay with the original
+// exercise and the new one is added right after it.
+function swapInSession(uid, newId) {
+  const session = ensureSession(ui.day);
+  if (!session) return;
+  const entry = session.entries[uid];
+  const baseUid = entry.parentUid || uid;
+  const planned = resolveDay(db, session.day).find((i) => i.uid === baseUid);
+  const item = {
+    uid, exerciseId: newId, group: entry.group, repMin: entry.repMin, repMax: entry.repMax,
+    restSec: entry.restSec, sets: planned?.sets ?? entry.sets.length,
+  };
+  const logged = entry.sets.some((x) => x.done || x.pain);
+  if (!logged) {
+    const fresh = makeEntry(item, session.isDeload);
+    Object.assign(entry, { exerciseId: newId, sets: fresh.sets, dropSet: false, painFree: false });
+  } else {
+    entry.sets = entry.sets.filter((x) => x.done || x.pain);
+    const newUid = `${baseUid}-x${Date.now()}`;
+    const fresh = makeEntry({ ...item, uid: newUid }, session.isDeload);
+    session.entries[newUid] = { ...fresh, parentUid: baseUid, swappedFrom: entry.exerciseId };
+    session.order.splice(session.order.indexOf(uid) + 1, 0, newUid);
+  }
+  persist();
+}
+
+function addPlanItem(exId) {
+  const day = ui.planDay;
+  const items = db.plan[day].items;
+  const ex = db.exercises[exId];
+  const nextGroup = Math.max(0, ...items.map((i) => parseInt(groupNum(i.group), 10) || 0)) + 1;
+  const defaults = ex.category === 'compound'
+    ? { sets: 3, repMin: 6, repMax: 10, restSec: 150 }
+    : { sets: 3, repMin: 10, repMax: 15, restSec: 90 };
+  items.push({ uid: `${day}-${Date.now()}`, exerciseId: exId, group: String(nextGroup), note: '', ...defaults });
+  persist();
+  render();
+  openPlanEdit(items.length - 1);
+}
 
 // ---------- Summary ----------
 
@@ -607,7 +760,8 @@ function screenExerciseHistory(exId) {
     if (bw) lineChart(el, { points: pts.map((h) => ({ x: h.date, values: [h.totalReps] })), series: [{ name: 'Total reps', cls: 's1' }], unit: 'reps' });
     else lineChart(el, { points: pts.map((h) => ({ x: h.date, values: [Math.round(h.best1rm), h.top.weight] })), series: [{ name: 'Est. 1RM', cls: 's1' }, { name: 'Top-set weight', cls: 's2' }] });
   });
-  return `<header class="top"><button class="back" data-a="history-back" aria-label="Back">‹</button><div><h1>${esc(ex.name)}</h1><p class="muted small">${bw ? 'Total reps per session' : 'Est. 1RM (Epley) and top-set weight'}</p></div></header>
+  return `<header class="top"><button class="back" data-a="history-back" aria-label="Back">‹</button><div><h1>${esc(ex.name)}</h1><p class="muted small">${CATEGORIES[ex.category]} · ${esc(muscleLine(ex))}</p></div></header>
+    <p class="muted small">${bw ? 'Total reps per session' : 'Est. 1RM (Epley) and top-set weight'}</p>
     <div class="card"><div id="hist-chart"></div></div>
     <div class="card"><h3>Sessions</h3>${rows || '<p class="muted small">No sessions yet.</p>'}</div>`;
 }
@@ -680,17 +834,19 @@ function screenPlan() {
       return `<div class="card plan-item">
         <div class="ex-head"><span class="tag">${esc(it.group)}</span>
           <div class="grow"><h3>${esc(ex?.name || it.exerciseId)}</h3>
-          <p class="sub">${it.sets} × ${it.repMin}–${it.repMax}${it.restSec ? ` · rest ${fmtRest(it.restSec)}` : ''} · ${fmtW(st.targetWeight, ex)} · +${ex?.increment} lb${rot}</p></div>
+          <p class="muscles">${ex ? esc(muscleLine(ex)) : ''}</p><p class="sub">${it.sets} × ${it.repMin}–${it.repMax}${it.restSec ? ` · rest ${fmtRest(it.restSec)}` : ''} · ${fmtW(st.targetWeight, ex)} · +${ex?.increment} lb${rot}</p></div>
         </div>
         <div class="row controls">
           <button class="mini" data-a="plan-up" data-i="${i}" ${i === 0 ? 'disabled' : ''} aria-label="Move up">↑</button>
           <button class="mini" data-a="plan-down" data-i="${i}" ${i === items.length - 1 ? 'disabled' : ''} aria-label="Move down">↓</button>
-          <button class="mini grow" data-a="plan-edit" data-i="${i}">Edit / swap</button>
+          <button class="mini grow" data-a="plan-edit" data-i="${i}">Edit</button>
+          <button class="mini grow" data-a="plan-swap" data-i="${i}">⇄ Swap</button>
           <button class="mini danger" data-a="plan-del" data-i="${i}" aria-label="Remove">✕</button>
         </div>
       </div>`;
     }).join('')}
     <button class="btn block" data-a="plan-add">+ Add exercise</button>
+    <button class="btn block" data-a="browse-bank">Browse exercise bank</button>
     <p class="muted small pad">Swapping keeps each exercise's history. Rest on the first exercise of a superset is ignored — the group rests after the round.</p>`;
 }
 
@@ -700,8 +856,11 @@ function openPlanEdit(i) {
   const it = isNew ? { group: String(db.plan[day].items.length + 1), exerciseId: '', sets: 3, repMin: 8, repMax: 12, restSec: 90, note: '' } : db.plan[day].items[i];
   const ex = db.exercises[it.exerciseId] || { type: 'machine', increment: 5, substitute: '', notes: '', minRir: 0, rules: {} };
   const st = it.exerciseId ? getState(db, it.exerciseId) : { targetWeight: null };
-  const opts = Object.values(db.exercises).sort((a, b) => a.name.localeCompare(b.name))
-    .map((e) => `<option value="${e.id}" ${e.id === it.exerciseId ? 'selected' : ''}>${esc(e.name)}</option>`).join('');
+  const byMuscle = {};
+  for (const e of Object.values(db.exercises)) (byMuscle[e.primary[0] || '_other'] ||= []).push(e);
+  const opts = [...Object.keys(MUSCLES), '_other'].filter((k) => byMuscle[k]).map((k) =>
+    `<optgroup label="${MUSCLES[k] || 'Other'}">${byMuscle[k].sort((a, b) => a.name.localeCompare(b.name))
+      .map((e) => `<option value="${e.id}" ${e.id === it.exerciseId ? 'selected' : ''}>${esc(e.name)}</option>`).join('')}</optgroup>`).join('');
   openSheet(`
     <h2>${isNew ? 'Add exercise' : 'Edit slot'}</h2>
     ${it.role ? `<p class="muted small">This slot rotates: ${ROW_ROTATION.map((id) => esc(db.exercises[id].name)).join(' → ')}. Choosing a different exercise stops the rotation.</p>` : ''}
@@ -723,12 +882,44 @@ function openPlanEdit(i) {
       <div class="field"><span>Target weight</span><input id="pe-weight" type="text" inputmode="decimal" value="${st.targetWeight ?? ''}" placeholder="TBD"></div>
       <div class="field"><span>Min RIR to progress</span><input id="pe-rir" type="text" inputmode="numeric" value="${ex.minRir || 0}"></div>
     </div>
+    <div class="grid2">
+      <div class="field"><span>Category</span><select id="pe-cat">${Object.entries(CATEGORIES).map(([k, v]) => `<option value="${k}" ${k === (ex.category || 'accessory') ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
+      <div class="field"><span>Movement</span><select id="pe-pattern"><option value="">—</option>${Object.entries(PATTERNS).map(([k, v]) => `<option value="${k}" ${k === ex.pattern ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
+    </div>
+    <div class="field"><span>Primary muscles</span><div class="chips wrap mus" id="pe-prim">${muscleChips(ex.primary)}</div></div>
+    <div class="field"><span>Secondary muscles</span><div class="chips wrap mus" id="pe-sec">${muscleChips(ex.secondary)}</div></div>
     <div class="field"><span>Substitute (shown on pain)</span><input id="pe-sub" type="text" value="${esc(ex.substitute)}"></div>
     <div class="field"><span>Notes</span><input id="pe-notes" type="text" value="${esc(ex.notes)}"></div>
     <label class="toggle"><input id="pe-drop" type="checkbox" ${ex.rules?.dropSet ? 'checked' : ''}><span>Allow drop-set mode</span></label>
     <label class="toggle"><input id="pe-rehab" type="checkbox" ${ex.rules?.rehab ? 'checked' : ''}><span>Rehab rule (go up only when pain-free)</span></label>
     <button class="btn primary block big" data-a="pe-save" data-i="${i}">Save</button>
     <button class="btn block" data-a="close-sheet">Cancel</button>`);
+}
+
+function muscleChips(selected = []) {
+  return Object.entries(MUSCLES).map(([k, v]) =>
+    `<button class="chip sm ${selected.includes(k) ? 'on' : ''}" data-a="mus" data-m="${k}" aria-pressed="${selected.includes(k)}">${v}</button>`).join('');
+}
+
+const chosenMuscles = (id) => [...document.querySelectorAll(`#${id} .chip.on`)].map((c) => c.dataset.m);
+
+// When a different exercise is picked in the edit sheet, show its classification.
+function fillMeta(exId) {
+  const ex = db.exercises[exId];
+  $('#pe-cat').value = ex?.category || 'accessory';
+  $('#pe-pattern').value = ex?.pattern || '';
+  $('#pe-prim').innerHTML = muscleChips(ex?.primary);
+  $('#pe-sec').innerHTML = muscleChips(ex?.secondary);
+  if (ex) {
+    $('#pe-type').value = ex.type;
+    $('#pe-inc').value = ex.increment;
+    $('#pe-weight').value = getState(db, exId).targetWeight ?? '';
+    $('#pe-sub').value = ex.substitute || '';
+    $('#pe-notes').value = ex.notes || '';
+    $('#pe-rir').value = ex.minRir || 0;
+    $('#pe-drop').checked = !!ex.rules?.dropSet;
+    $('#pe-rehab').checked = !!ex.rules?.rehab;
+  }
 }
 
 function savePlanEdit(i) {
@@ -741,9 +932,22 @@ function savePlanEdit(i) {
     if (!name) return toast('Enter a name for the new exercise.');
     exId = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'exercise';
     while (db.exercises[exId]) exId += '-2';
-    db.exercises[exId] = { id: exId, name, type, increment: db.settings.defaultIncrements[type] || 5, substitute: '', notes: '', minRir: 0, rules: {}, startWeight: null };
+    db.exercises[exId] = {
+      id: exId, name, type, increment: db.settings.defaultIncrements[type] || 5, substitute: '', notes: '', minRir: 0, rules: {},
+      startWeight: null, category: 'accessory', pattern: '', primary: [], secondary: [], customMeta: true,
+    };
   }
   const ex = db.exercises[exId];
+  const meta = {
+    category: $('#pe-cat').value,
+    pattern: $('#pe-pattern').value,
+    primary: chosenMuscles('pe-prim'),
+    secondary: chosenMuscles('pe-sec').filter((m) => !chosenMuscles('pe-prim').includes(m)),
+  };
+  // Hand-edited classification is kept even when the built-in bank is updated.
+  if (JSON.stringify(meta) !== JSON.stringify({ category: ex.category, pattern: ex.pattern || '', primary: ex.primary, secondary: ex.secondary })) {
+    Object.assign(ex, meta, { customMeta: true });
+  }
   const intOr = (id, d) => { const v = parseInt($(`#${id}`).value, 10); return Number.isFinite(v) ? v : d; };
   const repMin = Math.max(1, intOr('pe-min', 8));
   const repMax = Math.max(repMin, intOr('pe-max', 12));
@@ -978,8 +1182,50 @@ const actions = {
     it.splice(+d.i, 1); persist(); render();
   },
   'plan-edit': (d) => openPlanEdit(+d.i),
-  'plan-add': () => openPlanEdit(-1),
+  'plan-add': () => openPicker({ mode: 'add' }),
+  'plan-swap': (d) => {
+    const it = db.plan[ui.planDay].items[+d.i];
+    const resolved = resolveDay(db, ui.planDay).find((r) => r.uid === it.uid);
+    openPicker({ mode: 'plan-swap', uid: it.uid, currentId: resolved?.exerciseId || it.exerciseId });
+  },
+  'browse-bank': () => openPicker({ mode: 'browse' }),
+  swap: (d) => {
+    const s = sessionFor(ui.day);
+    if (!s && db.activeSession) return toast(`Finish or discard the ${DAY_NAMES[db.activeSession.day]} workout first.`);
+    const cur = s?.entries[d.uid]?.exerciseId || resolveDay(db, ui.day).find((i) => i.uid === d.uid)?.exerciseId;
+    openPicker({ mode: 'swap', uid: d.uid, currentId: cur });
+  },
+  'pk-scope': (d, el) => {
+    picker.scope = d.v;
+    el.parentElement.querySelectorAll('.chip').forEach((c) => c.classList.toggle('on', c === el));
+  },
+  'pk-cat': (d, el) => {
+    picker.cat = d.v;
+    el.parentElement.querySelectorAll('.chip').forEach((c) => c.classList.toggle('on', c === el));
+    renderPickerList();
+  },
+  'pk-custom': () => openPlanEdit(-1),
+  pick: (d) => {
+    const ex = db.exercises[d.id];
+    if (picker.mode === 'browse') { closeSheet(); ui.tab = 'history'; ui.historyEx = d.id; window.scrollTo(0, 0); render(); return; }
+    if (picker.mode === 'add') { closeSheet(); setTimeout(() => addPlanItem(d.id), 200); return; }
+    if (picker.mode === 'plan-swap') {
+      swapInPlan(ui.planDay, picker.uid, d.id);
+      closeSheet(); render(); toast(`${DAY_NAMES[ui.planDay]} plan now uses ${ex.name}.`);
+      return;
+    }
+    // From today's workout
+    const entry = sessionFor(ui.day)?.entries[picker.uid];
+    if (entry && !entry.pain && entry.sets.some((x) => x.done)
+      && !confirm(`Keep your logged ${db.exercises[entry.exerciseId].name} sets and add ${ex.name} after them?`)) return;
+    if (picker.scope === 'plan') swapInPlan(ui.day, picker.uid, d.id);
+    if (picker.scope === 'today' || sessionFor(ui.day)) swapInSession(picker.uid, d.id);
+    closeSheet(); render();
+    toast(picker.scope === 'plan' ? `Swapped to ${ex.name} (plan updated).` : `Swapped to ${ex.name} for today.`);
+  },
+
   'pe-save': (d) => savePlanEdit(+d.i),
+  mus: (d, el) => { el.classList.toggle('on'); el.setAttribute('aria-pressed', el.classList.contains('on')); },
   theme: (d) => { db.settings.theme = d.v; persist(); applyTheme(); render(); },
   sound: (d, el) => { db.settings.sound = el.checked; persist(); },
   'deload-every': (d) => { db.settings.deloadEvery = +d.v; persist(); render(); },
@@ -1032,10 +1278,15 @@ document.addEventListener('change', (e) => {
     });
     return;
   }
-  if (a === 'pe-ex') { $('#pe-new').hidden = el.value !== '__new'; return; }
+  if (a === 'pk-muscle') { picker.muscle = el.value; renderPickerList(); return; }
+  if (a === 'pe-ex') { $('#pe-new').hidden = el.value !== '__new'; fillMeta(el.value); return; }
   if (a === 'plan-name') { db.plan[ui.planDay].name = el.value.trim() || db.plan[ui.planDay].name; persist(); return; }
   if (a === 'def-inc') { const v = parseFloat(el.value); if (v > 0) { db.settings.defaultIncrements[el.dataset.k] = v; persist(); } return; }
   if (el.type === 'checkbox' && actions[a]) actions[a](el.dataset, el);
+});
+
+document.addEventListener('input', (e) => {
+  if (e.target.id === 'pk-q') { picker.q = e.target.value; renderPickerList(); }
 });
 
 $('#sheet').addEventListener('click', (e) => { if (e.target.id === 'sheet') closeSheet(); });
