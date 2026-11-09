@@ -184,16 +184,18 @@ export function createExtras(ctx) {
       <p class="muted small" id="storage-status">Checking storage…</p>
       <label class="toggle"><input type="checkbox" data-a="set-backup-remind" ${db.settings.backupReminder ? 'checked' : ''}><span>Remind me to back up weekly</span></label>
       <label class="toggle"><input type="checkbox" id="bk-photos"><span>Include progress photos in backups</span></label>
-      <button class="btn primary block" data-a="export-enc">Back up now (encrypted)</button>
+      <button class="btn primary block" data-a="quick-backup">Back up now (encrypted)</button>
+      ${savedPass() ? '<p class="muted small">Passphrase remembered on this device for one-tap backups. <button class="text-btn inline" data-a="forget-pass">Forget it</button></p>' : ''}
     </div>
     <div class="list-group">
       <button class="list-row" data-a="export-json"><span class="grow">Export unencrypted backup</span>${chev}</button>
       <button class="list-row" data-a="export-csv"><span class="grow">Export history as CSV</span>${chev}</button>
+      <label class="list-row"><span class="grow">Check a backup file</span>${chev}<input id="check-file" type="file" accept="application/json,.json" hidden></label>
       <label class="list-row"><span class="grow">Import a backup</span>${chev}<input id="import-file" type="file" accept="application/json,.json" hidden></label>
       <button class="list-row" data-a="snapshots"><span class="grow">Restore an automatic snapshot</span>${chev}</button>
       <button class="list-row" data-a="persist-req"><span class="grow">Keep data permanently</span>${chev}</button>
     </div>
-    <p class="muted small pad">Everything stays on this device. Encrypted backups use AES-256 with your passphrase. Keep it somewhere safe; it can't be recovered. A snapshot is kept each day for a week, and before every import, erase or plan change.</p>`;
+    <p class="muted small pad">Everything stays on this device. Encrypted backups use AES-256 with your passphrase. Keep it somewhere safe; it can't be recovered. A snapshot is kept each day for a week, before every import, erase or plan change, and before each app update changes how data is stored. Saves that would erase most of your history are blocked.</p>`;
   }
 
   function backupBanner() {
@@ -205,7 +207,7 @@ export function createExtras(ctx) {
     if (Date.now() - last < 7 * 86400000 || Date.now() < snooze) return '';
     const days = last ? Math.floor((Date.now() - last) / 86400000) : null;
     return `<div class="banner"><p><b>Back up your data.</b> ${days ? `Last backup was ${days} days ago.` : 'You haven\'t backed up yet.'} iOS can clear website data, so a copy in Files is your safety net.</p>
-      <div class="row"><button class="btn primary" data-a="export-enc">Back up now</button><button class="btn" data-a="backup-snooze">Later</button></div></div>`;
+      <div class="row"><button class="btn primary" data-a="quick-backup">Back up now</button><button class="btn" data-a="backup-snooze">Later</button></div></div>`;
   }
 
   async function backupPayload(withPhotos) {
@@ -224,6 +226,63 @@ export function createExtras(ctx) {
   }
 
   function markBackedUp() { ctx.db.settings.lastBackupAt = Date.now(); ctx.persist(); }
+
+  // The backup passphrase can be remembered on this device for one-tap backups. It's kept outside
+  // the data record (so it's never inside a backup); the data on the phone is unencrypted anyway,
+  // so remembering it doesn't weaken anything — it protects the copies that leave the phone.
+  const PASS_KEY = 'lift.bkpass';
+  const savedPass = () => { try { return localStorage.getItem(PASS_KEY) || ''; } catch { return ''; } };
+  const setSavedPass = (p) => { try { p ? localStorage.setItem(PASS_KEY, p) : localStorage.removeItem(PASS_KEY); } catch {} };
+
+  async function encryptedBackup(pass, withPhotos) {
+    ctx.toast('Encrypting…');
+    const text = await encryptText(await backupPayload(withPhotos), pass);
+    const ok = await download(`lift-backup-${todayStr()}.enc.json`, text, 'application/json');
+    if (ok) { markBackedUp(); ctx.toast('Backup saved.'); ctx.render(); }
+    return ok;
+  }
+
+  // Shown on the finished-workout screen when the last backup is more than a day old.
+  function summaryBackupCard() {
+    const last = ctx.db.settings.lastBackupAt || 0;
+    if (Date.now() - last < 20 * 3600000) return '';
+    const days = last ? Math.floor((Date.now() - last) / 86400000) : null;
+    return `<div class="card backup-card"><div class="row between">
+      <div><b>Back up this workout</b><p class="muted small">${days == null ? 'No backup yet.' : days === 0 ? 'Last backup earlier today.' : `Last backup ${days} ${days === 1 ? 'day' : 'days'} ago.`} Save a copy to iCloud Drive in Files.</p></div>
+      <button class="btn sm primary" data-a="quick-backup">Back up</button></div></div>`;
+  }
+
+  // Opens a backup file and reports what's in it, without changing anything.
+  async function checkBackup(text, pass) {
+    let data = parseBackup(text);
+    if (isEncrypted(data)) {
+      const p = pass ?? savedPass();
+      try { data = parseBackup(await decryptText(data, p)); } catch {
+        pendingCheck = text;
+        ctx.openSheet(`<h2>Check an encrypted backup</h2>
+          <div class="field"><span>Passphrase</span><input id="chk-pass" type="password" autocomplete="current-password"></div>
+          <button class="btn primary block big" data-a="check-decrypt">Check</button>
+          <button class="btn block" data-a="close-sheet">Cancel</button>`);
+        if (p && pass != null) ctx.toast('That passphrase doesn\'t open this file.');
+        return;
+      }
+    }
+    const when = data.exportedAt ? new Date(data.exportedAt).toLocaleString() : 'unknown date';
+    const { db: d, photos } = importData(JSON.parse(JSON.stringify(data)));
+    const last = d.sessions.at(-1);
+    ctx.openSheet(`<h2>Backup is good</h2>
+      <p class="muted small">This file opens and passes every check. Nothing on this phone was changed.</p>
+      <div class="kv-list">
+        <div class="kv"><span>Saved</span><b>${esc(when)}</b></div>
+        <div class="kv"><span>Workouts</span><b>${d.sessions.length}${last ? ` · last ${ctx.fmtDate(last.date)}` : ''}</b></div>
+        <div class="kv"><span>Cardio sessions</span><b>${d.cardio.length}</b></div>
+        <div class="kv"><span>Food entries</span><b>${d.foodLog.length}</b></div>
+        <div class="kv"><span>Body weight entries</span><b>${d.bodyweight.length}</b></div>
+        <div class="kv"><span>Progress photos</span><b>${photos.length}</b></div>
+      </div>
+      <button class="btn block" data-a="close-sheet">Done</button>`);
+  }
+  let pendingCheck = null;
 
   async function doImport(text) {
     let data = parseBackup(text);
@@ -331,10 +390,21 @@ export function createExtras(ctx) {
     'backup-snooze': () => { ctx.db.settings.backupSnoozeUntil = Date.now() + 3 * 86400000; ctx.persist(); ctx.render(); },
     'export-json': async () => {
       const text = await backupPayload($('#bk-photos')?.checked);
-      await download(`lift-backup-${todayStr()}.json`, text, 'application/json');
-      markBackedUp();
+      if (await download(`lift-backup-${todayStr()}.json`, text, 'application/json')) markBackedUp();
     },
     'export-csv': () => download(`lift-history-${todayStr()}.csv`, exportCsv(ctx.db), 'text/csv'),
+    'quick-backup': () => {
+      if (!cryptoAvailable()) return ctx.toast('Encryption needs the app served over https.');
+      const p = savedPass();
+      if (p) return encryptedBackup(p, $('#bk-photos')?.checked || false);
+      return actions['export-enc']();
+    },
+    'forget-pass': () => { setSavedPass(''); ctx.toast('Passphrase forgotten on this device.'); ctx.render(); },
+    'check-decrypt': async () => {
+      const p = $('#chk-pass').value;
+      ctx.closeSheet();
+      try { await checkBackup(pendingCheck, p); } catch (e) { ctx.toast(e.message || 'That file could not be read.'); }
+    },
     'export-enc': () => {
       if (!cryptoAvailable()) return ctx.toast('Encryption needs the app served over https.');
       ui.bkPhotos = $('#bk-photos')?.checked || false;
@@ -342,6 +412,7 @@ export function createExtras(ctx) {
         <p class="muted small">Choose a passphrase. Without it the backup can't be opened — not even by you — so store it somewhere safe.</p>
         <div class="field"><span>Passphrase (8+ characters)</span><input id="enc-pass" type="password" autocomplete="new-password"></div>
         <div class="field"><span>Repeat passphrase</span><input id="enc-pass2" type="password" autocomplete="new-password"></div>
+        <label class="toggle"><input type="checkbox" id="enc-remember" checked><span>Remember on this device for one-tap backups</span></label>
         <button class="btn primary block big" data-a="export-enc-go">Encrypt & save</button>
         <button class="btn block" data-a="close-sheet">Cancel</button>`);
     },
@@ -349,11 +420,9 @@ export function createExtras(ctx) {
       const a = $('#enc-pass').value;
       if (a.length < 8) return ctx.toast('Use at least 8 characters.');
       if (a !== $('#enc-pass2').value) return ctx.toast('Passphrases don\'t match.');
-      ctx.toast('Encrypting…');
-      const text = await encryptText(await backupPayload(ui.bkPhotos), a);
+      if ($('#enc-remember')?.checked) setSavedPass(a);
       ctx.closeSheet();
-      await download(`lift-backup-${todayStr()}.enc.json`, text, 'application/json');
-      markBackedUp();
+      await encryptedBackup(a, ui.bkPhotos);
     },
     'import-decrypt': async () => {
       try {
@@ -372,7 +441,7 @@ export function createExtras(ctx) {
     'snap-restore': async (d) => {
       if (!confirm('Restore this snapshot? Your current data is snapshotted first.')) return;
       const next = await readSnapshot(d.key);
-      await safetySnapshot(ctx.db, 'Before snapshot restore');
+      if (ctx.db) await safetySnapshot(ctx.db, 'Before snapshot restore');
       ctx.closeSheet(); ctx.replaceDb(next); ctx.toast('Snapshot restored.');
     },
     'persist-req': async () => {
@@ -390,6 +459,11 @@ export function createExtras(ctx) {
 
   async function onChange(e) {
     const el = e.target;
+    if (el.id === 'check-file' && el.files[0]) {
+      try { await checkBackup(await el.files[0].text()); } catch (err) { ctx.toast(`This backup has a problem: ${err.message || 'it could not be read'}`); }
+      el.value = '';
+      return true;
+    }
     if (el.id === 'import-file' && el.files[0]) {
       try { await doImport(await el.files[0].text()); } catch (err) { ctx.toast(err.message || 'Could not read that file.'); }
       el.value = '';
@@ -409,5 +483,5 @@ export function createExtras(ctx) {
     return false;
   }
 
-  return { exerciseInfo, volumeCard, bodyCards, gymCard, dataCard, backupBanner, actions, onChange };
+  return { exerciseInfo, volumeCard, bodyCards, gymCard, dataCard, backupBanner, summaryBackupCard, actions, onChange };
 }

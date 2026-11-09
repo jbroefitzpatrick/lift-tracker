@@ -1,0 +1,15 @@
+# Cloudflare Worker config for Lift Tracker cloud backup. Setup steps: docs/CLOUD-BACKUP.md
+name = "lift-backup"
+main = "worker.js"
+compatibility_date = "2025-01-01"
+
+# Sites allowed to call the worker from a browser (comma-separated).
+[vars]
+ALLOWED_ORIGINS = "https://jbroefitzpatrick.github.io,http://localhost:8765"
+
+# Paste the id printed by `npx wrangler kv namespace create BACKUPS` below.
+[[kv_namespaces]]
+binding = "BACKUPS"
+id = "PASTE_KV_NAMESPACE_ID_HERE"
+
+# The access key is a secret, not a var: set it with `npx wrangler secret put ACCESS_KEY`.

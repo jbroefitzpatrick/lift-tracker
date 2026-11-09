@@ -3,8 +3,14 @@
 // Primary store: IndexedDB (database "lift", object store "kv", key "db").
 // Mirror: localStorage "lift.db" — a second copy in case one store is lost.
 // On load, whichever copy was saved most recently wins.
-// Daily snapshots (last 7) and labelled safety snapshots (last 5) live in IndexedDB too,
-// as do progress photos (kept out of the main record so it stays small).
+// Daily snapshots (last 7), labelled safety snapshots (last 5) and pre-update snapshots (last 3)
+// live in IndexedDB too, as do progress photos (kept out of the main record so it stays small).
+//
+// Safeguards against losing data to a bug:
+// - Before stored data is upgraded to a new schema version, the untouched copy is snapshotted.
+// - If an upgrade fails, nothing is saved; the app shows a recovery screen instead (LoadError).
+// - A save that would drop most of the history (workouts, cardio, food, body weight, exercises)
+//   is refused. Replacing everything on purpose (import, restore, erase) calls allowReplace() first.
 import { defaultExercises, defaultPlan, seedState, DEFAULT_INCREMENTS } from './plan.js';
 import { syncBank } from './bank.js';
 import { CARDIO } from './cardio-bank.js';
@@ -217,17 +223,71 @@ function idbAll(store) {
 let saveErrorHandler = () => {};
 export function onSaveError(fn) { saveErrorHandler = fn; }
 
+// Thrown when stored data can't be opened. Nothing has been overwritten; `raw` is the stored JSON.
+export class LoadError extends Error {
+  constructor(message, raw) { super(message); this.raw = raw; }
+}
+
 export async function loadDb() {
   let fromIdb = null;
   let fromLs = null;
-  try { const raw = await idbGet('kv', 'db'); if (raw) fromIdb = JSON.parse(raw); } catch (e) { console.warn('IndexedDB read failed', e); }
-  try { const raw = localStorage.getItem(KEY); if (raw) fromLs = JSON.parse(raw); } catch (e) { console.warn('localStorage read failed', e); }
-  const data = [fromIdb, fromLs].filter(Boolean).sort((a, b) => (b.savedAt || 0) - (a.savedAt || 0))[0];
-  if (!data) return freshDb();
-  const db = migrate(data);
+  let rawIdb = null;
+  let rawLs = null;
+  try { rawIdb = await idbGet('kv', 'db'); if (rawIdb) fromIdb = JSON.parse(rawIdb); } catch (e) { console.warn('IndexedDB read failed', e); }
+  try { rawLs = localStorage.getItem(KEY); if (rawLs) fromLs = JSON.parse(rawLs); } catch (e) { console.warn('localStorage read failed', e); }
+  const pick = [[fromIdb, rawIdb], [fromLs, rawLs]].filter(([d]) => d && typeof d === 'object').sort((a, b) => (b[0].savedAt || 0) - (a[0].savedAt || 0))[0];
+  if (!pick) {
+    // Both copies exist but neither parses: don't start fresh over them.
+    if (rawIdb || rawLs) throw new LoadError('Your saved data could not be read.', rawIdb || rawLs);
+    return freshDb();
+  }
+  const [data, raw] = pick;
+  const from = data.schemaVersion || 1;
+  if (from > SCHEMA_VERSION) throw new LoadError('Your data was saved by a newer version of the app. Reload to get the update.', raw);
+  if (from < SCHEMA_VERSION) await upgradeSnapshot(raw, `Before update (data v${from} → v${SCHEMA_VERSION})`);
+  let db;
+  try {
+    db = migrate(data);
+    if (!looksValid(db)) throw new Error('Upgraded data failed its checks.');
+  } catch (e) {
+    console.error('Migration failed', e);
+    throw new LoadError(`Your data could not be upgraded to this version (${e.message}). Nothing was changed.`, raw);
+  }
+  baseline = historyCounts(db);
   save(db);
   return db;
 }
+
+// ---------- Save guard ----------
+
+const HISTORY = ['sessions', 'cardio', 'foodLog', 'bodyweight'];
+let baseline = null;
+
+export function historyCounts(db) {
+  const c = Object.fromEntries(HISTORY.map((k) => [k, Array.isArray(db[k]) ? db[k].length : 0]));
+  c.exercises = db.exercises && typeof db.exercises === 'object' ? Object.keys(db.exercises).length : 0;
+  return c;
+}
+
+function looksValid(db) {
+  return !!db && typeof db === 'object' && db.schemaVersion === SCHEMA_VERSION
+    && HISTORY.every((k) => Array.isArray(db[k])) && db.exercises && typeof db.exercises === 'object'
+    && db.settings && typeof db.settings === 'object' && db.plan && typeof db.plan === 'object';
+}
+
+// Why a save should be refused, or null. A big drop (at least 5 items and more than half) means a bug, not an edit.
+export function guardProblem(db, before = baseline) {
+  if (!looksValid(db)) return 'the data is incomplete';
+  if (!before) return null;
+  const now = historyCounts(db);
+  for (const k of [...HISTORY, 'exercises']) {
+    if (before[k] >= 5 && now[k] < before[k] * 0.5) return `${k} would drop from ${before[k]} to ${now[k]}`;
+  }
+  return null;
+}
+
+// Call before deliberately replacing everything (import, snapshot restore, erase).
+export function allowReplace() { baseline = null; }
 
 let pending = null;
 let timer = null;
@@ -243,8 +303,17 @@ function writeIdb() {
 
 // Saves the mirror immediately and the main store shortly after (batched).
 export function save(db) {
+  const problem = guardProblem(db);
+  if (problem) {
+    console.error('Save blocked:', problem);
+    const err = new Error(`Save blocked to protect your data: ${problem}.`);
+    err.blocked = true;
+    saveErrorHandler(err);
+    return false;
+  }
   db.savedAt = Date.now();
   const json = JSON.stringify(db);
+  baseline = historyCounts(db);
   let ok = false;
   try { localStorage.setItem(KEY, json); ok = true; } catch (e) { console.warn('localStorage write failed', e); }
   if (hasIdb()) {
@@ -297,10 +366,19 @@ export async function safetySnapshot(db, label) {
   } catch (e) { console.warn('Snapshot failed', e); }
 }
 
+// Before stored data is upgraded: the untouched JSON (last 3 kept, separate from the others).
+async function upgradeSnapshot(raw, label) {
+  if (!hasIdb() || !raw) return;
+  try {
+    await idbPut('snapshots', `upgrade-${Date.now()}`, { ts: Date.now(), label, json: raw });
+    await pruneSnapshots();
+  } catch (e) { console.warn('Snapshot failed', e); }
+}
+
 async function pruneSnapshots() {
   const all = await idbAll('snapshots');
   const keep = (prefix, n) => all.filter((x) => String(x.key).startsWith(prefix)).sort((a, b) => b.value.ts - a.value.ts).slice(n);
-  for (const x of [...keep('daily-', 7), ...keep('safe-', 5)]) await idbDel('snapshots', x.key);
+  for (const x of [...keep('daily-', 7), ...keep('safe-', 5), ...keep('upgrade-', 3)]) await idbDel('snapshots', x.key);
 }
 
 export async function listSnapshots() {
@@ -387,7 +465,7 @@ export function download(filename, text, type) {
   const file = new File([blob], filename, { type });
   // On iPhone the share sheet is the most reliable way to save to Files.
   if (navigator.canShare && navigator.canShare({ files: [file] })) {
-    return navigator.share({ files: [file], title: filename }).catch(() => {});
+    return navigator.share({ files: [file], title: filename }).then(() => true, () => false);
   }
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -397,5 +475,5 @@ export function download(filename, text, type) {
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
-  return Promise.resolve();
+  return Promise.resolve(true);
 }

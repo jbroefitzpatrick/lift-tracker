@@ -45,6 +45,8 @@ Every recommendation links to its sources in the app (Plan builder → Why these
 | `js/science.js` | References shown in the app |
 | `js/store.js` | Storage, snapshots, schema migrations, import/export |
 | `js/crypto.js` | Encrypted backups (AES-256-GCM) |
+| `js/cloud.js`, `js/ui-cloud.js` | Optional encrypted cloud backup (client and settings) |
+| `cloud/` | The Cloudflare Worker for cloud backup and its config |
 | `js/plan.js` | The original sample plan |
 | `js/chart.js` | Small SVG line chart |
 | `tools/` | Scripts that regenerate `foods.js` and `exercise-info.js` from the source datasets |
@@ -77,7 +79,7 @@ When you change any file, bump `VERSION` in `sw.js` before deploying. Phones pic
 
 ## Backups
 
-Settings → Data & security. Export an **encrypted backup** to Files regularly (the app reminds you weekly). Automatic snapshots on the device cover mistakes like a bad import.
+Settings → Data & security. Export an **encrypted backup** to Files regularly; the finished-workout screen offers it in one tap, and "Check a backup file" confirms a backup opens. Automatic snapshots on the device cover mistakes like a bad import or a bad update. For automatic off-phone copies, set up the free, end-to-end encrypted **cloud backup**: [docs/CLOUD-BACKUP.md](docs/CLOUD-BACKUP.md).
 
 ## Credits & data sources
 

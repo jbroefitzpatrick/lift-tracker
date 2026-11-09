@@ -1,4 +1,4 @@
-import { loadDb, save, onSaveError, dailySnapshot, safetySnapshot, requestPersistence, todayStr, mondayOf, parseDate, daysBetween, addDays } from './store.js';
+import { loadDb, LoadError, allowReplace, download, save, onSaveError, dailySnapshot, safetySnapshot, requestPersistence, todayStr, mondayOf, parseDate, daysBetween, addDays } from './store.js';
 import { onReorder, setAnnouncer } from './drag.js';
 import { icon } from './icons.js';
 import { EX_INFO } from './exercise-info.js';
@@ -29,6 +29,7 @@ import { weeklySets, estimateMinutes } from './builder.js';
 import { createFood } from './ui-food.js';
 import { createYear } from './ui-year.js';
 import { createExtras } from './ui-extra.js';
+import { createCloud } from './ui-cloud.js';
 
 let db = null; // loaded asynchronously at startup (see bottom)
 const ui = {
@@ -413,6 +414,7 @@ function finishWorkout() {
   ui.summaryFresh = true;
   ui.tab = 'summary';
   render();
+  cloud.auto('workout');
 }
 
 // ---------- Screens: Today ----------
@@ -509,6 +511,7 @@ function screenToday() {
       <div class="row"><button class="btn primary" data-a="open-builder">Build my plan</button><button class="btn" data-a="welcome-sample">Use sample plan</button></div>
     </div>`;
   }
+  if (ui.saveBlocked) html += saveBlockedBanner();
   html += extras.backupBanner();
   html += blockCheckinBanner();
   if (needsRotationPrompt(db)) {
@@ -1469,6 +1472,7 @@ function screenSummary() {
     ${stalled.length ? `<div class="card"><h3>Stalled or missed (${stalled.length})</h3>${stalled.map(row).join('')}</div>` : ''}`}
     ${adj.length ? `<div class="card"><h3>Plan adjustments from your check-ins</h3>${adj.map((a) => `<p class="small">${esc(a.text)}</p>`).join('')}</div>` : ''}
     <div class="card"><h3>Next session targets</h3>${res.filter((r) => !progressed.includes(r) && !stalled.includes(r)).map(row).join('') || '<p class="muted small">See above.</p>'}</div>
+    ${ui.summaryFresh ? extras.summaryBackupCard() : ''}
     <div class="card"><h3>Notes</h3><textarea id="session-note" data-sid="${s.id}" rows="3" placeholder="How did it go? Sleep, energy, anything to remember">${esc(s.note || '')}</textarea></div>
     <div class="row"><button class="btn grow" data-a="share-session" data-id="${s.id}">Share</button><button class="btn grow" data-a="edit-session" data-id="${s.id}">Edit workout</button></div>
     <button class="btn primary block" data-a="tab" data-tab="${ui.summaryFresh ? 'today' : 'history'}">Done</button>`;
@@ -2170,6 +2174,7 @@ function screenSettings() {
     </div>
 
     <h2 class="group-title">Data & security</h2>
+    ${cloud.card()}
     ${extras.dataCard()}
 
     <h2 class="group-title">Reset</h2>
@@ -2194,11 +2199,12 @@ function openRefs(ids) {
 const ctx = {
   get db() { return db; },
   ui, $, esc, toast, persist, render, openSheet, closeSheet, stepper, num, fmtDate, lineChart, refChips,
-  replaceDb(next) { db = next; persist(); applyTheme(); render(); },
+  replaceDb(next) { db = next; allowReplace(); ui.saveBlocked = null; persist(); applyTheme(); render(); },
 };
 const food = createFood(ctx);
 const year = createYear(ctx);
 const extras = createExtras(ctx);
+const cloud = createCloud(ctx);
 
 // ---------- Render ----------
 
@@ -2758,7 +2764,7 @@ const actions = {
   },
 };
 
-Object.assign(actions, food.actions, year.actions, extras.actions);
+Object.assign(actions, food.actions, year.actions, extras.actions, cloud.actions);
 
 onReorder('session', (uid, to) => {
   const { list, save } = editableList();
@@ -2789,7 +2795,7 @@ document.addEventListener('click', (e) => {
 document.addEventListener('change', (e) => {
   const el = e.target;
   const a = el.dataset?.a;
-  if (el.id === 'import-file' || el.id === 'photo-file') { extras.onChange(e); return; }
+  if (el.id === 'import-file' || el.id === 'photo-file' || el.id === 'check-file') { extras.onChange(e); return; }
   if (food.onChange(e) || year.onChange(e)) return;
   if (el.dataset?.set) {
     const [uid, i, k] = el.dataset.set.split(':');
@@ -2850,15 +2856,44 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   navigator.serviceWorker.register('./sw.js').catch((e) => console.warn('SW failed', e));
 }
 
-onSaveError(() => toast('Could not save — storage may be full. Export a backup.'));
+onSaveError((e) => {
+  if (e?.blocked) { ui.saveBlocked = e.message; render(); return; }
+  toast('Could not save — storage may be full. Export a backup.');
+});
+
+// Shown when a save was refused because it would have erased most of the history.
+function saveBlockedBanner() {
+  return `<div class="banner bad" role="alert"><p><b>Changes aren't being saved.</b> Something went wrong, and saving would have erased part of your history, so it was stopped. Your saved data is intact. Reopen the app to continue.</p>
+    <p class="muted small">${esc(ui.saveBlocked)}</p>
+    <div class="row"><button class="btn primary" data-a="reload">Reopen app</button></div></div>`;
+}
+
+// Stored data that can't be opened: show this instead of starting fresh, so nothing gets overwritten.
+function recoveryScreen(err) {
+  recoveryRaw = err.raw || null;
+  $('#main').innerHTML = `<header class="top"><div><h1>Your data is safe</h1></div></header>
+    <div class="card"><p>${esc(err.message)}</p>
+      <p class="muted small">The app hasn't saved anything, so your data is exactly as it was. Download a copy, then try reopening. If that doesn't help, send the file to whoever runs the beta, or restore an earlier snapshot.</p></div>
+    <button class="btn primary block" data-a="recovery-download">Download my data</button>
+    <button class="btn block" data-a="snapshots">Restore an automatic snapshot</button>
+    <button class="btn block" data-a="reload">Reopen app</button>`;
+}
+let recoveryRaw = null;
+actions.reload = () => location.reload();
+actions['recovery-download'] = () => recoveryRaw && download(`lift-recovery-${todayStr()}.json`, recoveryRaw, 'application/json');
 
 (async () => {
-  db = await loadDb();
+  try { db = await loadDb(); } catch (e) {
+    if (!(e instanceof LoadError)) throw e;
+    recoveryScreen(e);
+    return;
+  }
   applyTheme();
   render();
   if (rest) runRest();
   if (db.activeSession) keepAwake();
   dailySnapshot(db);
+  cloud.onBoot();
   // Ask once to keep data permanently (granted more readily for Home Screen apps).
   if (!db.settings.persistAsked) { db.settings.persistAsked = true; persist(); requestPersistence(); }
 })();

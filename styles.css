@@ -755,3 +755,17 @@ body.resting .ex-nav { bottom: calc(var(--tabbar-h) + 104px + env(safe-area-inse
 .tpl .row { gap: 8px; }
 .check.play { color: var(--accent); border-color: var(--accent); }
 .check.play .ic { fill: currentColor; stroke: none; }
+
+/* ---------- v9: data safety ---------- */
+.banner.bad { border-color: var(--bad); }
+.banner.bad b { color: var(--bad); }
+.text-btn.inline { display: inline; min-height: 0; padding: 0; font-size: inherit; }
+.backup-card .row { align-items: center; gap: 12px; }
+.backup-card p { margin: 2px 0 0; }
+.backup-card .btn { flex: none; white-space: nowrap; }
+
+.code-box { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 1.25rem; letter-spacing: 0.04em; text-align: center; background: var(--bg); border: 1px solid var(--line); border-radius: 12px; padding: 14px; margin: 12px 0; user-select: all; -webkit-user-select: all; word-break: break-all; }
+.code-box.small-code { font-size: 0.8125rem; letter-spacing: 0; text-align: left; }
+.bad-text { color: var(--bad); }
+.list-group.flush { margin: 10px -16px -16px; border: 0; border-top: 1px solid var(--line); border-radius: 0; background: transparent; }
+.wrap-any { word-break: break-all; text-align: right; }

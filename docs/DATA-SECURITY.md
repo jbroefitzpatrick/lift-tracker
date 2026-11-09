@@ -10,11 +10,26 @@ Everything stays on the device. There is no server, account or analytics.
 |---|---|---|
 | **IndexedDB** (`lift` → `kv`) | The whole record (workouts, plan, food log, settings) as one JSON document | Main store. Larger quota than localStorage, and the right place for structured data. |
 | **localStorage** (`lift.db`) | A mirror of the same document, written on every save | A second copy. On launch, whichever copy was saved most recently is used. |
-| **IndexedDB** (`snapshots`) | A daily copy (last 7) plus a copy before every import, erase, plan change or workout deletion (last 5) | Undo for mistakes and bad imports. Settings → Data & security → Restore an automatic snapshot. |
+| **IndexedDB** (`snapshots`) | A daily copy (last 7), a copy before every import, erase, plan change or workout deletion (last 5), and the untouched data before each app update changes the storage format (last 3) | Undo for mistakes, bad imports and bad updates. Settings → Data & security → Restore an automatic snapshot. |
+| **Cloud backup** (optional) | End-to-end encrypted copies on a free Cloudflare Worker: latest plus one per day for 60 days | An off-phone copy without manual exports. Setup: [CLOUD-BACKUP.md](CLOUD-BACKUP.md). |
 | **IndexedDB** (`photos`) | Progress photos, resized to 1280 px JPEG | Kept out of the main record so saving stays fast. |
 | **Cache Storage** | App files, plus exercise photos once viewed | Offline use. |
 
 Saves write the localStorage mirror right away and IndexedDB shortly after (batched). Pending writes are flushed when the app is hidden or closed.
+
+## Protection against bugs
+
+During the beta, the likeliest way to lose data is a bug in an update. `js/store.js` guards against that:
+
+- **Snapshot before upgrades:** before stored data is converted to a new schema version, the untouched copy is saved as a snapshot ("Before update (data v5 → v6)").
+- **No silent fresh start:** if stored data can't be read or upgraded, or was written by a newer version, the app shows a recovery screen instead of starting empty. It saves nothing. The screen offers "Download my data", snapshot restore and "Reopen app".
+- **Save guard:** a save is refused if the record is incomplete, or if workouts, cardio, food entries, body weight or exercises would drop by more than half (from at least 5). A banner explains, and the stored copy stays intact. Deliberate replacements (import, snapshot restore, erase) are allowed explicitly.
+- **The same guard on uploads:** cloud backup won't upload a copy that has lost most of its history compared with the last upload.
+- **Backups that are known to work:** "Check a backup file" opens a backup (decrypting it if needed), runs the import checks and shows what's inside, without changing anything.
+- **Backups that actually happen:**
+  - The finished-workout screen offers a one-tap backup when the last one is over a day old.
+  - The passphrase can be remembered on the device so the backup really is one tap. It's stored outside the data record, so it never ends up inside a backup.
+  - Cancelling the share sheet doesn't count as a backup.
 
 ## How iOS treats this data
 
@@ -37,7 +52,7 @@ Data at rest inside the browser isn't separately encrypted. It relies on the pho
 
 ## Hardening in the app
 
-- **Content-Security-Policy** (`index.html`): scripts only from the app's own origin; no inline scripts and no `eval`; images limited to the app, blob/data URLs and the exercise-photo host; `object-src 'none'`; `form-action 'none'`; `base-uri 'self'`.
+- **Content-Security-Policy** (`index.html`): scripts only from the app's own origin; no inline scripts and no `eval`; images limited to the app, blob/data URLs and the exercise-photo host; network requests limited to the app, the exercise-photo host and `*.workers.dev` (cloud backup); `object-src 'none'`; `form-action 'none'`; `base-uri 'self'`.
 - **No third-party scripts or trackers.** No libraries are loaded from CDNs.
 - **Referrer policy `no-referrer`**, so loading exercise photos doesn't tell GitHub which page asked for them.
 - **All user text is HTML-escaped** before rendering (exercise names, notes, food names, imported backups).
@@ -49,7 +64,7 @@ Data at rest inside the browser isn't separately encrypted. It relies on the pho
 
 ## Known limits (web app)
 
-- **No sync between devices**, and no account.
+- **No live sync between devices**, and no account. Cloud backup (optional) handles moving to a new phone and recovery; it isn't two-way sync.
 - **Possible clearing:** iOS may still clear storage under heavy storage pressure. Backups mitigate this.
 - **Exercise photos load from GitHub** the first time each one is viewed (then they're cached). Text data is bundled.
 - **CSP comes from a `<meta>` tag** because GitHub Pages can't set response headers. That means `frame-ancestors`, which blocks the app being shown inside another site, isn't enforced. Hosting on Netlify or Cloudflare Pages would allow real headers.
