@@ -11,7 +11,7 @@
 import { encryptText, decryptText, isEncrypted } from './crypto.js';
 
 // Filled in after deploying the worker (docs/CLOUD-BACKUP.md). Testers can also set it from a setup link.
-export const DEFAULT_URL = '';
+export const DEFAULT_URL = 'https://lift-backup.jbroefitzpatrick.workers.dev';
 
 const KEY = 'lift.cloud';
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O or 1/I, to avoid misreading

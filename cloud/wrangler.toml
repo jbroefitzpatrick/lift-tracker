@@ -10,6 +10,6 @@ ALLOWED_ORIGINS = "https://jbroefitzpatrick.github.io,http://localhost:8765"
 # Paste the id printed by `npx wrangler kv namespace create BACKUPS` below.
 [[kv_namespaces]]
 binding = "BACKUPS"
-id = "PASTE_KV_NAMESPACE_ID_HERE"
+id = "ebe04eb6176f4901bcb81889e8048176"
 
 # The access key is a secret, not a var: set it with `npx wrangler secret put ACCESS_KEY`.

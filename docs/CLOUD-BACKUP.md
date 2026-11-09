@@ -72,7 +72,7 @@ curl -H "X-Access-Key: YOUR_KEY" https://lift-backup.YOUR-NAME.workers.dev/v1/ba
 
 It should print `{"versions":[]}`. With a wrong key you get `{"error":"Wrong access key."}`.
 
-**Optional:** put the address in `DEFAULT_URL` in [`js/cloud.js`](../js/cloud.js) and push. Testers then only need the access key. (Or send me the address and I'll do it.)
+**Done for this project:** the address is set as `DEFAULT_URL` in [`js/cloud.js`](../js/cloud.js), so the app fills it in and testers only need the access key.
 
 ## 6. Turn it on in the app
 
