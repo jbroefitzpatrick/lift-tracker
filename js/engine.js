@@ -39,6 +39,8 @@ export function weekInfo(db, date = todayStr()) {
 
 // True during the week right after a deload, until the user answers the prompt.
 export function needsRotationPrompt(db, date = todayStr()) {
+  const rotates = Object.values(db.plan).some((d) => d.items?.some((i) => i.role === 'rowCompound'));
+  if (!rotates) return false;
   const { week, cyclePos } = weekInfo(db, date);
   return week > 1 && cyclePos === 1 && db.settings.rotationPromptWeek !== week;
 }

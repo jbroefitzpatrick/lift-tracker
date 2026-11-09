@@ -4,7 +4,7 @@ import { syncBank } from './bank.js';
 import { CARDIO } from './cardio-bank.js';
 
 const KEY = 'lift.db';
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 export function todayStr(d = new Date()) {
   const y = d.getFullYear();
@@ -43,6 +43,7 @@ export function freshDb() {
       // lift | cardio | both | rest
       dayModes: { mon: 'lift', tue: 'lift', wed: 'lift', thu: 'lift', fri: 'lift', sat: 'rest', sun: 'rest' },
       sound: true,
+      welcomed: false, // first-run welcome on Today
       defaultIncrements: { ...DEFAULT_INCREMENTS },
     },
     exercises: syncBank(defaultExercises(), DEFAULT_INCREMENTS),
@@ -53,6 +54,8 @@ export function freshDb() {
     bodyweight: [], // { date, weight }
     cardio: [], // { id, date, ts, cardioId, minutes, distance?, rpe?, note? }
     nutrition: [], // future: { date, calories, protein, carbs, fat, notes }
+    profile: null, // plan builder answers + prescription summary
+    previousPlan: null, // last plan replaced by the builder, for undo
   };
 }
 
@@ -71,6 +74,14 @@ const MIGRATIONS = {
     }
     delete db.activities;
     db.schemaVersion = 3;
+    return db;
+  },
+  // v4: plan builder profile. Existing users skip the first-run welcome.
+  3: (db) => {
+    db.profile = db.profile ?? null;
+    db.previousPlan = db.previousPlan ?? null;
+    db.settings.welcomed = true;
+    db.schemaVersion = 4;
     return db;
   },
 };

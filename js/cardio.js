@@ -76,6 +76,23 @@ export function scoreCardio(db, c, ctx) {
   if (restDay) score -= I.factor >= 1.4 ? 25 : 5; // rest days favour easy work
   const recent = (db.cardio || []).slice(-3).some((x) => x.cardioId === c.id);
   if (recent) score -= 4; // a little variety
+
+  // From the plan builder profile: joint-friendly options, and ~80% easy across the week.
+  const prof = db.profile?.rx;
+  if (prof?.preferLowImpact && c.impact === 'high') {
+    score -= 10;
+    reasons.push('Low-impact options are easier on joints');
+  }
+  if (I.factor >= 1.4) {
+    const weekAgo = Date.now() - 7 * 86400000;
+    const week = (db.cardio || []).filter((x) => x.ts >= weekAgo);
+    const total = week.reduce((a, x) => a + x.minutes, 0);
+    const hard = week.filter((x) => (INTENSITY[CARDIO[x.cardioId]?.intensity]?.factor || 0) >= 1.4).reduce((a, x) => a + x.minutes, 0);
+    if (total >= 40 && hard / total > 1 - (prof?.easyShare ?? 0.8) + 0.05) {
+      score -= 12;
+      reasons.push('Already plenty of hard cardio this week — keep ~80% easy');
+    }
+  }
   if (c.intensity === 'recovery' && !restDay) score = Math.min(score, 70); // training days: suggest real cardio first
   score = Math.max(0, Math.min(100, Math.round(score)));
 

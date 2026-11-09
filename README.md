@@ -15,6 +15,8 @@ See [SPEC.md](SPEC.md) for the full requirements.
 | `js/fatigue.js` | Muscle fatigue/freshness model from logged sets and cardio |
 | `js/cardio-bank.js` | Cardio bank: muscles loaded, intensity, duration, impact |
 | `js/cardio.js` | Cardio suggestions scored against fatigue and upcoming lift days |
+| `js/builder.js` | Plan builder: goals/profile → prescription, day and split suggestions, exercise selection, volume balancing |
+| `js/science.js` | References behind the builder's recommendations (shown in the app) |
 | `js/engine.js` | Progression engine: double progression, adaptation, deloads, race block, row rotation |
 | `js/store.js` | Storage (localStorage), schema version + migrations, JSON/CSV export and import |
 | `js/chart.js` | Small SVG line chart |

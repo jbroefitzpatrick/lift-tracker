@@ -2,13 +2,18 @@ import { load, save, todayStr, mondayOf, parseDate, daysBetween, exportJson, imp
 import { TYPES, ROW_ROTATION, defaultPlan } from './plan.js';
 import {
   DAY_KEYS, DAY_NAMES, dayKeyOf, weekInfo, needsRotationPrompt, nextRowCompound, resolveDay,
-  targetsFor, getState, painWarning, evaluate, groupNum, e1rm,
+  targetsFor, getState, painWarning, evaluate, groupNum, e1rm, roundTo,
 } from './engine.js';
 import { lineChart } from './chart.js';
 import { MUSCLES, CATEGORIES, PATTERNS, similarExercises } from './bank.js';
 import { CARDIO, INTENSITY, MODALITIES } from './cardio-bank.js';
 import { suggestCardio } from './cardio.js';
 import { currentFatigue, freshness, dayMode, MUSCLE_GROUPS } from './fatigue.js';
+import {
+  GOALS, EXPERIENCE, EQUIPMENT, LIMITS, WEIGHT_GOALS, WEEK_LAYOUT, VOLUME_MUSCLES, defaultProfile, prescription, suggestDays,
+  splitOptions, generatePlan, goalWeights, suggestedWeightGoal, volumeTarget, fmtSec,
+} from './builder.js';
+import { REFS } from './science.js';
 
 let db = load();
 const ui = {
@@ -332,6 +337,12 @@ function screenToday() {
     ${dayTabs(day, 'day')}
     <div class="row between mode-line"><span class="mode-pill ${mode}">${MODE_LABELS[mode]} day</span><button class="mini" data-a="edit-day-mode" data-day="${day}">Change</button></div>`;
 
+  if (!db.settings.welcomed) {
+    html += `<div class="banner">
+      <p><b>Welcome!</b> Build a plan around your goals, experience and schedule — or start with the sample plan below.</p>
+      <div class="row"><button class="btn primary" data-a="open-builder">Build my plan</button><button class="btn" data-a="welcome-sample">Use sample plan</button></div>
+    </div>`;
+  }
   if (needsRotationPrompt(db)) {
     const nextId = nextRowCompound(db);
     html += `<div class="banner">
@@ -491,6 +502,18 @@ const MODE_LABELS = { lift: 'Lift', both: 'Lift + cardio', cardio: 'Cardio', res
 const FULL_DAY = { mon: 'Monday', tue: 'Tuesday', wed: 'Wednesday', thu: 'Thursday', fri: 'Friday', sat: 'Saturday', sun: 'Sunday' };
 const VERDICT = { good: 'Good', ok: 'OK', skip: 'Skip' };
 
+function weeklyCardioLine() {
+  const target = db.profile?.rx?.cardioMin;
+  if (!target) return '';
+  const weekAgo = Date.now() - 7 * 86400000;
+  const recent = db.cardio.filter((c) => c.ts >= weekAgo);
+  const mins = recent.reduce((a, c) => a + c.minutes, 0);
+  const hard = recent.filter((c) => (INTENSITY[CARDIO[c.cardioId]?.intensity]?.factor || 0) >= 1.4).reduce((a, c) => a + c.minutes, 0);
+  const pct = Math.min(100, Math.round((mins / target) * 100));
+  return `<div class="cardio-week"><div class="row between small"><span>Last 7 days: <b>${mins}</b> of ${target} min</span><span class="muted">${mins ? `${Math.round(((mins - hard) / mins) * 100)}% easy` : ''}</span></div>
+    <span class="fr-bar"><i style="width:${Math.max(pct, 2)}%"></i></span></div>`;
+}
+
 function cardioRow(r) {
   const c = r.c;
   return `<button class="pick-row" data-a="cardio-log" data-id="${c.id}">
@@ -518,6 +541,7 @@ function cardioSection(day, title) {
     <p class="muted small">${isToday ? '' : 'Projected from your plan. '}${ctx.mode === 'lift' || ctx.mode === 'both' ? 'After today\'s lifting: ' : ''}${fatigueSummary(ctx.fresh)}${nextLine}</p>
     ${logged.map((c) => `<div class="list-row logged"><span class="grow">✓ <b>${esc(CARDIO[c.cardioId]?.name || c.cardioId)}</b> · ${c.minutes} min${c.distance ? ` · ${c.distance} mi` : ''}${c.rpe ? ` · RPE ${c.rpe}` : ''}</span>
       <button class="mini" data-a="cardio-del" data-id="${c.id}" aria-label="Delete">✕</button></div>`).join('')}
+    ${weeklyCardioLine()}
     <h4 class="sub-h">Suggested</h4>
     ${top.map(cardioRow).join('') || '<p class="muted small">Everything is a stretch today — consider resting.</p>'}
     <button class="btn block" data-a="cardio-all" data-day="${day}">All cardio options</button>
@@ -872,16 +896,20 @@ function bwStats() {
 }
 
 function screenBody() {
+  const wg = db.profile?.rx?.weightGoal || 'gain';
+  const tr = wg === 'lose' ? (db.profile.rx.rate || [0.5, 1]).map((x) => -x).reverse() : db.profile?.rx?.rate || [0.25, 0.5];
+  const goalLabel = { gain: 'Gain', lose: 'Fat-loss', maintain: 'Maintenance' }[wg];
   const { list, avg7, prev7 } = bwStats();
   const todays = list.find((b) => b.date === todayStr());
   const last = list[list.length - 1];
   let rate = '';
   if (avg7 && prev7) {
     const pct = ((avg7 - prev7) / prev7) * 100;
-    const verdict = pct < 0.25 ? 'below target — eat a bit more' : pct > 0.5 ? 'above target — ease off slightly' : 'on target';
+    const verdict = pct < tr[0] ? 'below target range' : pct > tr[1] ? 'above target range' : 'on target';
     rate = `<p class="small">Weekly change: <b>${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%</b> (${(avg7 - prev7 >= 0 ? '+' : '')}${(avg7 - prev7).toFixed(1)} lb) · ${verdict}</p>`;
   }
-  const target = avg7 ? `<p class="muted small">Bulk target: +${(avg7 * 0.0025).toFixed(1)} to +${(avg7 * 0.005).toFixed(1)} lb/week (0.25–0.5%)</p>` : '';
+  const lb = (x) => `${x >= 0 ? '+' : '−'}${Math.abs((avg7 * x) / 100).toFixed(1)}`;
+  const target = avg7 ? `<p class="muted small">${goalLabel} target: ${lb(tr[0])} to ${lb(tr[1])} lb/week (${tr[0]}% to ${tr[1]}%)</p>` : '';
   // 7-day rolling average per entry for the chart.
   const pts = list.slice(-60).map((b) => {
     const win = list.filter((x) => { const d = daysBetween(x.date, b.date); return d >= 0 && d <= 6; });
@@ -915,6 +943,16 @@ function screenFood() {
 
 // ---------- Plan editor ----------
 
+function builderEntry() {
+  const prev = db.previousPlan;
+  return `<div class="card builder-cta">
+      <div class="row between"><div class="grow"><b>${db.profile ? 'Rebuild from your goals' : 'Build a plan from your goals'}</b>
+      <p class="muted small">Sets, reps, rest, days and exercises picked for your experience, age and goals.</p></div>
+      <button class="btn primary" data-a="open-builder">${db.profile ? 'Rebuild' : 'Start'}</button></div>
+      ${prev ? `<p class="small">Plan changed ${new Date(prev.savedAt).toLocaleDateString()}. <button class="mini" data-a="undo-plan">Undo</button></p>` : ''}
+    </div>`;
+}
+
 function screenPlan() {
   const day = ui.planDay;
   const plan = db.plan[day];
@@ -924,9 +962,9 @@ function screenPlan() {
     ${dayTabs(day, 'plan-day')}
     <div class="field"><span>Day type</span><div class="chips">${modes.map((m) =>
       `<button class="chip ${m === mode ? 'on' : ''}" data-a="day-mode" data-v="${m}">${MODE_LABELS[m]}</button>`).join('')}</div></div>`;
-  if (!plan) return head + `<p class="muted small pad">No lifting is planned on ${FULL_DAY[day]}s. Cardio days get suggestions based on your fatigue and the next lift days.</p>`;
+  if (!plan) return builderEntry() + head + `<p class="muted small pad">No lifting is planned on ${FULL_DAY[day]}s. Cardio days get suggestions based on your fatigue and the next lift days.</p><button class="btn block" data-a="add-lift-day">+ Add lifting on ${FULL_DAY[day]}s</button>`;
   const items = plan.items;
-  return `${head}
+  return `${builderEntry()}${head}
     ${mode === 'cardio' || mode === 'rest' ? `<p class="muted small pad">Lifting is off on ${FULL_DAY[day]}s. The plan below is kept for when you switch back.</p>` : ''}
     <div class="field inline"><span>Day name</span><input id="plan-name" type="text" value="${esc(plan.name)}" data-a="plan-name"></div>
     ${items.map((it, i) => {
@@ -1084,6 +1122,234 @@ function savePlanEdit(i) {
   render();
 }
 
+// ---------- Plan builder ----------
+
+const B_STEPS = ['About you', 'Goals', 'Schedule', 'Split', 'Review'];
+const BUILD_LABELS = { lean: 'Lean', average: 'Average', higher: 'Higher body fat' };
+
+function openBuilder() {
+  const base = defaultProfile(db);
+  const draft = db.profile ? { ...base, ...JSON.parse(JSON.stringify(db.profile)) } : base;
+  delete draft.rx;
+  ui.b = { step: 0, draft, liftEdited: !!db.profile, cardioEdited: !!db.profile, splitEdited: !!db.profile };
+  ui.tab = 'builder';
+  window.scrollTo(0, 0);
+  render();
+}
+
+function refLinks(ids) {
+  return ids.map((id) => `<a class="ref" href="#ref-${id}" data-a="b-ref" data-id="${id}">${refNum(id)}</a>`).join('');
+}
+const REF_ORDER = Object.keys(REFS);
+const refNum = (id) => REF_ORDER.indexOf(id) + 1;
+
+function builderState() {
+  const p = ui.b.draft;
+  const rx = prescription(p);
+  const sug = suggestDays(p, rx);
+  if (!ui.b.liftEdited || !p.liftDays) p.liftDays = sug.lift;
+  if (!ui.b.cardioEdited || p.cardioDays == null) p.cardioDays = sug.cardio;
+  const opts = splitOptions(p.liftDays);
+  if (!ui.b.splitEdited || !opts.some((o) => o.id === p.split)) p.split = (opts.find((o) => o.recommended) || opts[0]).id;
+  return { p, rx, sug, opts };
+}
+
+function bChips(key, options, current, multi = false) {
+  return `<div class="chips wrap">${Object.entries(options).map(([v, label]) => {
+    const on = multi ? (current || []).includes(v) : String(current ?? '') === v;
+    return `<button class="chip ${on ? 'on' : ''}" data-a="b-set" data-k="${key}" data-v="${v}" ${multi ? 'data-multi="1"' : ''} aria-pressed="${on}">${label}</button>`;
+  }).join('')}</div>`;
+}
+
+function screenBuilder() {
+  if (!ui.b) openBuilder();
+  const { p, rx, sug, opts } = builderState();
+  const step = ui.b.step;
+  let body = '';
+
+  if (step === 0) {
+    const bc = rx.bodyClass;
+    body = `
+      <div class="card">
+        <div class="grid2">
+          <div class="field"><span>Age</span><input type="text" inputmode="numeric" data-b="age" value="${esc(p.age)}"></div>
+          <div class="field"><span>Weight (lb)</span><input type="text" inputmode="decimal" data-b="weightLb" value="${esc(p.weightLb)}"></div>
+          <div class="field"><span>Height (ft)</span><input type="text" inputmode="numeric" data-b="heightFt" value="${Math.floor((p.heightIn || 0) / 12)}"></div>
+          <div class="field"><span>Height (in)</span><input type="text" inputmode="numeric" data-b="heightInch" value="${(p.heightIn || 0) % 12}"></div>
+        </div>
+        <div class="field"><span>Sex <span class="muted">(optional — only used to read body fat %)</span></span>${bChips('sex', { '': 'Prefer not to say', male: 'Male', female: 'Female' }, p.sex)}</div>
+        <div class="field"><span>Body fat % <span class="muted">(optional)</span></span><input type="text" inputmode="decimal" data-b="bodyFat" value="${esc(p.bodyFat)}" placeholder="e.g. 18"></div>
+        <div class="field"><span>Build <span class="muted">(used when body fat % is blank)</span></span>${bChips('build', BUILD_LABELS, p.build)}</div>
+        <p class="muted small">Body composition: <b>${BUILD_LABELS[bc.cls]}</b> (from ${bc.source})${bc.bmi ? ` · BMI ${bc.bmi.toFixed(1)}` : ''}. BMI can't tell muscle from fat, so body fat % or build wins when given.</p>
+      </div>
+      <div class="card"><h3>Training experience</h3>
+        ${Object.entries(EXPERIENCE).map(([k, v]) => `<button class="pick-row ${p.experience === k ? 'picked' : ''}" data-a="b-set" data-k="experience" data-v="${k}">
+          <span class="grow"><b>${v.label}</b><span class="pick-sub">${v.desc}</span></span><span class="radio" aria-hidden="true"></span></button>`).join('')}
+      </div>`;
+  } else if (step === 1) {
+    const w = goalWeights(p);
+    const mix = Object.entries(w).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1])
+      .map(([g, v]) => `${Math.round(v * 100)}% ${GOALS[g].label.toLowerCase()}`).join(', ');
+    body = `
+      <div class="card">
+        <p class="muted small">Rate how much each goal matters to you (0 = not at all, 5 = top priority). The mix sets your reps, sets, rest and cardio.</p>
+        ${Object.entries(GOALS).map(([g, v]) => `<div class="goal-row">
+          <div class="row between"><b>${v.label}</b><span class="goal-val" id="gv-${g}">${p.goals[g]}</span></div>
+          <p class="muted small">${v.desc}</p>
+          <input type="range" min="0" max="5" step="1" value="${p.goals[g]}" data-bgoal="${g}" aria-label="${v.label}">
+        </div>`).join('')}
+        <p class="small"><b>Your mix:</b> ${mix}</p>
+      </div>
+      <div class="card"><h3>Bodyweight goal</h3>
+        ${bChips('weightGoal', { '': `Suggested (${WEIGHT_GOALS[suggestedWeightGoal(p)].toLowerCase()})`, ...WEIGHT_GOALS }, p.weightGoal)}
+        <p class="muted small">${rx.weightGoal === 'gain' ? `Gain ${rx.rate[0]}–${rx.rate[1]}% of bodyweight per week` : rx.weightGoal === 'lose' ? `Lose ${rx.rate[0]}–${rx.rate[1]}% of bodyweight per week` : 'Stay within about ±0.25% per week'}. The Body tab tracks this.</p>
+      </div>`;
+  } else if (step === 2) {
+    const dayChips = (key, from, to, cur) => `<div class="chips">${Array.from({ length: to - from + 1 }, (_, i) => from + i)
+      .map((n) => `<button class="chip ${n === cur ? 'on' : ''}" data-a="b-days" data-k="${key}" data-v="${n}">${n}</button>`).join('')}</div>`;
+    body = `
+      <div class="card">
+        <div class="field"><span>Lifting days per week · suggested <b>${sug.lift}</b></span>${dayChips('liftDays', 2, 6, p.liftDays)}</div>
+        <div class="field"><span>Cardio sessions per week · suggested <b>${sug.cardio}</b> (${rx.cardioMin} min)</span>${dayChips('cardioDays', 0, 7, p.cardioDays)}</div>
+        ${ui.b.liftEdited || ui.b.cardioEdited ? '<button class="mini" data-a="b-suggested">Use suggested days</button>' : ''}
+        <ul class="reasons small muted">${sug.reasons.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>
+        <p class="muted small">Cardio sessions go on non-lifting days first, then after lifting on upper-body days.</p>
+      </div>
+      <div class="card">
+        <div class="field"><span>Session length</span>${bChips('sessionMin', { 30: '30 min', 45: '45 min', 60: '60 min', 75: '75 min', 90: '90 min' }, p.sessionMin)}</div>
+        <div class="field"><span>Equipment you have</span>${bChips('equipment', EQUIPMENT, p.equipment, true)}</div>
+        <div class="field"><span>Go easy on <span class="muted">(skips exercises that commonly bother these)</span></span>${bChips('limits', LIMITS, p.limits, true)}</div>
+      </div>`;
+  } else if (step === 3) {
+    const days = WEEK_LAYOUT[p.liftDays];
+    body = `<p class="muted small pad">${p.liftDays} lifting days. Pick how to split the work — the recommended option trains each muscle about twice a week ${refLinks(['schoenfeld2016freq', 'pelland2026'])}.</p>
+      ${opts.map((o) => `<button class="card split-card ${p.split === o.id ? 'picked' : ''}" data-a="b-split" data-v="${o.id}">
+        <div class="row between"><b>${o.label}</b>${o.recommended ? '<span class="verdict good">Recommended</span>' : ''}</div>
+        <p class="small muted">${o.desc}</p>
+        <p class="small">${o.templates.map((t, i) => `${DAY_NAMES[days[i]]}: ${splitDayName(t)}`).join(' · ')}</p>
+      </button>`).join('')}`;
+  } else {
+    let out;
+    try { out = generatePlan(db, p, rx, p.liftDays, p.cardioDays, p.split); } catch (e) { out = null; body = `<p class="flag bad">${esc(e.message)}</p>`; }
+    ui.b.out = out;
+    if (out) body = reviewHtml(p, rx, out);
+  }
+
+  return `<header class="top"><button class="back" data-a="b-exit" aria-label="Close builder">‹</button><div><h1>Plan builder</h1><p class="muted small">Step ${step + 1} of ${B_STEPS.length} · ${B_STEPS[step]}</p></div></header>
+    <div class="chips steps">${B_STEPS.map((s, i) => `<button class="chip ${i === step ? 'on' : ''}" data-a="b-step" data-v="${i}">${i + 1}. ${s}</button>`).join('')}</div>
+    ${body}
+    <div class="b-nav row">
+      ${step > 0 ? '<button class="btn grow" data-a="b-back">Back</button>' : ''}
+      ${step < B_STEPS.length - 1 ? '<button class="btn primary grow" data-a="b-next">Next</button>' : '<button class="btn primary grow" data-a="b-apply">Use this plan</button>'}
+    </div>`;
+}
+
+const SPLIT_DAY_NAMES = {
+  fbA: 'Full body A', fbB: 'Full body B', fbC: 'Full body C', fbA2: 'Full body D', upperA: 'Upper A', upperB: 'Upper B', upperA2: 'Upper C',
+  lowerA: 'Lower A', lowerB: 'Lower B', lowerA2: 'Lower C', push: 'Push', pull: 'Pull', legs: 'Legs', push2: 'Push B', pull2: 'Pull B', legs2: 'Legs B',
+};
+const splitDayName = (t) => SPLIT_DAY_NAMES[t] || t;
+
+function reviewHtml(p, rx, out) {
+  const rows = [
+    ['Main lifts', `${rx.mainSets} × ${rx.main[0]}–${rx.main[1]} · rest ${fmtSec(rx.restMain)}`],
+    ['Other compounds', `${rx.sets} × ${rx.comp[0]}–${rx.comp[1]} · rest ${fmtSec(rx.rest)}`],
+    ['Isolation', `${rx.isoSets} × ${rx.iso[0]}–${rx.iso[1]} · rest ${fmtSec(rx.restIso)}${rx.pairIso ? ' · supersets' : ''}`],
+    ['Effort', `${rx.rir} reps in reserve`],
+    ['Weekly sets / muscle', `${rx.weekly[0]}–${rx.weekly[1]}`],
+    ['Cardio', `${rx.cardioMin} min/week · ~80% easy${rx.preferLowImpact ? ' · low impact' : ''}`],
+    ['Deload', `every ${rx.deloadEvery} weeks`],
+    ['Bodyweight', rx.weightGoal === 'gain' ? `+${rx.rate[0]}–${rx.rate[1]}%/week` : rx.weightGoal === 'lose' ? `−${rx.rate[0]}–${rx.rate[1]}%/week` : 'maintain'],
+  ];
+  const week = DAY_KEYS.map((d) => {
+    const mode = out.dayModes[d];
+    const day = out.plan[d];
+    const label = day ? `${esc(day.name)} · ~${out.minutes[d]} min${mode === 'both' ? ' + cardio' : ''}` : mode === 'cardio' ? 'Cardio' : 'Rest';
+    if (!day) return `<div class="list-row"><span class="day-k">${DAY_NAMES[d]}</span><span class="grow muted">${label}</span></div>`;
+    return `<details class="day-detail"><summary class="list-row"><span class="day-k">${DAY_NAMES[d]}</span><span class="grow"><b>${label}</b></span><span class="chev">›</span></summary>
+      ${day.items.map((it) => `<div class="b-item"><span class="tag">${esc(it.group)}</span><span class="grow">${esc(db.exercises[it.exerciseId].name)}${it.note ? `<span class="pick-sub">${esc(it.note)}</span>` : ''}</span><span class="muted small">${it.sets} × ${it.repMin}–${it.repMax}</span></div>`).join('')}
+    </details>`;
+  }).join('');
+  const vol = VOLUME_MUSCLES.map((m) => {
+    const v = Math.round((out.weekly[m] || 0) * 2) / 2;
+    const [lo, hi] = volumeTarget(rx, m);
+    const st = v < lo ? 'low' : v > hi * 1.2 ? 'high' : 'ok';
+    return `<div class="vol-row"><span>${MUSCLES[m]}</span><span class="tnum">${v}</span><span class="muted tnum">${lo}–${hi}</span><span class="verdict ${st === 'ok' ? 'good' : 'ok'}">${st === 'ok' ? 'On target' : st === 'low' ? 'Low' : 'High'}</span></div>`;
+  }).join('');
+  const usedRefs = [...new Set(rx.why.flatMap((x) => x.refs).concat(['schoenfeld2016freq', 'pelland2026']))].sort((a, b) => refNum(a) - refNum(b));
+  return `
+    <div class="card"><h3>Your prescription</h3>
+      ${rows.map(([k, v]) => `<div class="rx-row"><span class="muted">${k}</span><b>${v}</b></div>`).join('')}
+      <p class="muted small">Starting weights are blank: your first session sets them. Pick a weight you could do for about ${rx.rirLo + 2} more reps than the bottom of the range.</p>
+    </div>
+    <div class="card"><h3>Your week</h3>${week}<p class="muted small">You can swap any exercise or edit sets and reps after applying.</p></div>
+    <div class="card"><h3>Weekly sets per muscle</h3>
+      <div class="vol-row head"><span>Muscle</span><span>Planned</span><span>Target</span><span></span></div>${vol}
+      <p class="muted small">A set counts ½ for muscles that only assist ${refLinks(['pelland2026'])}. Some low counts are a trade-off for your session length.</p></div>
+    <div class="card"><h3>Why these numbers</h3>
+      ${rx.why.map((x) => `<p class="why"><b>${x.k}.</b> ${esc(x.t)} ${refLinks(x.refs)}</p>`).join('')}
+      <details class="refs"><summary>References (${usedRefs.length})</summary>
+        <ol>${usedRefs.map((id) => `<li id="ref-${id}" value="${refNum(id)}"><a href="${REFS[id].url}" target="_blank" rel="noopener">${esc(REFS[id].cite)}</a><span class="muted small block">${esc(REFS[id].finding)}</span></li>`).join('')}</ol>
+      </details>
+      <p class="muted small">These are evidence-based starting points, not medical advice. Check with a doctor before starting if you have health conditions.</p>
+    </div>`;
+}
+
+function retargetWeights(plan) {
+  for (const day of Object.values(plan)) {
+    for (const it of day.items) {
+      const st = db.state[it.exerciseId];
+      const ex = db.exercises[it.exerciseId];
+      if (!st?.last || !ex) continue;
+      const reps = st.last.reps[0];
+      const w = st.last.weights[0];
+      if (!w || (reps >= it.repMin && reps <= it.repMax + 2)) continue;
+      // New rep range: estimate 1RM (Epley), then aim for ~2 reps in reserve at the bottom of the range.
+      const target = e1rm(w, reps) / (1 + (it.repMin + 2) / 30);
+      const inc = Number(ex.increment) || 5;
+      Object.assign(st, { targetWeight: Math.max(inc, roundTo(target, inc)), targetReps: it.repMin, targetTotal: null });
+    }
+  }
+}
+
+function applyBuilt() {
+  const { p, rx } = builderState();
+  const out = ui.b.out;
+  if (!out) return;
+  if (!confirm('Replace your current plan with this one? Workout history and targets are kept, and you can undo from the Plan tab.')) return;
+  db.previousPlan = { plan: db.plan, dayModes: { ...db.settings.dayModes }, deloadEvery: db.settings.deloadEvery, savedAt: Date.now() };
+  db.plan = out.plan;
+  db.settings.dayModes = out.dayModes;
+  db.settings.deloadEvery = rx.deloadEvery;
+  db.settings.welcomed = true;
+  db.profile = {
+    ...p, builtAt: Date.now(),
+    rx: { cardioMin: rx.cardioMin, easyShare: rx.easyShare, preferLowImpact: rx.preferLowImpact, weightGoal: rx.weightGoal, rate: rx.rate, rir: rx.rir },
+  };
+  retargetWeights(out.plan);
+  persist();
+  ui.b = null;
+  ui.tab = 'plan';
+  ui.planDay = Object.keys(out.plan)[0];
+  window.scrollTo(0, 0);
+  render();
+  toast('New plan applied. Swap or edit anything in Plan.');
+}
+
+function builderInput(el) {
+  const p = ui.b.draft;
+  const k = el.dataset.b;
+  if (k === 'heightFt' || k === 'heightInch') {
+    const ft = parseInt($('[data-b="heightFt"]').value, 10) || 0;
+    const inch = parseInt($('[data-b="heightInch"]').value, 10) || 0;
+    p.heightIn = ft * 12 + inch;
+  } else if (k === 'bodyFat') p.bodyFat = el.value.trim();
+  else {
+    const v = parseFloat(el.value);
+    p[k] = Number.isFinite(v) ? v : '';
+  }
+}
+
 // ---------- Settings ----------
 
 function screenSettings() {
@@ -1097,7 +1363,7 @@ function screenSettings() {
     </div>
     <div class="card">
       <h3>Program</h3>
-      <div class="field"><span>Deload every</span><div class="chips">${[4, 5].map((n) => `<button class="chip ${s.deloadEvery === n ? 'on' : ''}" data-a="deload-every" data-v="${n}">${n} weeks</button>`).join('')}</div></div>
+      <div class="field"><span>Deload every</span><div class="chips">${[4, 5, 6].map((n) => `<button class="chip ${s.deloadEvery === n ? 'on' : ''}" data-a="deload-every" data-v="${n}">${n} weeks</button>`).join('')}</div></div>
       <div class="field"><span>Current week of program</span>${stepper('set-week', wi.week, 1)}</div>
       <button class="btn block" data-a="set-week">Set week</button>
       <p class="muted small">This week is ${wi.cyclePos} of ${wi.cycleLen} in the block${wi.isDeload ? ' (deload)' : ''}.</p>
@@ -1110,6 +1376,11 @@ function screenSettings() {
       <div class="grid2">${Object.entries(TYPES).map(([k, v]) => `<div class="field"><span>${v}</span><input type="text" inputmode="decimal" data-a="def-inc" data-k="${k}" value="${s.defaultIncrements[k]}"></div>`).join('')}</div>
       <button class="btn block" data-a="apply-inc">Apply to all existing exercises</button>
       <p class="muted small">Units: pounds.</p>
+    </div>
+    <div class="card">
+      <h3>Goals & profile</h3>
+      <p class="muted small">${db.profile ? `Built ${new Date(db.profile.builtAt).toLocaleDateString()} · ${EXPERIENCE[db.profile.experience]?.label || ''} · ${db.profile.liftDays} lifting days` : 'Not set up yet.'}</p>
+      <button class="btn block" data-a="open-builder">${db.profile ? 'Update goals & rebuild plan' : 'Build a plan from your goals'}</button>
     </div>
     <div class="card">
       <h3>Backup</h3>
@@ -1139,9 +1410,9 @@ const TABS = [
 ];
 
 function render() {
-  const screens = { today: screenToday, summary: screenSummary, history: screenHistory, body: screenBody, food: screenFood, plan: screenPlan, settings: screenSettings };
+  const screens = { today: screenToday, summary: screenSummary, history: screenHistory, body: screenBody, food: screenFood, plan: screenPlan, settings: screenSettings, builder: screenBuilder };
   $('#main').innerHTML = (screens[ui.tab] || screenToday)();
-  const active = ui.tab === 'summary' ? 'today' : ui.tab;
+  const active = ui.tab === 'summary' ? 'today' : ui.tab === 'builder' ? 'plan' : ui.tab;
   $('#tabs').innerHTML = TABS.map(([k, label, icon]) => `
     <button class="tab ${k === active ? 'on' : ''}" data-a="tab" data-tab="${k}" aria-current="${k === active ? 'page' : 'false'}">
       <svg viewBox="0 0 24 24" aria-hidden="true">${icon}</svg><span>${label}</span>
@@ -1255,6 +1526,49 @@ const actions = {
   },
   'rotate-no': () => { db.settings.rotationPromptWeek = weekInfo(db).week; persist(); render(); },
   'show-cardio': () => { ui.showCardio = true; render(); },
+  'open-builder': () => openBuilder(),
+  'welcome-sample': () => { db.settings.welcomed = true; persist(); render(); },
+  'b-exit': () => { ui.b = null; ui.tab = 'plan'; render(); },
+  'b-next': () => { ui.b.step = Math.min(B_STEPS.length - 1, ui.b.step + 1); window.scrollTo(0, 0); render(); },
+  'b-back': () => { ui.b.step = Math.max(0, ui.b.step - 1); window.scrollTo(0, 0); render(); },
+  'b-step': (d) => { ui.b.step = +d.v; window.scrollTo(0, 0); render(); },
+  'b-set': (d) => {
+    const p = ui.b.draft;
+    if (d.multi) {
+      const arr = new Set(p[d.k] || []);
+      if (arr.has(d.v)) arr.delete(d.v); else arr.add(d.v);
+      p[d.k] = [...arr];
+    } else p[d.k] = d.k === 'sessionMin' ? +d.v : d.v || (d.k === 'weightGoal' ? null : '');
+    render();
+  },
+  'b-days': (d) => {
+    ui.b.draft[d.k] = +d.v;
+    if (d.k === 'liftDays') ui.b.liftEdited = true; else ui.b.cardioEdited = true;
+    render();
+  },
+  'b-suggested': () => { ui.b.liftEdited = false; ui.b.cardioEdited = false; ui.b.splitEdited = false; render(); },
+  'b-split': (d) => { ui.b.draft.split = d.v; ui.b.splitEdited = true; render(); },
+  'b-apply': () => applyBuilt(),
+  'b-ref': (d) => {
+    const det = $('details.refs');
+    if (det) det.open = true;
+    $(`#ref-${d.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  },
+  'undo-plan': () => {
+    const prev = db.previousPlan;
+    if (!prev || !confirm('Switch back to your previous plan? (You can switch again afterwards.)')) return;
+    db.previousPlan = { plan: db.plan, dayModes: { ...db.settings.dayModes }, deloadEvery: db.settings.deloadEvery, savedAt: Date.now() };
+    db.plan = prev.plan;
+    db.settings.dayModes = prev.dayModes;
+    db.settings.deloadEvery = prev.deloadEvery;
+    persist(); render(); toast('Previous plan restored.');
+  },
+  'add-lift-day': () => {
+    const day = ui.planDay;
+    db.plan[day] = { name: 'Custom', items: [] };
+    db.settings.dayModes[day] = 'lift';
+    persist(); render();
+  },
   'edit-day-mode': (d) => { ui.planDay = d.day; ui.tab = 'plan'; window.scrollTo(0, 0); render(); },
   'day-mode': (d) => {
     db.settings.dayModes[ui.planDay] = d.v;
@@ -1403,6 +1717,7 @@ document.addEventListener('change', (e) => {
     });
     return;
   }
+  if (el.dataset?.bgoal && ui.b) { render(); return; }
   if (a === 'pk-muscle') { picker.muscle = el.value; renderPickerList(); return; }
   if (a === 'pe-ex') { $('#pe-new').hidden = el.value !== '__new'; fillMeta(el.value); return; }
   if (a === 'plan-name') { db.plan[ui.planDay].name = el.value.trim() || db.plan[ui.planDay].name; persist(); return; }
@@ -1412,6 +1727,12 @@ document.addEventListener('change', (e) => {
 
 document.addEventListener('input', (e) => {
   if (e.target.id === 'pk-q') { picker.q = e.target.value; renderPickerList(); }
+  if (e.target.dataset?.b && ui.b) builderInput(e.target);
+  if (e.target.dataset?.bgoal && ui.b) {
+    ui.b.draft.goals[e.target.dataset.bgoal] = +e.target.value;
+    const lbl = $(`#gv-${e.target.dataset.bgoal}`);
+    if (lbl) lbl.textContent = e.target.value;
+  }
 });
 
 $('#sheet').addEventListener('click', (e) => { if (e.target.id === 'sheet') closeSheet(); });
