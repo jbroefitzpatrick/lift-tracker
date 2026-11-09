@@ -63,7 +63,9 @@ export function currentFatigue(db, now = Date.now()) {
     const t = s.finishedAt || s.startedAt;
     const h = (now - t) / HOUR;
     if (!t || h > WINDOW_H || h < 0) continue;
-    const loads = liftLoads(db, s.entries.map((e) => ({ exerciseId: e.exerciseId, sets: goodSets(e) })));
+    // A 'too much' check-in counts a bit more fatigue, 'easy' a bit less.
+    const fbMult = (e) => (e.feedback === 'hard' || e.joint ? 1.25 : e.feedback === 'easy' ? 0.8 : 1);
+    const loads = liftLoads(db, s.entries.map((e) => ({ exerciseId: e.exerciseId, sets: goodSets(e) * fbMult(e) })));
     addLoads(f, loads, h, s.isDeload ? 0.6 : 1);
   }
   const a = db.activeSession;

@@ -4,6 +4,56 @@
 const search = (title) => `https://pubmed.ncbi.nlm.nih.gov/?term=${encodeURIComponent(title)}`;
 
 export const REFS = {
+  mifflin1990: {
+    cite: 'Mifflin MD, et al. (1990). A new predictive equation for resting energy expenditure in healthy individuals. Am J Clin Nutr 51(2):241–247.',
+    finding: 'The Mifflin-St Jeor equation estimates resting energy use from weight, height, age and sex; it is among the most accurate common equations.',
+    url: 'https://pubmed.ncbi.nlm.nih.gov/?term=A+new+predictive+equation+for+resting+energy+expenditure+in+healthy+individuals',
+  },
+  ainsworth2011: {
+    cite: 'Ainsworth BE, et al. (2011). 2011 Compendium of Physical Activities: a second update of codes and MET values. Med Sci Sports Exerc 43(8):1575–1581.',
+    finding: 'Standard energy costs (METs) for activities — used here to estimate calories burned by lifting and cardio.',
+    url: 'https://pubmed.ncbi.nlm.nih.gov/?term=2011+Compendium+of+Physical+Activities+second+update',
+  },
+  hall2008: {
+    cite: 'Hall KD (2008). What is the required energy deficit per unit weight loss? Int J Obes 32(3):573–576.',
+    finding: 'The common "3,500 kcal per pound" rule is only a rough approximation; real changes depend on body composition and time.',
+    url: 'https://pubmed.ncbi.nlm.nih.gov/?term=What+is+the+required+energy+deficit+per+unit+weight+loss',
+  },
+  morton2018: {
+    cite: 'Morton RW, et al. (2018). A systematic review, meta-analysis and meta-regression of the effect of protein supplementation on resistance training-induced gains in muscle mass and strength in healthy adults. Br J Sports Med 52(6):376–384.',
+    finding: 'Muscle gains from extra protein plateaued around 1.6 g/kg/day (up to ~2.2 g/kg for some people).',
+    url: 'https://pubmed.ncbi.nlm.nih.gov/?term=Morton+protein+supplementation+resistance+training+meta-regression+2018',
+  },
+  jager2017: {
+    cite: 'Jäger R, et al. (2017). International Society of Sports Nutrition position stand: protein and exercise. J Int Soc Sports Nutr 14:20.',
+    finding: '1.4–2.0 g/kg/day for most exercising people, spread as ~20–40 g doses every 3–4 hours.',
+    url: 'https://pubmed.ncbi.nlm.nih.gov/?term=International+Society+of+Sports+Nutrition+Position+Stand+protein+and+exercise+2017',
+  },
+  helms2014protein: {
+    cite: 'Helms ER, et al. (2014). A systematic review of dietary protein during caloric restriction in resistance trained lean athletes: a case for higher intakes. Int J Sport Nutr Exerc Metab 24(2):127–138.',
+    finding: 'During a diet, 2.3–3.1 g/kg of lean mass per day best protects muscle in lean, trained people.',
+    url: 'https://pubmed.ncbi.nlm.nih.gov/?term=dietary+protein+during+caloric+restriction+in+resistance+trained+lean+athletes',
+  },
+  schoenfeld2018meal: {
+    cite: 'Schoenfeld BJ, Aragon AA (2018). How much protein can the body use in a single meal for muscle-building? Implications for daily protein distribution. J Int Soc Sports Nutr 15:10.',
+    finding: 'About 0.4 g/kg per meal across at least four meals (≈1.6 g/kg/day) is a practical way to maximize muscle building.',
+    url: 'https://pubmed.ncbi.nlm.nih.gov/?term=How+much+protein+can+the+body+use+in+a+single+meal+for+muscle-building',
+  },
+  dga2020: {
+    cite: 'U.S. Department of Agriculture and U.S. Department of Health and Human Services (2020). Dietary Guidelines for Americans, 2020–2025. 9th ed.',
+    finding: 'Fiber: about 14 g per 1,000 kcal eaten.',
+    url: 'https://www.dietaryguidelines.gov/',
+  },
+  peos2019: {
+    cite: 'Peos JJ, et al. (2019). Intermittent dieting: theoretical considerations for the athlete. Sports 7(1):22.',
+    finding: 'Planned breaks at maintenance during long diets may ease the body’s adaptive response and help adherence; evidence in athletes is still limited.',
+    url: 'https://pubmed.ncbi.nlm.nih.gov/?term=Intermittent+dieting+theoretical+considerations+for+the+athlete',
+  },
+  byrne2018: {
+    cite: 'Byrne NM, et al. (2018). Intermittent energy restriction improves weight loss efficiency in obese men: the MATADOR study. Int J Obes 42(2):129–138.',
+    finding: 'Alternating 2 weeks of dieting with 2 weeks at maintenance produced more fat loss, and better maintenance afterward, than continuous dieting.',
+    url: 'https://pubmed.ncbi.nlm.nih.gov/?term=MATADOR+study+intermittent+energy+restriction',
+  },
   acsm2009: {
     cite: 'American College of Sports Medicine (2009). Progression models in resistance training for healthy adults. Med Sci Sports Exerc 41(3):687–708.',
     finding: 'Novices: 1–3 sets of 8–12 reps, 2–3 days/week, full body. Intermediate: 3–4 days/week; advanced: 4–6 days with splits. Heavier loads and 2–3+ min rest for strength; moderate loads and 1–2 min for growth; light loads, 10–25 reps and short rest for muscular endurance.',

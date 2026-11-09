@@ -308,12 +308,14 @@ const equipOf = (type) => (type?.startsWith('barbell') ? 'barbell' : type);
 function pickExercise(db, p, slotKey, variant, usedToday, role) {
   const slot = SLOTS[slotKey];
   const equip = p.equipment?.length ? p.equipment : Object.keys(EQUIPMENT);
-  const blocked = new Set((p.limits || []).flatMap((l) => JOINT_STRESS[l] || []));
+  const gym = db.gyms?.find((g) => g.id === db.settings?.activeGym);
+  const prefs = db.exPrefs || {};
+  const blocked = new Set([...(p.limits || []).flatMap((l) => JOINT_STRESS[l] || []), ...(gym?.unavailable || []), ...Object.keys(prefs).filter((k) => prefs[k] === 'never')]);
   const cands = Object.values(db.exercises).filter((e) => slot.patterns.includes(e.pattern)
     && equip.includes(equipOf(e.type)) && !blocked.has(e.id) && !usedToday.has(e.id));
   if (!cands.length) return null;
   const easier = p.experience === 'beginner' || (+p.age || 30) >= 65;
-  const rank = (e) => { const i = slot.prefer.indexOf(e.id); return (i < 0 ? 100 : i) + (easier && DEMANDING.includes(e.id) ? 50 : 0); };
+  const rank = (e) => { const i = slot.prefer.indexOf(e.id); return (i < 0 ? 100 : i) + (easier && DEMANDING.includes(e.id) ? 50 : 0) - (prefs[e.id] === 'fav' ? 30 : 0); };
   cands.sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
   const pick = cands[Math.min(variant, cands.length - 1)];
   // A hard isolation move is not worth it for a beginner or older lifter; the slot is skipped.

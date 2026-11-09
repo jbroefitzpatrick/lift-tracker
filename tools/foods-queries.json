@@ -1,0 +1,692 @@
+{
+ "chicken-breast": [
+  "^Chicken, broilers or fryers, breast, meat only, cooked, roasted",
+  "Chicken breast, cooked",
+  "protein"
+ ],
+ "chicken-thigh": [
+  "^Chicken, broilers or fryers, thigh, meat only, cooked, roasted",
+  "Chicken thigh, cooked",
+  "protein"
+ ],
+ "canned-chicken": [
+  "^Chicken, canned, meat only, with broth",
+  "Canned chicken",
+  "protein"
+ ],
+ "ground-beef-90": [
+  "^Beef, ground, 90% lean meat / 10% fat, patty, cooked, broiled",
+  "Ground beef 90% lean, cooked",
+  "protein"
+ ],
+ "ground-beef-80": [
+  "^Beef, ground, 80% lean meat / 20% fat, patty, cooked, broiled",
+  "Ground beef 80% lean, cooked",
+  "protein"
+ ],
+ "sirloin": [
+  "^Beef, top sirloin, steak, separable lean only, trimmed to 1/8\" fat, choice, cooked, broiled",
+  "Sirloin steak, cooked",
+  "protein"
+ ],
+ "beef-roast": [
+  "^Beef, round, eye of round, roast, separable lean only.*cooked, roasted",
+  "Lean beef roast, cooked",
+  "protein"
+ ],
+ "bison": [
+  "^Game meat, bison, ground, cooked, pan-broiled",
+  "Ground bison, cooked",
+  "protein"
+ ],
+ "ground-turkey": [
+  "^Turkey, ground, 93% lean, 7% fat, pan-broiled crumbles",
+  "Ground turkey 93% lean, cooked",
+  "protein"
+ ],
+ "turkey-breast": [
+  "^Turkey, whole, breast, meat only, cooked, roasted",
+  "Turkey breast, roasted",
+  "protein"
+ ],
+ "turkey-deli": [
+  "^Turkey breast, sliced, prepackaged|^Turkey, white, rotisserie, deli cut",
+  "Deli turkey",
+  "protein"
+ ],
+ "ham": [
+  "^Ham, sliced, regular",
+  "Ham, sliced",
+  "protein"
+ ],
+ "pork-tenderloin": [
+  "^Pork, fresh, loin, tenderloin, separable lean only, cooked, roasted",
+  "Pork tenderloin, cooked",
+  "protein"
+ ],
+ "bacon": [
+  "^Pork, cured, bacon, cooked, pan-fried|^Pork, cured, bacon, pre-sliced, cooked, pan-fried",
+  "Bacon, cooked",
+  "protein"
+ ],
+ "lamb": [
+  "^Lamb, ground, cooked, broiled",
+  "Ground lamb, cooked",
+  "protein"
+ ],
+ "salmon": [
+  "^Fish, salmon, Atlantic, farmed, cooked, dry heat",
+  "Salmon, cooked",
+  "protein"
+ ],
+ "tuna-can": [
+  "^Fish, tuna, light, canned in water, drained solids",
+  "Tuna, canned in water",
+  "protein"
+ ],
+ "tilapia": [
+  "^Fish, tilapia, cooked, dry heat",
+  "Tilapia, cooked",
+  "protein"
+ ],
+ "cod": [
+  "^Fish, cod, Atlantic, cooked, dry heat",
+  "Cod, cooked",
+  "protein"
+ ],
+ "shrimp": [
+  "^Crustaceans, shrimp, cooked|^Crustaceans, shrimp, mixed species, cooked, moist heat",
+  "Shrimp, cooked",
+  "protein"
+ ],
+ "sardines": [
+  "^Fish, sardine, Atlantic, canned in oil, drained solids with bone",
+  "Sardines, canned",
+  "protein"
+ ],
+ "egg": [
+  "^Egg, whole, cooked, hard-boiled",
+  "Egg, whole",
+  "protein"
+ ],
+ "egg-white": [
+  "^Egg, white, raw, fresh",
+  "Egg whites",
+  "protein"
+ ],
+ "greek-yogurt": [
+  "^Yogurt, Greek, plain, nonfat",
+  "Greek yogurt, nonfat",
+  "dairy"
+ ],
+ "greek-yogurt-low": [
+  "^Yogurt, Greek, plain, lowfat",
+  "Greek yogurt, low-fat",
+  "dairy"
+ ],
+ "cottage-cheese": [
+  "^Cheese, cottage, lowfat, 2% milkfat",
+  "Cottage cheese 2%",
+  "dairy"
+ ],
+ "milk-2": [
+  "^Milk, reduced fat, fluid, 2% milkfat, with added vitamin A and vitamin D",
+  "Milk, 2%",
+  "dairy"
+ ],
+ "milk-skim": [
+  "^Milk, nonfat, fluid, with added vitamin A and vitamin D",
+  "Milk, skim",
+  "dairy"
+ ],
+ "milk-whole": [
+  "^Milk, whole, 3.25% milkfat, with added vitamin D",
+  "Milk, whole",
+  "dairy"
+ ],
+ "choc-milk": [
+  "^Milk, chocolate, fluid, commercial, reduced fat",
+  "Chocolate milk, reduced fat",
+  "dairy"
+ ],
+ "whey": [
+  "Protein powder whey based",
+  "Whey protein powder",
+  "protein"
+ ],
+ "cheddar": [
+  "^Cheese, cheddar$|^Cheese, cheddar \\(",
+  "Cheddar cheese",
+  "dairy"
+ ],
+ "mozzarella": [
+  "^Cheese, mozzarella, low moisture, part-skim",
+  "Mozzarella, part-skim",
+  "dairy"
+ ],
+ "parmesan": [
+  "^Cheese, parmesan, grated$",
+  "Parmesan, grated",
+  "dairy"
+ ],
+ "cream-cheese": [
+  "^Cheese, cream$",
+  "Cream cheese",
+  "dairy"
+ ],
+ "sour-cream": [
+  "^Cream, sour, cultured",
+  "Sour cream",
+  "dairy"
+ ],
+ "tofu": [
+  "^Tofu, firm, prepared with calcium sulfate",
+  "Tofu, firm",
+  "protein"
+ ],
+ "tempeh": [
+  "^Tempeh$",
+  "Tempeh",
+  "protein"
+ ],
+ "edamame": [
+  "^Edamame, frozen, prepared",
+  "Edamame",
+  "protein"
+ ],
+ "black-beans": [
+  "^Beans, black, mature seeds, cooked, boiled, without salt",
+  "Black beans, cooked",
+  "carb"
+ ],
+ "pinto-beans": [
+  "^Beans, pinto, mature seeds, cooked, boiled, without salt",
+  "Pinto beans, cooked",
+  "carb"
+ ],
+ "kidney-beans": [
+  "^Beans, kidney, all types, mature seeds, cooked, boiled, without salt",
+  "Kidney beans, cooked",
+  "carb"
+ ],
+ "lentils": [
+  "^Lentils, mature seeds, cooked, boiled, without salt",
+  "Lentils, cooked",
+  "carb"
+ ],
+ "chickpeas": [
+  "^Chickpeas \\(garbanzo beans, bengal gram\\), mature seeds, cooked, boiled, without salt",
+  "Chickpeas, cooked",
+  "carb"
+ ],
+ "jerky": [
+  "^Snacks, beef jerky, chopped and formed",
+  "Beef jerky",
+  "protein"
+ ],
+ "white-rice": [
+  "^Rice, white, long-grain, regular, enriched, cooked",
+  "White rice, cooked",
+  "carb"
+ ],
+ "brown-rice": [
+  "^Rice, brown, long-grain, cooked",
+  "Brown rice, cooked",
+  "carb"
+ ],
+ "oats": [
+  "^Cereals, oats, regular and quick, not fortified, dry",
+  "Oats, dry",
+  "carb"
+ ],
+ "oatmeal": [
+  "^Cereals, oats, regular and quick, unenriched, cooked with water",
+  "Oatmeal, cooked",
+  "carb"
+ ],
+ "cream-of-rice": [
+  "^Cereals, CREAM OF RICE, cooked with water",
+  "Cream of rice, cooked",
+  "carb"
+ ],
+ "wheat-bread": [
+  "^Bread, whole-wheat, commercially prepared",
+  "Whole wheat bread",
+  "carb"
+ ],
+ "white-bread": [
+  "^Bread, white, commercially prepared [(]includes",
+  "White bread",
+  "carb"
+ ],
+ "bagel": [
+  "^Bagels, plain, enriched",
+  "Bagel, plain",
+  "carb"
+ ],
+ "english-muffin": [
+  "^English muffins, plain, enriched",
+  "English muffin",
+  "carb"
+ ],
+ "flour-tortilla": [
+  "^Tortillas, ready-to-bake or -fry, flour, refrigerated|^Tortillas, ready-to-bake or -fry, flour",
+  "Flour tortilla",
+  "carb"
+ ],
+ "corn-tortilla": [
+  "^Tortillas, ready-to-bake or -fry, corn",
+  "Corn tortilla",
+  "carb"
+ ],
+ "pasta": [
+  "^Pasta, cooked, enriched, without added salt",
+  "Pasta, cooked",
+  "carb"
+ ],
+ "couscous": [
+  "^Couscous, cooked",
+  "Couscous, cooked",
+  "carb"
+ ],
+ "quinoa": [
+  "^Quinoa, cooked",
+  "Quinoa, cooked",
+  "carb"
+ ],
+ "potato": [
+  "^Potatoes, baked, flesh and skin, without salt",
+  "Potato, baked",
+  "carb"
+ ],
+ "sweet-potato": [
+  "^Sweet potato, cooked, baked in skin, flesh, without salt",
+  "Sweet potato, baked",
+  "carb"
+ ],
+ "cheerios": [
+  "CHEERIOS$",
+  "Cheerios",
+  "carb"
+ ],
+ "corn-flakes": [
+  "CORN FLAKES",
+  "Corn flakes",
+  "carb"
+ ],
+ "granola": [
+  "^Cereals ready-to-eat, granola, homemade",
+  "Granola",
+  "carb"
+ ],
+ "rice-cakes": [
+  "^Snacks, rice cakes, brown rice, plain",
+  "Rice cakes",
+  "carb"
+ ],
+ "pancakes": [
+  "^Pancakes, plain, prepared from recipe",
+  "Pancakes",
+  "carb"
+ ],
+ "waffle": [
+  "^Waffles, plain, frozen, ready -to-heat, toasted|^Waffles, plain, frozen",
+  "Waffle, frozen",
+  "carb"
+ ],
+ "banana": [
+  "^Bananas, raw",
+  "Banana",
+  "fruit"
+ ],
+ "apple": [
+  "^Apples, raw, with skin",
+  "Apple",
+  "fruit"
+ ],
+ "orange": [
+  "^Oranges, raw, all commercial varieties",
+  "Orange",
+  "fruit"
+ ],
+ "blueberries": [
+  "^Blueberries, raw",
+  "Blueberries",
+  "fruit"
+ ],
+ "strawberries": [
+  "^Strawberries, raw",
+  "Strawberries",
+  "fruit"
+ ],
+ "raspberries": [
+  "^Raspberries, raw",
+  "Raspberries",
+  "fruit"
+ ],
+ "grapes": [
+  "^Grapes, red or green",
+  "Grapes",
+  "fruit"
+ ],
+ "raisins": [
+  "^Raisins, (dark, )?seedless",
+  "Raisins",
+  "fruit"
+ ],
+ "pineapple": [
+  "^Pineapple, raw, all varieties",
+  "Pineapple",
+  "fruit"
+ ],
+ "mango": [
+  "^Mangos, raw",
+  "Mango",
+  "fruit"
+ ],
+ "watermelon": [
+  "^Watermelon, raw",
+  "Watermelon",
+  "fruit"
+ ],
+ "dates": [
+  "^Dates, medjool",
+  "Medjool dates",
+  "fruit"
+ ],
+ "applesauce": [
+  "^Applesauce, canned, unsweetened",
+  "Applesauce, unsweetened",
+  "fruit"
+ ],
+ "orange-juice": [
+  "^Orange juice, raw",
+  "Orange juice",
+  "fruit"
+ ],
+ "broccoli": [
+  "^Broccoli, cooked, boiled, drained, without salt",
+  "Broccoli, cooked",
+  "veg"
+ ],
+ "spinach": [
+  "^Spinach, raw",
+  "Spinach",
+  "veg"
+ ],
+ "lettuce": [
+  "^Lettuce, green leaf, raw",
+  "Lettuce / salad greens",
+  "veg"
+ ],
+ "kale": [
+  "^Kale, raw",
+  "Kale",
+  "veg"
+ ],
+ "carrots": [
+  "^Carrots, raw",
+  "Carrots",
+  "veg"
+ ],
+ "bell-pepper": [
+  "^Peppers, sweet, red, raw",
+  "Bell pepper",
+  "veg"
+ ],
+ "tomato": [
+  "^Tomatoes, red, ripe, raw, year round average",
+  "Tomato",
+  "veg"
+ ],
+ "cucumber": [
+  "^Cucumber, with peel, raw",
+  "Cucumber",
+  "veg"
+ ],
+ "green-beans": [
+  "^Beans, snap, green, cooked, boiled, drained, without salt",
+  "Green beans, cooked",
+  "veg"
+ ],
+ "corn": [
+  "^Corn, sweet, yellow, cooked, boiled, drained, without salt",
+  "Sweet corn, cooked",
+  "veg"
+ ],
+ "peas": [
+  "^Peas, green, frozen, cooked, boiled, drained, without salt",
+  "Green peas, cooked",
+  "veg"
+ ],
+ "onion": [
+  "^Onions, raw",
+  "Onion",
+  "veg"
+ ],
+ "mushrooms": [
+  "^Mushrooms, white, raw",
+  "Mushrooms",
+  "veg"
+ ],
+ "zucchini": [
+  "^Squash, summer, zucchini, includes skin, raw",
+  "Zucchini",
+  "veg"
+ ],
+ "cauliflower": [
+  "^Cauliflower, cooked, boiled, drained, without salt",
+  "Cauliflower, cooked",
+  "veg"
+ ],
+ "asparagus": [
+  "^Asparagus, cooked, boiled, drained",
+  "Asparagus, cooked",
+  "veg"
+ ],
+ "brussels": [
+  "^Brussels sprouts, cooked, boiled, drained, without salt",
+  "Brussels sprouts, cooked",
+  "veg"
+ ],
+ "avocado": [
+  "^Avocados, raw, all commercial varieties",
+  "Avocado",
+  "fat"
+ ],
+ "olive-oil": [
+  "^Oil, olive, salad or cooking",
+  "Olive oil",
+  "fat"
+ ],
+ "butter": [
+  "^Butter, salted",
+  "Butter",
+  "fat"
+ ],
+ "peanut-butter": [
+  "^Peanut butter, smooth style, without salt",
+  "Peanut butter",
+  "fat"
+ ],
+ "almond-butter": [
+  "^Nuts, almond butter, plain, without salt",
+  "Almond butter",
+  "fat"
+ ],
+ "almonds": [
+  "^Nuts, almonds$",
+  "Almonds",
+  "fat"
+ ],
+ "walnuts": [
+  "^Nuts, walnuts, english",
+  "Walnuts",
+  "fat"
+ ],
+ "cashews": [
+  "^Nuts, cashew nuts, dry roasted, without salt",
+  "Cashews",
+  "fat"
+ ],
+ "peanuts": [
+  "^Peanuts, all types, dry-roasted, without salt",
+  "Peanuts",
+  "fat"
+ ],
+ "chia": [
+  "^Seeds, chia seeds, dried",
+  "Chia seeds",
+  "fat"
+ ],
+ "flax": [
+  "^Seeds, flaxseed",
+  "Flaxseed",
+  "fat"
+ ],
+ "mayo": [
+  "^Salad dressing, mayonnaise, regular",
+  "Mayonnaise",
+  "fat"
+ ],
+ "ranch": [
+  "^Salad dressing, ranch dressing, regular",
+  "Ranch dressing",
+  "fat"
+ ],
+ "hummus": [
+  "^Hummus, commercial",
+  "Hummus",
+  "fat"
+ ],
+ "dark-chocolate": [
+  "^Chocolate, dark, 70-85% cacao solids",
+  "Dark chocolate 70–85%",
+  "treat"
+ ],
+ "trail-mix": [
+  "^Snacks, trail mix, regular$",
+  "Trail mix",
+  "fat"
+ ],
+ "granola-bar": [
+  "^Snacks, granola bars, hard, plain",
+  "Granola bar",
+  "treat"
+ ],
+ "ice-cream": [
+  "^Ice creams, vanilla$",
+  "Ice cream, vanilla",
+  "treat"
+ ],
+ "pizza": [
+  "^Pizza, cheese topping, regular crust, frozen, cooked",
+  "Cheese pizza",
+  "treat"
+ ],
+ "fries": [
+  "^Potatoes, french fried.*oven-heated",
+  "French fries",
+  "treat"
+ ],
+ "hamburger": [
+  "^Fast foods, hamburger; single, regular patty; plain",
+  "Hamburger",
+  "treat"
+ ],
+ "burrito": [
+  "^Fast foods, burrito, with beans and cheese",
+  "Bean & cheese burrito",
+  "treat"
+ ],
+ "chips": [
+  "^Snacks, potato chips, plain, salted",
+  "Potato chips",
+  "treat"
+ ],
+ "tortilla-chips": [
+  "^Snacks, tortilla chips, plain, white corn",
+  "Tortilla chips",
+  "treat"
+ ],
+ "popcorn": [
+  "^Snacks, popcorn, air-popped",
+  "Popcorn, air-popped",
+  "carb"
+ ],
+ "pretzels": [
+  "^Snacks, pretzels, hard, plain, salted",
+  "Pretzels",
+  "carb"
+ ],
+ "crackers": [
+  "^Crackers, saltines",
+  "Saltine crackers",
+  "carb"
+ ],
+ "honey": [
+  "^Honey$",
+  "Honey",
+  "carb"
+ ],
+ "maple-syrup": [
+  "^Syrups, maple",
+  "Maple syrup",
+  "carb"
+ ],
+ "jam": [
+  "^Jams and preserves$",
+  "Jam",
+  "carb"
+ ],
+ "sugar": [
+  "^Sugars, granulated",
+  "Sugar",
+  "carb"
+ ],
+ "ketchup": [
+  "^Catsup$",
+  "Ketchup",
+  "other"
+ ],
+ "salsa": [
+  "^Sauce, salsa, ready-to-serve",
+  "Salsa",
+  "other"
+ ],
+ "marinara": [
+  "^Sauce, pasta, spaghetti/marinara, ready-to-serve",
+  "Marinara sauce",
+  "other"
+ ],
+ "bbq-sauce": [
+  "^Sauce, barbecue",
+  "BBQ sauce",
+  "other"
+ ],
+ "soy-sauce": [
+  "^Soy sauce made from soy and wheat \\(shoyu\\)$",
+  "Soy sauce",
+  "other"
+ ],
+ "cola": [
+  "^Beverages, carbonated, cola, regular|^Carbonated beverage, cola",
+  "Cola",
+  "drink"
+ ],
+ "coffee": [
+  "^Beverages, coffee, brewed, prepared with tap water$",
+  "Coffee, black",
+  "drink"
+ ],
+ "beer": [
+  "^Alcoholic beverage, beer, regular, all",
+  "Beer",
+  "drink"
+ ],
+ "wine": [
+  "wine, table, red, Merlot",
+  "Red wine",
+  "drink"
+ ]
+}

@@ -1,6 +1,7 @@
 // Offline support: cache the app shell, serve from cache first, refresh in the background.
 // Bump VERSION whenever you deploy changes so phones pick up the new files.
-const VERSION = 'lift-v4';
+const VERSION = 'lift-v5';
+const IMG_CACHE = 'lift-img-v1'; // exercise photos, cached as they're viewed
 const SHELL = [
   './',
   './index.html',
@@ -17,6 +18,16 @@ const SHELL = [
   './js/cardio-bank.js',
   './js/builder.js',
   './js/science.js',
+  './js/crypto.js',
+  './js/gym.js',
+  './js/records.js',
+  './js/nutrition.js',
+  './js/foods.js',
+  './js/year.js',
+  './js/exercise-info.js',
+  './js/ui-food.js',
+  './js/ui-year.js',
+  './js/ui-extra.js',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/apple-touch-icon.png',
@@ -29,14 +40,26 @@ self.addEventListener('install', (e) => {
 self.addEventListener('activate', (e) => {
   e.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== VERSION).map((k) => caches.delete(k))))
+      .then((keys) => Promise.all(keys.filter((k) => k !== VERSION && k !== IMG_CACHE).map((k) => caches.delete(k))))
       .then(() => self.clients.claim()),
   );
 });
 
 self.addEventListener('fetch', (e) => {
   const req = e.request;
-  if (req.method !== 'GET' || new URL(req.url).origin !== location.origin) return;
+  const url = new URL(req.url);
+  // Exercise photos from free-exercise-db: cache-first so they work offline once seen.
+  if (req.method === 'GET' && url.hostname === 'raw.githubusercontent.com' && url.pathname.startsWith('/yuhonas/free-exercise-db/')) {
+    e.respondWith(caches.open(IMG_CACHE).then(async (cache) => {
+      const hit = await cache.match(req);
+      if (hit) return hit;
+      const res = await fetch(req);
+      if (res.ok || res.type === 'opaque') cache.put(req, res.clone());
+      return res;
+    }));
+    return;
+  }
+  if (req.method !== 'GET' || url.origin !== location.origin) return;
   e.respondWith(
     caches.open(VERSION).then(async (cache) => {
       const cached = await cache.match(req, { ignoreSearch: true });
