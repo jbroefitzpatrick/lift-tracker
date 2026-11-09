@@ -2,3 +2,7 @@
 Thumbs.db
 node_modules/
 .vscode/
+
+# Cloudflare wrangler local cache
+.wrangler/
+node_modules/
