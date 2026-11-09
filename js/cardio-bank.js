@@ -63,10 +63,12 @@ const RAW = [
   ['easy-walk', 'Easy walk', 'walk', 'recovery', 30, 'low', L.walk, 'Outdoors if you can.'],
   ['yoga', 'Yoga / breathwork', 'recovery', 'recovery', 30, 'none', L.none, 'Mobility flow and breathing.'],
   ['mobility', 'Mobility routine', 'recovery', 'recovery', 20, 'none', L.none, 'Hips, T-spine, ankles, shoulders.'],
+  // Logged automatically from interval and circuit work in a workout; not offered as a suggestion.
+  ['conditioning', 'Intervals and circuits', 'recovery', 'hard', 20, 'high', L.none, 'Logged from a workout.', true],
 ];
 
-export const CARDIO = Object.fromEntries(RAW.map(([id, name, modality, intensity, minutes, impact, loads, how]) =>
-  [id, { id, name, modality, intensity, minutes, impact, loads, how }]));
+export const CARDIO = Object.fromEntries(RAW.map(([id, name, modality, intensity, minutes, impact, loads, how, hidden]) =>
+  [id, { id, name, modality, intensity, minutes, impact, loads, how, hidden: !!hidden }]));
 
 // Fatigue (in set-equivalents per muscle) that a cardio session adds.
 export function cardioLoad(c, minutes) {

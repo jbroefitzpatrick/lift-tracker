@@ -4,6 +4,41 @@
 const search = (title) => `https://pubmed.ncbi.nlm.nih.gov/?term=${encodeURIComponent(title)}`;
 
 export const REFS = {
+  tabata1996: {
+    cite: 'Tabata I, et al. (1996). Effects of moderate-intensity endurance and high-intensity intermittent training on anaerobic capacity and VO2max. Med Sci Sports Exerc 28(10):1327–1330.',
+    finding: '8 × 20 sec all-out with 10 sec rest, 5 days a week for 6 weeks, raised both VO₂max and anaerobic capacity.',
+    url: 'https://pubmed.ncbi.nlm.nih.gov/8897392/',
+  },
+  burgomaster2005: {
+    cite: 'Burgomaster KA, et al. (2005). Six sessions of sprint interval training increases muscle oxidative potential and cycle endurance capacity in humans. J Appl Physiol 98(6):1985–1990.',
+    finding: '4–7 × 30 sec all-out cycle sprints with 4 min recovery doubled endurance time after just two weeks.',
+    url: 'https://pubmed.ncbi.nlm.nih.gov/15705728/',
+  },
+  little2010: {
+    cite: 'Little JP, et al. (2010). A practical model of low-volume high-intensity interval training induces mitochondrial biogenesis in human skeletal muscle. J Physiol 588(6):1011–1022.',
+    finding: '10 × 60 sec at ~90% of max heart rate with 75 sec recovery gave endurance adaptations similar to much longer sessions.',
+    url: 'https://pubmed.ncbi.nlm.nih.gov/20100740/',
+  },
+  helgerud2007: {
+    cite: 'Helgerud J, et al. (2007). Aerobic high-intensity intervals improve VO2max more than moderate training. Med Sci Sports Exerc 39(4):665–671.',
+    finding: '4 × 4 min at 90–95% of max heart rate with 3 min active recovery improved VO₂max more than steady moderate running.',
+    url: 'https://pubmed.ncbi.nlm.nih.gov/17414804/',
+  },
+  klika2013: {
+    cite: "Klika B, Jordan C (2013). High-intensity circuit training using body weight: maximum results with minimal investment. ACSM's Health Fit J 17(3):8–13.",
+    finding: 'A 12-exercise bodyweight circuit (30 sec work, 10 sec transition), alternating body regions, gives an efficient mix of strength and conditioning work.',
+    url: search('High-intensity circuit training using body weight maximum results with minimal investment'),
+  },
+  markovic2007: {
+    cite: 'Markovic G (2007). Does plyometric training improve vertical jump height? A meta-analytical review. Br J Sports Med 41(6):349–355.',
+    finding: 'Plyometric training reliably improves jump height (roughly 5–8%), using low-rep, high-quality jumps with full recovery.',
+    url: 'https://pubmed.ncbi.nlm.nih.gov/17347316/',
+  },
+  gibala2012: {
+    cite: 'Gibala MJ, et al. (2012). Physiological adaptations to low-volume, high-intensity interval training in health and disease. J Physiol 590(5):1077–1084.',
+    finding: 'Review: short, hard intervals produce endurance and metabolic adaptations comparable to longer steady training, in less time.',
+    url: 'https://pubmed.ncbi.nlm.nih.gov/22289907/',
+  },
   mifflin1990: {
     cite: 'Mifflin MD, et al. (1990). A new predictive equation for resting energy expenditure in healthy individuals. Am J Clin Nutr 51(2):241–247.',
     finding: 'The Mifflin-St Jeor equation estimates resting energy use from weight, height, age and sex; it is among the most accurate common equations.',

@@ -746,3 +746,12 @@ body.resting .ex-nav { bottom: calc(var(--tabbar-h) + 104px + env(safe-area-inse
 
 .set-row.done .check { background: var(--good); border-color: var(--good); color: var(--on-good); }
 .ex-screen { padding-bottom: 8px; }
+
+/* ---------- v9: conditioning ---------- */
+.tpl { padding: 14px 0; border-bottom: 1px solid var(--line); }
+.tpl:last-of-type { border-bottom: 0; }
+.tpl p { margin: 4px 0 10px; }
+.tpl-items { color: var(--text); line-height: 1.45; }
+.tpl .row { gap: 8px; }
+.check.play { color: var(--accent); border-color: var(--accent); }
+.check.play .ic { fill: currentColor; stroke: none; }

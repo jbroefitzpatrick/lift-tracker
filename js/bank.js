@@ -30,7 +30,10 @@ export const MUSCLES = {
   'hip-flexors': 'Hip flexors',
 };
 
-export const CATEGORIES = { compound: 'Compound', accessory: 'Accessory' };
+export const CATEGORIES = { compound: 'Compound', accessory: 'Accessory', conditioning: 'Conditioning' };
+
+// How a set is measured. Lifts use reps (with weight); conditioning uses time, distance or calories.
+export const METRICS = { reps: 'Reps', time: 'Time', distance: 'Distance', cal: 'Calories' };
 
 export const PATTERNS = {
   'horizontal-push': 'Horizontal push',
@@ -63,6 +66,11 @@ export const PATTERNS = {
   'anti-rotation': 'Anti-rotation',
   rotation: 'Rotation',
   carry: 'Carry',
+  sprint: 'Sprint',
+  erg: 'Erg intervals',
+  plyo: 'Plyometric',
+  'circuit-move': 'Circuit move',
+  isometric: 'Isometric hold',
 };
 
 // [id, name, category (C/A), equipment type, pattern, primary muscles, secondary muscles]
@@ -219,14 +227,50 @@ const RAW = [
   ['cable-woodchop', 'Cable woodchop', 'A', 'cable', 'rotation', 'obliques', 'abs'],
 
   // ---- Full body ----
-  ['farmers-carry', "Farmer's carry", 'C', 'dumbbell', 'carry', 'forearms traps', 'abs glutes'],
+  ['farmers-carry', "Farmer's carry", 'C', 'dumbbell', 'carry', 'forearms traps', 'abs glutes', 'distance'],
+
+  // ---- Conditioning (category X): sprints, ergs, plyometrics, circuit moves ----
+  // 8th field = how a set is measured (time | distance | cal | reps).
+  ['run-sprint', 'Sprint', 'X', 'bodyweight', 'sprint', 'hamstrings glutes', 'quads calves hip-flexors', 'distance'],
+  ['hill-sprint', 'Hill sprint', 'X', 'bodyweight', 'sprint', 'glutes hamstrings', 'calves quads', 'time'],
+  ['run-interval', 'Run interval', 'X', 'bodyweight', 'sprint', 'quads calves', 'hamstrings glutes hip-flexors', 'time'],
+  ['bike-sprint', 'Bike sprint', 'X', 'machine', 'erg', 'quads glutes', 'hamstrings calves', 'time'],
+  ['bike-interval', 'Bike interval', 'X', 'machine', 'erg', 'quads', 'glutes calves', 'time'],
+  ['row-interval', 'Rower interval', 'X', 'machine', 'erg', 'lats upper-back quads', 'glutes hamstrings biceps', 'distance'],
+  ['ski-interval', 'SkiErg interval', 'X', 'machine', 'erg', 'lats triceps', 'abs upper-back', 'time'],
+  ['assault-bike-cal', 'Air bike calories', 'X', 'machine', 'erg', 'quads front-delts', 'glutes lats triceps', 'cal'],
+  ['sled-push', 'Sled push', 'X', 'machine', 'carry', 'quads glutes', 'calves', 'distance'],
+  ['jump-rope', 'Jump rope', 'X', 'bodyweight', 'plyo', 'calves', 'front-delts', 'time'],
+  ['box-jump', 'Box jump', 'X', 'bodyweight', 'plyo', 'quads glutes', 'calves hamstrings', 'reps'],
+  ['broad-jump', 'Broad jump', 'X', 'bodyweight', 'plyo', 'glutes quads', 'hamstrings calves', 'reps'],
+  ['squat-jump', 'Squat jump', 'X', 'bodyweight', 'plyo', 'quads glutes', 'calves', 'reps'],
+  ['lateral-bound', 'Lateral bound', 'X', 'bodyweight', 'plyo', 'glutes abductors', 'quads calves', 'reps'],
+  ['pogo-hop', 'Pogo hops', 'X', 'bodyweight', 'plyo', 'calves', 'quads', 'time'],
+  ['burpee', 'Burpee', 'X', 'bodyweight', 'circuit-move', 'chest quads', 'front-delts triceps abs', 'reps'],
+  ['mountain-climber', 'Mountain climber', 'X', 'bodyweight', 'circuit-move', 'abs hip-flexors', 'front-delts quads', 'time'],
+  ['jumping-jack', 'Jumping jacks', 'X', 'bodyweight', 'circuit-move', 'calves', 'side-delts hip-flexors', 'time'],
+  ['high-knees', 'High knees', 'X', 'bodyweight', 'circuit-move', 'hip-flexors', 'quads calves abs', 'time'],
+  ['air-squat', 'Air squat', 'X', 'bodyweight', 'circuit-move', 'quads glutes', 'adductors', 'reps'],
+  ['bodyweight-lunge', 'Walking lunge (bodyweight)', 'X', 'bodyweight', 'circuit-move', 'quads glutes', 'adductors hamstrings', 'reps'],
+  ['wall-sit', 'Wall sit', 'X', 'bodyweight', 'isometric', 'quads', 'glutes', 'time'],
+  ['plank', 'Plank', 'X', 'bodyweight', 'isometric', 'abs', 'front-delts obliques', 'time'],
+  ['side-plank', 'Side plank', 'X', 'bodyweight', 'isometric', 'obliques', 'abs abductors', 'time'],
+  ['crunch', 'Crunch', 'X', 'bodyweight', 'circuit-move', 'abs', 'obliques', 'reps'],
+  ['bench-dip', 'Bench dip', 'X', 'bodyweight', 'circuit-move', 'triceps', 'chest front-delts', 'reps'],
+  ['pushup-rotation', 'Push-up with rotation', 'X', 'bodyweight', 'circuit-move', 'chest obliques', 'front-delts triceps', 'reps'],
+  ['step-up-bw', 'Step-up (bodyweight)', 'X', 'bodyweight', 'circuit-move', 'quads glutes', 'calves', 'reps'],
+  ['kb-swing', 'Kettlebell swing', 'X', 'dumbbell', 'hinge', 'glutes hamstrings', 'lower-back forearms upper-back', 'reps'],
+  ['db-thruster', 'Dumbbell thruster', 'X', 'dumbbell', 'circuit-move', 'quads front-delts', 'glutes triceps', 'reps'],
+  ['wall-ball', 'Wall ball', 'X', 'dumbbell', 'circuit-move', 'quads front-delts', 'glutes triceps', 'reps'],
+  ['med-ball-slam', 'Medicine ball slam', 'X', 'dumbbell', 'circuit-move', 'lats abs', 'front-delts triceps', 'reps'],
+  ['battle-ropes', 'Battle ropes', 'X', 'bodyweight', 'circuit-move', 'front-delts', 'forearms abs', 'time'],
 ];
 
 const split = (s) => (s ? s.split(' ') : []);
 
-export const BANK = Object.fromEntries(RAW.map(([id, name, cat, type, pattern, primary, secondary]) => [id, {
-  id, name, type, pattern,
-  category: cat === 'C' ? 'compound' : 'accessory',
+export const BANK = Object.fromEntries(RAW.map(([id, name, cat, type, pattern, primary, secondary, metric]) => [id, {
+  id, name, type, pattern, metric: metric || 'reps',
+  category: cat === 'C' ? 'compound' : cat === 'X' ? 'conditioning' : 'accessory',
   primary: split(primary),
   secondary: split(secondary),
 }]));
@@ -240,10 +284,10 @@ export function syncBank(exercises, defaultIncrements) {
       exercises[b.id] = {
         id: b.id, name: b.name, type: b.type, increment: defaultIncrements[b.type] || 5,
         substitute: '', notes: '', minRir: 0, rules: {}, startWeight: null,
-        category: b.category, pattern: b.pattern, primary: [...b.primary], secondary: [...b.secondary],
+        category: b.category, pattern: b.pattern, metric: b.metric, primary: [...b.primary], secondary: [...b.secondary],
       };
     } else if (!ex.customMeta) {
-      Object.assign(ex, { category: b.category, pattern: b.pattern, primary: [...b.primary], secondary: [...b.secondary] });
+      Object.assign(ex, { category: b.category, pattern: b.pattern, metric: b.metric, primary: [...b.primary], secondary: [...b.secondary] });
     }
   }
   for (const ex of Object.values(exercises)) {

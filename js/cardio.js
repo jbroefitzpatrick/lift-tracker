@@ -109,7 +109,7 @@ export function scoreCardio(db, c, ctx) {
 
 export function suggestCardio(db, day, isToday, now = Date.now()) {
   const ctx = cardioContext(db, day, isToday, now);
-  const list = Object.values(CARDIO).map((c) => scoreCardio(db, c, ctx))
+  const list = Object.values(CARDIO).filter((c) => !c.hidden).map((c) => scoreCardio(db, c, ctx))
     .sort((a, b) => b.score - a.score || a.c.name.localeCompare(b.c.name));
   return { ctx, list };
 }

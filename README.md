@@ -8,8 +8,9 @@ See [SPEC.md](SPEC.md) for the original requirements.
 
 - **Train:** log sets with steppers, rest timer (supersets aware), double progression with automatic weight jumps, deloads, pain flags, PR detection, warm-up sets with plates per side, effort targets that ramp through each block, quick check-ins ("easy / about right / too much / joint pain") that adjust next week's sets, notes, reordering, adding exercises, freestyle workouts, and editing past workouts.
 - **Plan:** a plan builder from your age, body composition, experience, equipment and goal mix (strength, size, physique, muscular endurance, cardio endurance, fat loss), with suggested days and splits. A **year planner** lays bulk / cut / maintenance / mini-cut / diet-break phases over 52 weeks, lined up with training blocks and deloads.
-- **Exercises:** 122-exercise library grouped by muscle, compound vs accessory, similarity-based swaps, form cues, step-by-step instructions and photos, favorite / never / "not at this gym" marks, multiple gyms with their own bars, plates and dumbbell steps.
+- **Exercises:** 155-exercise library grouped by muscle, compound, accessory and conditioning, similarity-based swaps, form cues, step-by-step instructions and photos, favorite / never / "not at this gym" marks, multiple gyms with their own bars, plates and dumbbell steps.
 - **Cardio:** day types, a cardio bank, muscle-freshness tracking, and suggestions that respect fatigue and upcoming lift days.
+- **Conditioning:** sprints, erg intervals, plyometrics and circuit moves log rounds by time, distance, calories or reps, and link into circuits just like lifts. Built-in templates (Tabata, sprint intervals, 10 × 1 min, 4 × 4 min, the 7-minute circuit, kettlebell and plyometric circuits and more) follow published protocols. Timed rounds have a work timer that rolls into rest.
 - **Nutrition:** calorie and macro targets from your phase, adaptive maintenance from your logs, weekly check-ins with suggested adjustments, a 138-food USDA database plus your own foods, meal logging, saved meals and scaled meal ideas.
 - **Body:** bodyweight with 7-day average and target rate, measurements, and private progress photos.
 - **Data:** IndexedDB + localStorage mirror, daily snapshots, encrypted backups. See [docs/DATA-SECURITY.md](docs/DATA-SECURITY.md).
@@ -37,6 +38,7 @@ Every recommendation links to its sources in the app (Plan builder → Why these
 | `js/gym.js` | Plate math, rounding to real weights, warm-ups, availability |
 | `js/fatigue.js` | Muscle fatigue / freshness model |
 | `js/cardio-bank.js`, `js/cardio.js` | Cardio options and fatigue-aware suggestions |
+| `js/conditioning.js` | Interval and circuit templates, round measures |
 | `js/bank.js` | Exercise library classification and similarity |
 | `js/exercise-info.js` | Form cues, steps and photo links (generated) |
 | `js/foods.js` | USDA food data (generated) |

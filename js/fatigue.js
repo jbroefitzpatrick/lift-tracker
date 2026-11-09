@@ -54,7 +54,7 @@ export function dayMode(db, day) {
   return db.plan[day] ? 'lift' : 'rest';
 }
 
-const goodSets = (entry) => entry.sets.filter((s) => !s.pain && (s.done ?? true) && s.reps > 0).length;
+const goodSets = (entry) => entry.sets.filter((s) => !s.pain && (s.done ?? true) && (s.reps > 0 || s.time > 0 || s.dist > 0 || s.cal > 0)).length;
 
 // Measured fatigue right now from logged lifting (including an in-progress workout) and cardio.
 export function currentFatigue(db, now = Date.now()) {

@@ -12,7 +12,7 @@ function history(db, exId, beforeTs = Infinity) {
   return out.filter((h) => h.sets.length);
 }
 
-const volumeOf = (sets) => sets.reduce((a, x) => a + x.weight * x.reps, 0);
+const volumeOf = (sets) => sets.reduce((a, x) => a + (x.weight || 0) * (x.reps || 0), 0);
 
 // All-time bests for one exercise.
 export function bestRecords(db, exId) {
