@@ -310,6 +310,29 @@ function ensureSession(day) {
 }
 
 // Superset rest: start only once every member of the group has finished this round.
+const nextGroupSize = (session, uid) => session.order.filter((u) => groupNum(session.entries[u].group) === groupNum(session.entries[uid].group)).length;
+
+// Where to go after logging a set in a superset or circuit: the next exercise in this round,
+// then (after the rest) the first exercise with a set left in the next round. Exercises with
+// fewer sets drop out of later rounds. When the whole group is done: the next exercise after it.
+function nextInCircuit(session, uid, idx) {
+  const entry = session.entries[uid];
+  const g = groupNum(entry.group);
+  const members = session.order.filter((u) => groupNum(session.entries[u].group) === g && !session.entries[u].pain);
+  if (members.length < 2) return null;
+  const open = (u, r) => { const s = session.entries[u].sets[r]; return !!s && !s.done && !s.pain; };
+  const pos = members.indexOf(uid);
+  for (let k = pos + 1; k < members.length; k++) if (open(members[k], idx)) return { uid: members[k], round: idx, sameRound: true };
+  const rounds = Math.max(...members.map((u) => session.entries[u].sets.length));
+  for (let r = idx + 1; r < rounds; r++) for (const u of members) if (open(u, r)) return { uid: u, round: r };
+  // Anything skipped earlier in the group.
+  for (const u of members) { const r = session.entries[u].sets.findIndex((s) => !s.done && !s.pain); if (r >= 0) return { uid: u, round: r }; }
+  // Group finished: the next exercise in the workout with sets left.
+  const last = Math.max(...members.map((u) => session.order.indexOf(u)));
+  const after = session.order.slice(last + 1).find((u) => { const e = session.entries[u]; return !e.pain && e.sets.some((s) => !s.done); });
+  return after ? { uid: after, round: 0, groupDone: true } : { groupDone: true, end: true };
+}
+
 function maybeRest(session, uid, setIndex) {
   const entry = session.entries[uid];
   const g = groupNum(entry.group);
@@ -322,7 +345,9 @@ function maybeRest(session, uid, setIndex) {
   });
   if (allDone) { stopRest(); return; }
   const sec = Math.max(...members.map((m) => m.restSec || 0));
-  const label = members.length > 1 ? `Rest · superset ${groupNum(entry.group)}, round ${setIndex + 1}` : 'Rest';
+  const nx = members.length > 1 ? nextInCircuit(session, uid, setIndex) : null;
+  const nextEx = nx?.uid ? db.exercises[session.entries[nx.uid].exerciseId] : null;
+  const label = nextEx ? `Rest · next: ${nextEx.name}, set ${nx.round + 1}` : members.length > 1 ? `Rest · round ${setIndex + 1} done` : 'Rest';
   startRest(sec, label);
 }
 
@@ -347,6 +372,17 @@ function logSet(uid, idx, vals) {
   persist();
   haptic();
   maybeRest(session, uid, idx);
+  // On the exercise screen, move through the superset/circuit automatically.
+  if (ui.tab === 'exercise' && ui.exUid === uid && db.settings.autoAdvance !== false) {
+    const nx = nextInCircuit(session, uid, idx);
+    if (nx?.uid) {
+      ui.backUid = uid;
+      ui.exUid = nx.uid;
+      window.scrollTo(0, 0);
+      const name = db.exercises[session.entries[nx.uid].exerciseId]?.name || 'next exercise';
+      toast(nx.groupDone ? `${linkLabel(nextGroupSize(session, uid))} done. Next: ${name}` : `${nx.sameRound ? 'Next' : 'After the rest'}: ${name}, set ${nx.round + 1}`);
+    }
+  }
   render();
 }
 
@@ -496,7 +532,8 @@ function groupsOf(items) {
     if (last && last.g === g) last.items.push(item);
     else groups.push({ g, items: [item] });
   }
-  return groups.map((grp) => ({ ...grp, linked: grp.items.filter((i) => !i.extra).length > 1 }));
+  // Exercises added during a workout can be linked too; a swap's replacement row can't.
+  return groups.map((grp) => ({ ...grp, linked: grp.items.filter((i) => !i.swapChild).length > 1 }));
 }
 
 const linkLabel = (n) => (n > 2 ? 'Circuit' : 'Superset');
@@ -702,6 +739,8 @@ function screenExercise() {
   const rir = rirTarget(weekInfo(db));
   const allDone = entry && sets.every((s) => s.done);
   const prev = items[idx - 1];
+  // After an automatic move within a circuit, back returns to the exercise just done.
+  const back = (ui.backUid && ui.backUid !== item.uid && items.find((i) => i.uid === ui.backUid)) || prev;
   const next = items[idx + 1];
   const aim = conditioning ? `${t.sets} × ${fmtTarget(metric, item.target)}${item.restSec ? `, rest ${fmtRest(item.restSec)}` : ''}`
     : t.weight == null ? 'Pick a working weight to set your baseline'
@@ -737,7 +776,7 @@ function screenExercise() {
       <button class="chip" data-a="swap" data-uid="${item.uid}">Replace</button>
       ${grp.linked ? `<button class="chip" data-a="unlink-one" data-uid="${item.uid}">Unlink</button>` : next ? `<button class="chip" data-a="link-next" data-uid="${item.uid}">Link with next</button>` : ''}
     </div>
-    ${grp.linked ? `<div class="group-note"><b>${linkLabel(grp.items.length)}</b> · ${grp.items.map((i) => (i === item ? `<span class="cur">${esc(i.ex.name)}</span>` : esc(i.ex.name))).join(' → ')}</div>` : ''}
+    ${grp.linked ? `<div class="group-note"><b>${linkLabel(grp.items.length)}</b>${entry ? (() => { const n = Math.max(...grp.items.map((i) => session.entries[i.uid]?.sets.length || i.sets)); const r = entry.sets.findIndex((x) => !x.done); return ` · round ${r < 0 ? entry.sets.length : r + 1} of ${n}`; })() : ''} · ${grp.items.map((i) => (i === item ? `<span class="cur">${esc(i.ex.name)}</span>` : esc(i.ex.name))).join(' → ')}</div>` : ''}
     <p class="aim-line">${aim}${conditioning ? '' : t.rir ? ` · ${t.rir} RIR` : rir ? ` · about ${rir} in reserve` : ''}</p>
     ${!conditioning && t.st.last ? `<p class="muted small">Last time: ${fmtLast(t.st.last, ex)}</p>` : ''}
     ${conditioning ? train.condInfo(item, entry, ex, metric) : ''}
@@ -754,7 +793,7 @@ function screenExercise() {
     ${ex.rules?.rehab && !ended ? `<label class="toggle"><input type="checkbox" data-a="painfree" data-uid="${item.uid}" ${entry?.painFree ? 'checked' : ''}><span>Pain-free today (needed to increase weight)</span></label>` : ''}
     ${checkin}
     <div class="ex-nav">
-      ${prev ? `<button class="btn" data-a="ex-go" data-uid="${prev.uid}" aria-label="Previous: ${esc(prev.ex.name)}">${icon('left')}</button>` : ''}
+      ${back ? `<button class="btn" data-a="ex-go" data-uid="${back.uid}" aria-label="Back to ${esc(back.ex.name)}">${icon('left')}</button>` : ''}
       ${!session ? '<button class="btn primary grow" data-a="start-workout">Start workout</button>'
         : next ? `<button class="btn primary grow" data-a="ex-go" data-uid="${next.uid}">Next: ${esc(next.ex.name)}</button>`
           : '<button class="btn primary grow" data-a="finish">Finish workout</button>'}
@@ -874,7 +913,7 @@ function sessionItems(session, planItems) {
     else if (planned && planned.exerciseId !== e.exerciseId) swappedFrom = planned.ex.name;
     return {
       uid: u, exerciseId: e.exerciseId, ex, group: e.group, repMin: e.repMin, repMax: e.repMax, restSec: e.restSec,
-      sets: e.sets.length, note: planned && !swappedFrom ? planned.note : '', swappedFrom, extra: !!e.parentUid || !!e.added,
+      sets: e.sets.length, note: planned && !swappedFrom ? planned.note : '', swappedFrom, extra: !!e.parentUid || !!e.added, swapChild: !!e.parentUid,
       metric: e.metric, target: e.target,
     };
   }).filter(Boolean);
@@ -2229,6 +2268,7 @@ function screenSettings() {
       <div class="field"><span>Current week of program · week ${wi.cyclePos} of ${wi.cycleLen} in this block${wi.isDeload ? ' (deload)' : ''}</span>
         <div class="row">${stepper('set-week', wi.week, 1)}<button class="btn" data-a="set-week">Set</button></div></div>
       <label class="toggle"><input type="checkbox" data-a="set-warmups" ${s.warmups ? 'checked' : ''}><span>Warm-up sets on the first main lift</span></label>
+      <label class="toggle"><input type="checkbox" data-a="set-autoadvance" ${s.autoAdvance !== false ? 'checked' : ''}><span>In supersets and circuits, move to the next exercise after each set</span></label>
       <label class="toggle"><input type="checkbox" data-a="set-ramp" ${s.rampEffort ? 'checked' : ''}><span>Ramp effort through each block (reps in reserve 3 → 1)</span></label>
       <label class="toggle"><input type="checkbox" data-a="sound" ${s.sound ? 'checked' : ''}><span>Beep when rest ends</span></label>
       ${legacy ? `<details class="sub-details"><summary>Sample-plan options</summary>
@@ -2477,8 +2517,9 @@ const actions = {
   'progress-view': (d) => { ui.tab = d.v; ui.progressTab = d.v; ui.historyEx = null; render(); },
   'start-empty': () => { if (db.activeSession) return toast('Finish or discard the current workout first.'); startSession(ui.day, true); render(); openPicker({ mode: 'session-add' }); },
   'session-add': () => openPicker({ mode: 'session-add' }),
-  'ex-open': (d) => { ui.exUid = d.uid; ui.tab = 'exercise'; window.scrollTo(0, 0); render(); },
-  'ex-go': (d) => { ui.exUid = d.uid; window.scrollTo(0, 0); render(); },
+  'ex-open': (d) => { ui.backUid = null; ui.exUid = d.uid; ui.tab = 'exercise'; window.scrollTo(0, 0); render(); },
+  'ex-go': (d) => { ui.backUid = null; ui.exUid = d.uid; window.scrollTo(0, 0); render(); },
+  'set-autoadvance': (d, el) => { db.settings.autoAdvance = el.checked; persist(); },
   'ex-close': () => { ui.tab = 'today'; render(); },
   'check-inline': (d) => {
     const sx = ensureSession(ui.day);
