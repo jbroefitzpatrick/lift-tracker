@@ -60,7 +60,7 @@ export const sideOf = (view, half) => (view === 'back' ? (half === 'a' ? 'left' 
 // values: muscle → 0..1 (how strongly to colour it).
 // Options for the pain picker: sel (Set of "area:side" to mark), joints (draw joint markers),
 // hint (muscles to outline, e.g. the current exercise's).
-export function bodySvg(view, values = {}, { cls = '', label = '', viewBox = '0 0 200 400', sel = null, joints = false, hint = [] } = {}) {
+export function bodySvg(view, values = {}, { cls = '', label = '', viewBox = '0 0 200 400', sel = null, joints = false, hint = [], mark = null } = {}) {
   const regions = view === 'back' ? BACK : FRONT;
   const half = (h) => {
     const side = sideOf(view, h);
@@ -68,15 +68,15 @@ export function bodySvg(view, values = {}, { cls = '', label = '', viewBox = '0 
       const v = Math.max(0, Math.min(1, values[m] || 0));
       const fill = v > 0.02 ? `style="--v:${v.toFixed(2)}"` : '';
       const on = sel?.has(`${m}:${side}`);
-      return `<path d="${d}" data-m="${m}" class="mus ${v > 0.02 ? 'on' : ''} ${on ? 'sel' : ''} ${hint.includes(m) ? 'hint' : ''}" ${fill}><title>${NAMES[m]}</title></path>`;
+      return `<path d="${d}" data-m="${m}" class="mus ${v > 0.02 ? 'on' : ''} ${on ? 'sel' : ''} ${hint.includes(m) ? 'hint' : ''} ${mark?.has(`${m}:${side}`) ? 'hurt' : ''}" ${fill}><title>${NAMES[m]}</title></path>`;
     }).join('');
     const js = joints ? Object.entries(JOINT_POS).filter(([j]) => j !== 'neck' || h === 'a').map(([j, [x, y]]) => {
       const s = j === 'neck' ? 'center' : side;
-      return `<circle cx="${x}" cy="${y}" r="7" data-j="${j}" class="joint ${sel?.has(`${j}:${s}`) ? 'sel' : ''}"><title>${JOINT_NAMES[j]}</title></circle>`;
+      return `<circle cx="${x}" cy="${y}" r="7" data-j="${j}" class="joint ${sel?.has(`${j}:${s}`) ? 'sel' : ''} ${mark?.has(`${j}:${s}`) ? 'hurt' : ''}"><title>${JOINT_NAMES[j]}</title></circle>`;
     }).join('') : '';
     return shapes + js;
   };
-  return `<svg class="body-map ${cls}" viewBox="${viewBox}" role="img" aria-label="${label || `Body, ${view} view`}">
+  return `<svg class="body-map ${cls}" data-view="${view}" viewBox="${viewBox}" role="img" aria-label="${label || `Body, ${view} view`}">
     <g class="sil">${SIL}<g transform="translate(200 0) scale(-1 1)">${SIL}</g></g>
     <g class="muscles"><g data-half="a">${half('a')}</g><g data-half="b" transform="translate(200 0) scale(-1 1)">${half('b')}</g></g>
   </svg>`;

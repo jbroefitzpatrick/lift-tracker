@@ -184,11 +184,11 @@ export function createExtras(ctx) {
       <p class="muted small" id="storage-status">Checking storage…</p>
       <label class="toggle"><input type="checkbox" data-a="set-backup-remind" ${db.settings.backupReminder ? 'checked' : ''}><span>Remind me to back up weekly</span></label>
       <label class="toggle"><input type="checkbox" id="bk-photos"><span>Include progress photos in backups</span></label>
-      <button class="btn primary block" data-a="quick-backup">Back up now (encrypted)</button>
+      <button class="btn primary block" data-a="quick-backup">Back up</button>
       ${savedPass() ? '<p class="muted small">Passphrase remembered on this device for one-tap backups. <button class="text-btn inline" data-a="forget-pass">Forget it</button></p>' : ''}
     </div>
     <div class="list-group">
-      <button class="list-row" data-a="export-json"><span class="grow">Export unencrypted backup</span>${chev}</button>
+      <button class="list-row" data-a="export-json"><span class="grow">Export plain backup</span>${chev}</button>
       <button class="list-row" data-a="export-csv"><span class="grow">Export history as CSV</span>${chev}</button>
       <label class="list-row"><span class="grow">Check a backup file</span>${chev}<input id="check-file" type="file" accept="application/json,.json" hidden></label>
       <label class="list-row"><span class="grow">Import a backup</span>${chev}<input id="import-file" type="file" accept="application/json,.json" hidden></label>

@@ -40,7 +40,9 @@ export function createPain(ctx) {
   function openPicker(opts = {}) {
     const ex = opts.uid ? ctx.db.exercises[ctx.sessionEntry(opts.uid)?.exerciseId] : null;
     Object.assign(st, { view: 'front', sel: new Set(), level: null, uid: opts.uid || null, i: opts.i ?? null, hint: ex ? ex.primary : [] });
-    if (ex && ['lats', 'upper-back', 'traps', 'rear-delts', 'triceps', 'lower-back', 'glutes', 'hamstrings'].includes(ex.primary[0])) st.view = 'back';
+    const BACK = ['lats', 'upper-back', 'traps', 'rear-delts', 'triceps', 'lower-back', 'glutes', 'hamstrings'];
+    if (ex && BACK.includes(ex.primary[0])) st.view = 'back';
+    if (opts.pre) { st.sel.add(opts.pre); if (BACK.includes(opts.pre.split(':')[0])) st.view = 'back'; }
     const options = AREAS.map((a) => `<option value="${a}">${esc(JOINTS[a]?.name || MUSCLE_NAMES[a])}</option>`).join('');
     ctx.openSheet(`<h2>Where does it hurt?</h2>
       <p class="muted small">Tap muscles or joints (the circles). Left and right are separate.${ex ? ` Outlined: what ${esc(ex.name)} works.` : ''}</p>
@@ -94,10 +96,10 @@ export function createPain(ctx) {
     if (!act.length) return '';
     const due = new Set(painDue(db).map((r) => r.id));
     return `<section class="card pain-card" aria-label="Pain and soreness">
-      <div class="row between"><h3>Pain check</h3><button class="link-btn" data-a="pain-report">Report</button></div>
+      <div class="row between"><h3>Pain check</h3><button class="link-btn" data-a="pain-report">Log</button></div>
       ${act.map((r) => `<div class="pain-row">
         <span class="lv-dot lv-${r.level}" aria-hidden="true"></span>
-        <span class="grow"><b>${esc(areaLabel(r.area, r.side))}</b><span class="pick-sub">${LEVELS[r.level].name} · ${LEVELS[r.level].verb}</span></span>
+        <span class="grow"><b>${esc(areaLabel(r.area, r.side))}</b><span class="pick-sub">${LEVELS[r.level].name}</span></span>
         ${due.has(r.id) ? `<div class="seg-mini" role="group" aria-label="How is your ${esc(areaLabel(r.area, r.side).toLowerCase())} today">
           <button data-a="pain-check" data-id="${r.id}" data-v="-1">Better</button><button data-a="pain-check" data-id="${r.id}" data-v="0">Same</button><button data-a="pain-check" data-id="${r.id}" data-v="1">Worse</button></div>`
           : `<button class="text-btn small-text" data-a="pain-check" data-id="${r.id}" data-v="-9">Gone</button>`}
@@ -125,7 +127,7 @@ export function createPain(ctx) {
   }
 
   const actions = {
-    'pain-report': (d) => openPicker({ uid: d.uid, i: d.i != null ? +d.i : null }),
+    'pain-report': (d) => openPicker({ uid: d.uid, i: d.i != null ? +d.i : null, pre: d.pre || null }),
     'pain-view': (d) => { st.view = d.v; refresh(); },
     'pain-level': (d) => {
       st.level = +d.v;

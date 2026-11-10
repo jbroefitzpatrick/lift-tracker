@@ -67,12 +67,12 @@ export function createTrain(ctx) {
   function openPlanner(n = null) {
     st.avail = defaultAvail(n);
     const left = DAY_KEYS.length - dayIndex(todayKey());
-    ctx.openSheet(`<h2>Plan this week</h2>
-      <p class="muted small">Pick the days you can train and how long you have. Every main lift still gets done; accessories are fitted to your time. Your normal plan is unchanged and comes back next week.</p>
+    ctx.openSheet(`<h2>Adjust week</h2>
+      <p class="muted small">Choose your days and time. Main lifts always stay.</p>
       <div class="chips" role="group" aria-label="Number of days">${Array.from({ length: Math.min(6, left) }, (_, i) => `<button class="chip ${n === i + 1 ? 'on' : ''}" data-a="wk-n" data-v="${i + 1}">${i + 1} day${i ? 's' : ''}</button>`).join('')}</div>
       <div id="wk-body">${plannerBody()}</div>
-      <button class="btn primary block big" data-a="wk-apply">Use this week</button>
-      ${ctx.db.week?.start === mondayOf(todayStr()) ? '<button class="btn block" data-a="wk-reset">Back to my normal plan</button>' : ''}
+      <button class="btn primary block big" data-a="wk-apply">Apply</button>
+      ${ctx.db.week?.start === mondayOf(todayStr()) ? '<button class="btn block" data-a="wk-reset">Reset to plan</button>' : ''}
       <button class="btn plain block" data-a="close-sheet">Cancel</button>
       <p class="muted small">Weekly volume matters more than which day it lands on. ${ctx.refChips(['schoenfeld2016freq'])}</p>`);
   }
@@ -88,13 +88,12 @@ export function createTrain(ctx) {
     const planned = db.week?.start === start;
     if (missed.length && !planned) {
       return `<div class="notice-card week-prompt"><p><b>Missed ${missed.map((t) => `${FULL[t.day]}'s ${esc(t.name)}`).join(' and ')}?</b> Fit ${missed.length > 1 ? 'them' : 'it'} into the rest of the week. Main lifts first, accessories as time allows.</p>
-        <div class="row"><button class="btn primary" data-a="wk-open">Rearrange my week</button><button class="btn" data-a="wk-dismiss">Not now</button></div></div>`;
+        <div class="row"><button class="btn primary" data-a="wk-open">Adjust week</button><button class="btn" data-a="wk-dismiss">Not now</button></div></div>`;
     }
     if (!planned && dayIndex(todayKey()) <= 1 && liftTemplates(db).length) {
       const left = 7 - dayIndex(todayKey());
       return `<div class="notice-card week-prompt"><div class="row between"><b>How many days can you train this week?</b><button class="icon-btn subtle" data-a="wk-dismiss" aria-label="Dismiss">${icon('x')}</button></div>
-        <div class="chips">${Array.from({ length: Math.min(6, left) }, (_, i) => `<button class="chip" data-a="wk-open" data-v="${i + 1}">${i + 1}</button>`).join('')}</div>
-        <p class="muted small">Or ignore this and follow your plan as usual.</p></div>`;
+        <div class="chips">${Array.from({ length: Math.min(6, left) }, (_, i) => `<button class="chip" data-a="wk-open" data-v="${i + 1}">${i + 1}</button>`).join('')}</div></div>`;
     }
     return '';
   }
@@ -113,8 +112,8 @@ export function createTrain(ctx) {
       ${db.gyms.length > 1 ? `<div class="field"><span>Where you're training</span><select id="adj-gym"><option value="">Usual gym</option>${db.gyms.map((g) => `<option value="${g.id}" ${st.adjust.gymId === g.id ? 'selected' : ''}>${esc(g.name)}</option>`).join('')}</select></div>` : '<p class="muted small">Training somewhere with less equipment? Add it under Settings → Gym & equipment, then pick it here.</p>'}
       <button class="btn primary block big" data-a="adj-apply">Apply</button>
       <div class="list-group">
-        <button class="list-row" data-a="adj-split"><span class="grow">Two shorter sessions today<span class="pick-sub">Do the first half now, the rest later</span></span>${icon('right', 'chev')}</button>
-        ${o ? `<button class="list-row" data-a="adj-reset"><span class="grow">Back to the planned workout</span>${icon('right', 'chev')}</button>` : ''}
+        <button class="list-row" data-a="adj-split"><span class="grow">Split into two sessions</span>${icon('right', 'chev')}</button>
+        ${o ? `<button class="list-row" data-a="adj-reset"><span class="grow">Reset to plan</span>${icon('right', 'chev')}</button>` : ''}
       </div>
       <button class="btn plain block" data-a="close-sheet">Cancel</button>`);
   }
@@ -127,10 +126,10 @@ export function createTrain(ctx) {
     let html = '';
     const due = dueChecks(db);
     if (due.length) {
-      html += `<section class="card recov-card" aria-label="Recovery check"><h3>How do you feel today?</h3>
-        ${due.map((c) => `<div class="recov-row"><span class="grow"><b>${esc(c.name)}</b><span class="pick-sub">Trained ${c.hours < 36 ? 'yesterday' : `${Math.round(c.hours / 24)} days ago`}</span></span>
+      html += `<section class="card recov-card" aria-label="Recovery check"><h3>How do you feel?</h3>
+        ${due.map((c) => `<div class="recov-row"><b class="grow">${esc(c.name)}</b>
           <div class="seg-mini" role="group" aria-label="${esc(c.name)}">${RATINGS.map(([l, v]) => `<button data-a="rec-rate" data-g="${c.group}" data-v="${v}" data-s="${c.sessionId}" data-h="${Math.round(c.hours)}">${l}</button>`).join('')}</div></div>`).join('')}
-        <p class="muted small">Your answers teach the app how fast you recover. ${ctx.refChips(['laurent2011'])}</p></section>`;
+</section>`;
     }
     return html;
   }
@@ -147,10 +146,10 @@ export function createTrain(ctx) {
         html += `<section class="card notready-card" aria-label="Not recovered"><h3>${esc(g.name)} not recovered yet</h3>
           <p class="small">You said ${esc(g.name.toLowerCase())} ${g.rating === 2 ? 'are very sore' : 'are still sore'}. Some options:</p>
           <div class="list-group flush-inner">
-            ${alt ? `<button class="list-row" data-a="rec-swap" data-g="${g.group}" data-t="${alt.day}"><span class="grow">Do ${esc(alt.name)} today instead<span class="pick-sub">Swap days; ${esc(g.name.toLowerCase())} get more time</span></span>${icon('right', 'chev')}</button>` : ''}
+            ${alt ? `<button class="list-row" data-a="rec-swap" data-g="${g.group}" data-t="${alt.day}"><span class="grow">Swap to ${esc(alt.name)}</span>${icon('right', 'chev')}</button>` : ''}
             <button class="list-row" data-a="rec-routine" data-g="${g.group}"><span class="grow">Recovery session<span class="pick-sub">${esc(recoveryTemplateFor([g.group]).name)}, ${recoveryTemplateFor([g.group]).minutes} min</span></span>${icon('right', 'chev')}</button>
-            <button class="list-row" data-a="rec-cardio" data-g="${g.group}"><span class="grow">Easy cardio or a bodyweight circuit instead</span>${icon('right', 'chev')}</button>
-            <button class="list-row" data-a="rec-lighter" data-g="${g.group}"><span class="grow">Train anyway, lighter<span class="pick-sub">One set fewer on ${esc(g.name.toLowerCase())} today</span></span>${icon('right', 'chev')}</button>
+            <button class="list-row" data-a="rec-cardio" data-g="${g.group}"><span class="grow">Easy cardio</span>${icon('right', 'chev')}</button>
+            <button class="list-row" data-a="rec-lighter" data-g="${g.group}"><span class="grow">Train lighter<span class="pick-sub">One set fewer</span></span>${icon('right', 'chev')}</button>
           </div>
           <p class="muted small">Next week's ${esc(g.name.toLowerCase())} sessions will be a set lighter so you recover faster.</p></section>`;
       }
@@ -204,8 +203,8 @@ export function createTrain(ctx) {
     ctx.openSheet(`<h2>Add a finisher</h2>
       <div class="field"><span>Length</span><div class="segmented small-seg" role="radiogroup" aria-label="Length">${[5, 10, 15].map((m) => `<button class="${st.fin.minutes === m ? 'on' : ''}" data-a="fin-set" data-k="minutes" data-v="${m}" role="radio">${m} min</button>`).join('')}</div></div>
       <div class="field"><span>Focus</span><div class="segmented small-seg" role="radiogroup" aria-label="Focus">
-        <button class="${st.fin.mode === 'burn' ? 'on' : ''}" data-a="fin-set" data-k="mode" data-v="burn" role="radio">Burn out today's muscles</button>
-        <button class="${st.fin.mode === 'spare' ? 'on' : ''}" data-a="fin-set" data-k="mode" data-v="spare" role="radio">Spare them</button></div></div>
+        <button class="${st.fin.mode === 'burn' ? 'on' : ''}" data-a="fin-set" data-k="mode" data-v="burn" role="radio">Burn out</button>
+        <button class="${st.fin.mode === 'spare' ? 'on' : ''}" data-a="fin-set" data-k="mode" data-v="spare" role="radio">Spare</button></div></div>
       <div class="field"><span>Format</span><div class="segmented small-seg" role="radiogroup" aria-label="Format">
         <button class="${st.fin.format === 'rounds' ? 'on' : ''}" data-a="fin-set" data-k="format" data-v="rounds" role="radio">Rounds</button>
         <button class="${st.fin.format === 'emom' ? 'on' : ''}" data-a="fin-set" data-k="format" data-v="emom" role="radio">Every minute</button></div></div>
@@ -260,7 +259,7 @@ export function createTrain(ctx) {
     const g = db.runGoal;
     const wk = goalWeek(g);
     if (!g || !wk) {
-      return `<div class="card run-card"><div class="row between"><div><h3>Running goal</h3><p class="muted small">Train for a faster 5k while keeping your strength. Runs are placed around your lifting.</p></div>
+      return `<div class="card run-card"><div class="row between"><div><h3>Running goal</h3><p class="muted small">A faster 5k alongside lifting.</p></div>
         <button class="btn sm" data-a="run-open">${g ? 'Start a new goal' : 'Set up'}</button></div></div>`;
     }
     const p = paces(g, wk);
@@ -292,7 +291,7 @@ export function createTrain(ctx) {
 
   function openShare() {
     const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
-    ctx.openSheet(`<h2>Share or install the app</h2>
+    ctx.openSheet(`<h2>Share app</h2>
       <p class="small">Anyone can use it, free, with nothing to download from an app store. Send them this link:</p>
       <p class="code-box small-code">${APP_URL}</p>
       <div class="row"><button class="btn primary grow" data-a="share-app">Share link</button><button class="btn grow" data-a="cloud-copy" data-v="${APP_URL}">Copy link</button></div>
@@ -313,7 +312,7 @@ export function createTrain(ctx) {
   function installHint() {
     const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
     if (standalone || ctx.db.settings.installHintDismissed) return '';
-    return `<div class="slim-banner"><span class="grow"><b>Add this app to your home screen</b><span class="pick-sub">It opens full screen, works offline, and keeps your data safer.</span></span>
+    return `<div class="slim-banner"><span class="grow"><b>Add to home screen</b><span class="pick-sub">It opens full screen, works offline, and keeps your data safer.</span></span>
       <button class="btn sm primary" data-a="open-share">How</button><button class="icon-btn subtle" data-a="install-dismiss" aria-label="Dismiss">${icon('x')}</button></div>`;
   }
 

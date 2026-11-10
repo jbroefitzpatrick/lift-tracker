@@ -96,6 +96,13 @@ export function remainingPlannedLoads(db, day) {
     .map((e) => ({ exerciseId: e.exerciseId, sets: e.sets.filter((s) => !s.done).length })));
 }
 
+// Hours until a muscle is back above 80% fresh at this person's recovery speed.
+export function hoursToReady(m, fatigueValue) {
+  const ready = FULL_FATIGUE * 0.2;
+  if (!(fatigueValue > ready)) return 0;
+  return (HALF_LIFE_H[m] || DEFAULT_HALF_LIFE_H) * (personal[m] || 1) * Math.log2(fatigueValue / ready);
+}
+
 export function freshness(fatigue) {
   const out = {};
   for (const ms of Object.values(MUSCLE_GROUPS)) {

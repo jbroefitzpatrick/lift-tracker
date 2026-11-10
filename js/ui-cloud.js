@@ -68,10 +68,10 @@ export function createCloud(ctx) {
       <div class="row between"><b>Cloud backup is on</b><button class="btn sm" data-a="cloud-now" ${busy ? 'disabled' : ''}>Back up now</button></div>
       <p class="muted small">${status} A copy is kept for each of the last 60 days.</p>
       <div class="list-group flush">
-        <button class="list-row" data-a="cloud-code"><span class="grow">Show recovery code</span></button>
+        <button class="list-row" data-a="cloud-code"><span class="grow">Recovery code</span></button>
         <button class="list-row" data-a="cloud-restore"><span class="grow">Restore from cloud</span></button>
-        <button class="list-row" data-a="cloud-link"><span class="grow">Share setup link with a tester</span></button>
-        <button class="list-row" data-a="cloud-off"><span class="grow">Turn off on this phone</span></button>
+        <button class="list-row" data-a="cloud-link"><span class="grow">Invite a tester</span></button>
+        <button class="list-row" data-a="cloud-off"><span class="grow">Turn off</span></button>
       </div>
     </div>`;
   }
