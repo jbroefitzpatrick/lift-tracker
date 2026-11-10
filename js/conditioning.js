@@ -3,7 +3,9 @@
 // `circuit: true` links every item into one group, done as rounds with rest after each round.
 // Protocols follow the cited studies; references are in science.js.
 
-export const TEMPLATE_KINDS = { interval: 'Intervals', circuit: 'Circuits', plyo: 'Plyometrics', finisher: 'Finishers' };
+import { isAvailable } from './gym.js';
+
+export const TEMPLATE_KINDS = { interval: 'Intervals', circuit: 'Circuits', plyo: 'Plyometrics', finisher: 'Finishers', recovery: 'Recovery' };
 
 export const TEMPLATES = [
   {
@@ -89,7 +91,138 @@ export const TEMPLATES = [
     refs: ['gibala2012'],
     items: [['sled-push', 4, 'distance', 20, 0], ['farmers-carry', 4, 'distance', 40, 90]],
   },
+  // Recovery: timed foam rolling and stretching. Effects on soreness are small but real, and
+  // it feels good; hold each position without forcing it (wiewelhove2019, behm2016).
+  {
+    id: 'recover-lower', kind: 'recovery', name: 'Lower-body recovery', minutes: 10, groups: ['legs'],
+    desc: 'Foam roll, then stretch hips, hamstrings and calves. Easy pressure, slow breathing.',
+    refs: ['wiewelhove2019', 'behm2016'],
+    items: [['roll-quads', 1, 'time', 60, 10], ['roll-hamstrings', 1, 'time', 60, 10], ['roll-glutes', 1, 'time', 60, 10],
+      ['stretch-couch', 2, 'time', 45, 10], ['stretch-hamstring', 2, 'time', 45, 10], ['stretch-pigeon', 2, 'time', 45, 10], ['stretch-calf', 2, 'time', 30, 0]],
+  },
+  {
+    id: 'recover-upper', kind: 'recovery', name: 'Upper-body recovery', minutes: 10, groups: ['push', 'pull'],
+    desc: 'Upper back and lats, then chest and shoulders. Good after pressing and pulling days.',
+    refs: ['wiewelhove2019', 'behm2016'],
+    items: [['roll-upper-back', 1, 'time', 60, 10], ['roll-lats', 2, 'time', 45, 10], ['stretch-thread', 2, 'time', 45, 10],
+      ['stretch-chest', 2, 'time', 45, 10], ['stretch-crossbody', 2, 'time', 30, 10], ['dead-hang', 2, 'time', 30, 0]],
+  },
+  {
+    id: 'recover-full', kind: 'recovery', name: 'Full-body mobility', minutes: 12, groups: ['legs', 'push', 'pull', 'core'],
+    desc: 'A rest-day flow: spine, hips and shoulders through their range.',
+    refs: ['behm2016'],
+    items: [['stretch-catcow', 1, 'time', 60, 10], ['stretch-wgs', 2, 'time', 45, 10], ['stretch-9090', 1, 'time', 60, 10],
+      ['stretch-child', 1, 'time', 60, 10], ['stretch-thread', 2, 'time', 30, 10], ['stretch-couch', 2, 'time', 45, 10], ['roll-upper-back', 1, 'time', 60, 0]],
+  },
+  {
+    id: 'recover-quick', kind: 'recovery', name: '5-minute cool-down', minutes: 5,
+    desc: 'Right after a workout: a few long breaths, then the stretches that matter most.',
+    refs: ['behm2016'],
+    items: [['stretch-wgs', 2, 'time', 30, 5], ['stretch-hamstring', 2, 'time', 30, 5], ['stretch-chest', 1, 'time', 45, 5], ['stretch-child', 1, 'time', 45, 0]],
+  },
 ];
+
+// ---------- Finisher builder ----------
+// A short circuit at the end of a workout, from the conditioning and bodyweight moves.
+// mode 'burn': finish off the muscles trained today. mode 'spare': conditioning that leaves them alone.
+// format 'rounds': work each move, rest after the round. 'emom': one move per minute, rest the remainder.
+const FIN_POOL_EXTRA = ['pushup', 'dip', 'pullup', 'chinup', 'inverted-row'];
+
+export function buildFinisher(db, { minutes = 10, mode = 'burn', format = 'rounds', muscles = [] }) {
+  const trained = new Set(muscles);
+  const OUTDOOR = ['hill-sprint', 'run-sprint', 'run-interval'];
+  const ok = (e) => e && !OUTDOOR.includes(e.id) && e.pattern !== 'mobility' && e.pattern !== 'run' && e.metric !== 'distance' && isAvailable(db, e) && db.exPrefs?.[e.id] !== 'never';
+  const pool = Object.values(db.exercises).filter((e) => ok(e) && (e.category === 'conditioning' || FIN_POOL_EXTRA.includes(e.id)));
+  const overlap = (e) => e.primary.filter((m) => trained.has(m)).length + 0.5 * e.secondary.filter((m) => trained.has(m)).length;
+  const scored = pool.map((e) => {
+    const o = overlap(e);
+    let sc = mode === 'burn' ? o * 3 + (e.category !== 'conditioning' ? 1 : 0) : -o * 3 + (['erg', 'sprint'].includes(e.pattern) ? 3 : 0) + (e.pattern === 'circuit-move' ? 1 : 0);
+    if (e.pattern === 'isometric') sc -= 1;
+    return { e, sc };
+  }).sort((a, b) => b.sc - a.sc || a.e.name.localeCompare(b.e.name));
+  // Three moves with different patterns; in burn mode, one conditioning move to raise the heart rate.
+  const picks = [];
+  for (const { e } of scored) {
+    if (picks.length >= 3) break;
+    if (picks.some((p) => p.pattern === e.pattern && e.pattern !== 'circuit-move') || picks.some((p) => p.primary[0] === e.primary[0])) continue;
+    picks.push(e);
+  }
+  if (mode === 'burn' && !picks.some((p) => ['erg', 'sprint', 'plyo'].includes(p.pattern))) {
+    const cardio = scored.find(({ e }) => ['erg', 'plyo'].includes(e.pattern) && !picks.includes(e));
+    if (cardio) picks[picks.length - 1] = cardio.e;
+  }
+  const target = (e) => (e.metric === 'cal' ? 10 : e.metric === 'time' ? (format === 'emom' ? 40 : 30)
+    : ['dip', 'pullup', 'chinup'].includes(e.id) ? 8 : e.pattern === 'plyo' ? 8 : 12);
+  const metric = (e) => (e.metric === 'distance' ? 'time' : e.metric || 'reps');
+  let rounds;
+  let items;
+  if (format === 'emom') {
+    rounds = Math.max(2, Math.round(minutes / picks.length));
+    items = picks.map((e, i) => [e.id, rounds, metric(e), target(e), i === picks.length - 1 ? 20 : 20]);
+  } else {
+    const roundSec = picks.length * 45 + 60;
+    rounds = Math.max(2, Math.round((minutes * 60) / roundSec));
+    items = picks.map((e, i) => [e.id, rounds, metric(e), target(e), i === picks.length - 1 ? 60 : 0]);
+  }
+  return {
+    id: 'finisher', kind: 'finisher', circuit: true, minutes,
+    name: `${minutes}-minute ${format === 'emom' ? 'EMOM' : 'finisher'}`,
+    desc: format === 'emom'
+      ? `Every minute on the minute: one move per minute, rest for the rest of the minute. ${rounds} rounds.`
+      : `${rounds} rounds, moving between exercises without rest, then 60 sec rest.`,
+    items,
+  };
+}
+
+// ---------- Scores and targets ----------
+// One number per conditioning entry that can be compared with last time.
+// lower: true when smaller is better (time over a distance).
+export function condScore(metric, sets) {
+  const done = sets.filter((x) => x.done ?? true);
+  if (!done.length) return null;
+  const sum = (k) => done.reduce((a, x) => a + (+x[k] || 0), 0);
+  if (metric === 'distance') {
+    const timed = done.filter((x) => x.time > 0);
+    if (timed.length) { const avg = sum('time') / timed.length; return { value: avg, lower: true, label: `avg ${avg.toFixed(1)} s`, unit: 's' }; }
+    const d = sum('dist'); return { value: d, label: `${Math.round(d)} m total`, unit: 'm' };
+  }
+  if (metric === 'cal') { const c = sum('cal'); return { value: c, label: `${Math.round(c)} cal total`, unit: 'cal' }; }
+  if (metric === 'time') {
+    const r = sum('reps');
+    if (r > 0) return { value: r, label: `${r} reps total`, unit: 'reps' };
+    const t = sum('time'); return { value: t, label: `${Math.round(t)} s total`, unit: 's', weak: true };
+  }
+  const r = sum('reps'); return { value: r, label: `${r} reps total`, unit: 'reps' };
+}
+
+// Past results for the same exercise, measure and target (e.g. 100 m sprints, not 200 m).
+export function condHistory(db, exId, metric, target, beforeTs = Infinity) {
+  const out = [];
+  for (const s of db.sessions) {
+    if ((s.finishedAt || 0) >= beforeTs) continue;
+    for (const e of s.entries) {
+      if (e.exerciseId !== exId) continue;
+      const m = e.metric || db.exercises[exId]?.metric || 'reps';
+      if (m !== metric || (target != null && e.target != null && +e.target !== +target)) continue;
+      const sc = condScore(m, e.sets);
+      if (sc && !sc.weak) out.push({ date: s.date, ts: s.finishedAt, score: sc, rounds: e.sets.length, rpe: e.rpe });
+    }
+  }
+  return out.sort((a, b) => a.ts - b.ts);
+}
+
+// Next target: a small step past last time if it went well (effort 8/10 or less), else the same.
+export function condTarget(hist) {
+  const last = hist.at(-1);
+  if (!last) return null;
+  const sc = last.score;
+  const easy = last.rpe == null || last.rpe <= 8;
+  const best = hist.reduce((a, h) => (sc.lower ? Math.min(a, h.score.value) : Math.max(a, h.score.value)), sc.value);
+  let v = sc.value;
+  if (easy) v = sc.lower ? Math.round(sc.value * 0.99 * 10) / 10 : Math.ceil(sc.value * 1.03);
+  return { last: sc, best, value: v, lower: !!sc.lower, unit: sc.unit,
+    label: sc.lower ? `avg ${v.toFixed(1)} s or faster` : `${v} ${sc.unit} or more`, held: !easy };
+}
 
 // Turn a template into plan / session items with linked groups.
 export function templateItems(tpl, startGroup = 1, uidPrefix = 't') {

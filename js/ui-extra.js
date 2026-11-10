@@ -75,7 +75,7 @@ export function createExtras(ctx) {
       const pct = Math.min(100, (v / hi) * 100);
       return `<div class="fresh-row vol"><span class="fr-name">${MUSCLES[m]}</span>
         <span class="fr-bar target" style="--lo:${(lo / hi) * 100}%"><i class="${v < lo ? 'low' : ''}" style="width:${Math.max(pct, 2)}%"></i></span>
-        <span class="fr-pct">${v}/${lo}–${hi}</span></div>`;
+        <span class="fr-pct"><b>${v}</b> <span class="muted">/ ${lo}–${hi}</span></span></div>`;
     }).join('');
     return `<div class="card"><h3>Sets per muscle, last 7 days</h3>
       <p class="muted small">Hard sets, counting ½ for assisting muscles, against your weekly target${db.profile ? '' : ' (default 10–20)'}. The tick marks the low end of the target. ${ctx.refChips(['pelland2026', 'schoenfeld2017vol'])}</p>${rows}</div>`;
@@ -206,8 +206,8 @@ export function createExtras(ctx) {
     const snooze = s.backupSnoozeUntil || 0;
     if (Date.now() - last < 7 * 86400000 || Date.now() < snooze) return '';
     const days = last ? Math.floor((Date.now() - last) / 86400000) : null;
-    return `<div class="banner"><p><b>Back up your data.</b> ${days ? `Last backup was ${days} days ago.` : 'You haven\'t backed up yet.'} iOS can clear website data, so a copy in Files is your safety net.</p>
-      <div class="row"><button class="btn primary" data-a="quick-backup">Back up now</button><button class="btn" data-a="backup-snooze">Later</button></div></div>`;
+    return `<div class="slim-banner" role="status"><span class="grow"><b>Back up your data</b><span class="pick-sub">${days ? `Last backup ${days} days ago` : 'No backup yet'} · or turn on cloud backup in Settings</span></span>
+      <button class="btn sm primary" data-a="quick-backup">Back up</button><button class="icon-btn subtle" data-a="backup-snooze" aria-label="Remind me later">${icon('x')}</button></div>`;
   }
 
   async function backupPayload(withPhotos) {

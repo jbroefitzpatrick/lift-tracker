@@ -93,6 +93,7 @@ export function freshDb() {
     plan: defaultPlan(),
     state: seedState(),
     sessions: [],
+    pain: [], // { id, ts, date, area (muscle or joint), side: left|right|center, level 0–3, exerciseId? }
     activeSession: null,
     bodyweight: [], // { date, weight }
     measurements: [], // { date, waist, chest, arms, thighs, hips, neck } (inches)

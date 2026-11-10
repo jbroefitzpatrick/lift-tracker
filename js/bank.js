@@ -71,6 +71,8 @@ export const PATTERNS = {
   plyo: 'Plyometric',
   'circuit-move': 'Circuit move',
   isometric: 'Isometric hold',
+  run: 'Run',
+  mobility: 'Stretch and foam roll',
 };
 
 // [id, name, category (C/A), equipment type, pattern, primary muscles, secondary muscles]
@@ -88,6 +90,7 @@ const RAW = [
   ['pushup', 'Pushup', 'C', 'bodyweight', 'horizontal-push', 'chest', 'front-delts triceps abs'],
   ['weighted-pushup', 'Weighted pushup', 'C', 'bodyweight', 'horizontal-push', 'chest', 'front-delts triceps abs'],
   ['dip', 'Dip', 'C', 'bodyweight', 'dip', 'chest triceps', 'front-delts'],
+  ['weighted-dip', 'Weighted dip', 'C', 'bodyweight', 'dip', 'chest triceps', 'front-delts'],
   ['machine-fly', 'Machine fly', 'A', 'machine', 'chest-fly', 'chest', 'front-delts'],
   ['cable-fly', 'Cable fly', 'A', 'cable', 'chest-fly', 'chest', 'front-delts'],
   ['low-high-cable-fly', 'Low-to-high cable fly', 'A', 'cable', 'chest-fly', 'chest', 'front-delts'],
@@ -113,6 +116,9 @@ const RAW = [
 
   // ---- Back: vertical pulls ----
   ['pullup', 'Pullup', 'C', 'bodyweight', 'vertical-pull', 'lats', 'biceps upper-back'],
+  ['weighted-pullup', 'Weighted pullup', 'C', 'bodyweight', 'vertical-pull', 'lats', 'biceps upper-back forearms'],
+  ['weighted-chinup', 'Weighted chin-up', 'C', 'bodyweight', 'vertical-pull', 'lats biceps', 'upper-back forearms'],
+  ['weighted-neutral-pullup', 'Weighted neutral-grip pullup', 'C', 'bodyweight', 'vertical-pull', 'lats', 'biceps upper-back forearms'],
   ['neutral-pullup', 'Neutral-grip pullup', 'C', 'bodyweight', 'vertical-pull', 'lats', 'biceps upper-back forearms'],
   ['chinup', 'Chin-up', 'C', 'bodyweight', 'vertical-pull', 'lats biceps', 'upper-back'],
   ['assisted-pullup', 'Assisted pullup machine', 'C', 'machine', 'vertical-pull', 'lats', 'biceps upper-back'],
@@ -264,6 +270,32 @@ const RAW = [
   ['wall-ball', 'Wall ball', 'X', 'dumbbell', 'circuit-move', 'quads front-delts', 'glutes triceps', 'reps'],
   ['med-ball-slam', 'Medicine ball slam', 'X', 'dumbbell', 'circuit-move', 'lats abs', 'front-delts triceps', 'reps'],
   ['battle-ropes', 'Battle ropes', 'X', 'bodyweight', 'circuit-move', 'front-delts', 'forearms abs', 'time'],
+
+  // ---- Running-goal workouts ----
+  ['run-repeat', 'Run repeats', 'X', 'bodyweight', 'run', 'quads calves hamstrings', 'glutes hip-flexors', 'distance'],
+  ['run-tempo', 'Tempo run', 'X', 'bodyweight', 'run', 'quads calves', 'hamstrings glutes hip-flexors', 'time'],
+  ['run-easy', 'Easy run', 'X', 'bodyweight', 'run', 'calves', 'quads hamstrings', 'time'],
+  ['run-long', 'Long run', 'X', 'bodyweight', 'run', 'calves quads', 'hamstrings glutes', 'time'],
+  ['run-5k', '5k time trial', 'X', 'bodyweight', 'run', 'quads calves hamstrings', 'glutes hip-flexors', 'distance'],
+
+  // ---- Recovery: stretching and foam rolling (timed holds, no training fatigue) ----
+  ['roll-quads', 'Foam roll quads', 'X', 'bodyweight', 'mobility', 'quads', '', 'time'],
+  ['roll-hamstrings', 'Foam roll hamstrings and calves', 'X', 'bodyweight', 'mobility', 'hamstrings calves', '', 'time'],
+  ['roll-glutes', 'Foam roll glutes', 'X', 'bodyweight', 'mobility', 'glutes', '', 'time'],
+  ['roll-upper-back', 'Foam roll upper back', 'X', 'bodyweight', 'mobility', 'upper-back', 'traps', 'time'],
+  ['roll-lats', 'Foam roll lats', 'X', 'bodyweight', 'mobility', 'lats', '', 'time'],
+  ['stretch-couch', 'Couch stretch (hip flexors)', 'X', 'bodyweight', 'mobility', 'hip-flexors quads', '', 'time'],
+  ['stretch-hamstring', 'Hamstring stretch', 'X', 'bodyweight', 'mobility', 'hamstrings', '', 'time'],
+  ['stretch-pigeon', 'Pigeon stretch', 'X', 'bodyweight', 'mobility', 'glutes', 'hip-flexors', 'time'],
+  ['stretch-calf', 'Calf stretch', 'X', 'bodyweight', 'mobility', 'calves', '', 'time'],
+  ['stretch-9090', '90/90 hip switches', 'X', 'bodyweight', 'mobility', 'glutes adductors', 'hip-flexors', 'time'],
+  ['stretch-chest', 'Doorway chest stretch', 'X', 'bodyweight', 'mobility', 'chest', 'front-delts', 'time'],
+  ['stretch-child', "Child's pose with reach", 'X', 'bodyweight', 'mobility', 'lats', 'lower-back', 'time'],
+  ['stretch-thread', 'Thread the needle', 'X', 'bodyweight', 'mobility', 'upper-back', 'rear-delts', 'time'],
+  ['stretch-catcow', 'Cat-cow', 'X', 'bodyweight', 'mobility', 'lower-back', 'abs', 'time'],
+  ['stretch-wgs', "World's greatest stretch", 'X', 'bodyweight', 'mobility', 'hip-flexors glutes', 'upper-back hamstrings', 'time'],
+  ['stretch-crossbody', 'Cross-body shoulder stretch', 'X', 'bodyweight', 'mobility', 'rear-delts', 'side-delts', 'time'],
+  ['dead-hang', 'Dead hang', 'X', 'bodyweight', 'mobility', 'lats forearms', 'upper-back', 'time'],
 ];
 
 const split = (s) => (s ? s.split(' ') : []);

@@ -1,7 +1,7 @@
 // Food tab: daily targets, meal logging, saved meals, meal ideas and the weekly check-in.
 import { icon } from './icons.js';
 import { FOODS } from './foods.js';
-import { targets, dayTotals, weeklyCheckin, MEAL_TEMPLATES, solveMeal, macrosFor, foodById, ACTIVITY } from './nutrition.js';
+import { targets, dayTotals, weeklyCheckin, MEAL_TEMPLATES, solveMeal, macrosFor, foodById, ACTIVITY, dayEnergy, weekEnergy, palOf } from './nutrition.js';
 import { PHASE_TYPES } from './year.js';
 import { todayStr, addDays } from './store.js';
 
@@ -39,10 +39,7 @@ export function createFood(ctx) {
         </div>
         ${items.map((x) => `<div class="list-row food-row"><span class="grow"><b>${esc(x.name)}</b><span class="pick-sub">${esc(fmtQty(x))} · ${r0(x.kcal)} kcal · P ${r0(x.p)} · C ${r0(x.c)} · F ${r0(x.f)}</span></span>
           <button class="icon-btn subtle" data-a="food-del" data-id="${x.id}" aria-label="Remove ${esc(x.name)}">${icon('x')}</button></div>`).join('')}
-        <div class="row wrap controls">
-          <button class="mini" data-a="food-ideas" data-meal="${m}">Meal ideas</button>
-          ${items.length ? `<button class="mini" data-a="meal-save" data-meal="${m}">Save meal</button>` : `<button class="mini" data-a="meal-saved" data-meal="${m}">Saved meals</button>`}
-        </div>
+        ${items.length > 1 ? `<button class="text-btn small-text" data-a="meal-save" data-meal="${m}">Save as a meal</button>` : ''}
       </section>`;
     }).join('');
     const yEntries = db.foodLog.filter((x) => x.date === addDays(d, -1));
@@ -73,6 +70,7 @@ export function createFood(ctx) {
           ${macro('Fiber', tot.fiber, t.fiber, 'm-fi')}
         </div>
       </section>
+      ${energyCard(d)}
       <div class="chips quick-row">
         <button class="chip" data-a="food-quick">Quick add</button>
         ${!entries.length && yEntries.length ? '<button class="chip" data-a="food-copy">Copy yesterday</button>' : ''}
@@ -112,6 +110,48 @@ export function createFood(ctx) {
       ${c.suggestion && !recent ? `<button class="btn primary block" data-a="food-apply" data-v="${c.suggestion}">Apply ${c.suggestion > 0 ? '+' : ''}${c.suggestion} kcal/day</button>` : ''}
       ${recent ? `<p class="muted small">Adjusted ${ctx.fmtDate(recent.date)} (${recent.kcal > 0 ? '+' : ''}${recent.kcal} kcal). Give it a week before changing again.</p>` : ''}
     </div>`;
+  }
+
+  // Eaten vs burned for the day shown, plus the 7-day trend it predicts.
+  function energyCard(d) {
+    const db = ctx.db;
+    const e = dayEnergy(db, d);
+    const w = weekEnergy(db, d);
+    const k = (x) => r0(x).toLocaleString();
+    const parts = [['Resting', e.resting, 'en-rest'], ['Daily activity', e.lifestyle, 'en-life'], ['Exercise', e.exercise, 'en-ex']];
+    const sign = (x) => (x > 0 ? '+' : x < 0 ? '−' : '');
+    return `<section class="card energy" aria-label="Energy balance">
+      <div class="row between"><h3>Energy balance</h3><button class="link-btn" data-a="energy-why">How it's estimated</button></div>
+      <div class="energy-nums">
+        <div><span class="muted small">Eaten</span><b class="tnum">${k(e.intake)}</b></div>
+        <div><span class="muted small">Burned</span><b class="tnum">~${k(e.total)}</b></div>
+        <div><span class="muted small">Balance</span><b class="tnum ${e.logged ? (e.balance < 0 ? 'neg' : 'pos') : ''}">${e.logged ? `${sign(e.balance)}${k(Math.abs(e.balance))}` : '—'}</b></div>
+      </div>
+      <div class="energy-bar" aria-hidden="true">${parts.map(([, v, c]) => `<i class="${c}" style="flex:${Math.max(1, r0(v))}"></i>`).join('')}</div>
+      <p class="energy-legend small">${parts.map(([n, v, c]) => `<span><i class="dot ${c}"></i>${n} ${k(v)}</span>`).join('')}</p>
+      <p class="muted small">${w.logged >= 3 ? `Last 7 days: ${sign(w.avgBalance)}${k(Math.abs(w.avgBalance))} kcal/day on average, which predicts about ${w.lbPerWeek > 0 ? "+" : w.lbPerWeek < 0 ? "−" : ""}${Math.abs(w.lbPerWeek).toFixed(1)} lb/week.` : 'Log food on a few more days to see your weekly trend.'}${w.cal.ready ? ' Tuned to your weight trend.' : ''}</p>
+    </section>`;
+  }
+
+  function openEnergyWhy() {
+    const db = ctx.db;
+    const w = weekEnergy(db, date());
+    const c = w.cal;
+    const pal = palOf(db);
+    const bf = parseFloat(db.profile?.bodyFat);
+    ctx.openSheet(`<h2>How burn is estimated</h2>
+      <div class="rx-row"><span class="muted">Resting</span><b>${Number.isFinite(bf) ? 'From lean mass' : 'From weight, height, age, sex'}</b></div>
+      <p class="muted small">${Number.isFinite(bf) ? 'With body fat known, resting burn is 370 + 21.6 × lean mass (kg).' : 'Mifflin-St Jeor equation. Add your body fat % in the plan builder for a lean-mass estimate.'} ${ctx.refChips(Number.isFinite(bf) ? ['cunningham1991'] : ['mifflin1990'])}</p>
+      <div class="rx-row"><span class="muted">Daily activity</span><b>× ${pal}</b></div>
+      <p class="muted small">Everyday movement and digestion outside workouts, from your activity setting in Nutrition settings.</p>
+      <div class="rx-row"><span class="muted">Workouts</span><b>3.5–5.8 METs</b></div>
+      <p class="muted small">Lifting intensity comes from the session: more compound lifts and more supersets or circuits burn more. Conditioning uses the matching activity. One MET is set to your own resting rate rather than the textbook value, which overestimates for many people. ${ctx.refChips(['herrmann2024', 'byrne2005', 'kozey2010'])}</p>
+      <div class="rx-row"><span class="muted">Cardio</span><b>Heart rate, pace or activity</b></div>
+      <p class="muted small">With an average heart rate it uses Keytel's equations; with a distance for runs and walks, the ACSM pace equations; otherwise the activity's MET value. ${ctx.refChips(['keytel2005', 'acsm2021', 'ainsworth2011'])}</p>
+      <div class="rx-row"><span class="muted">Tuning</span><b>${c.ready ? `${c.factor >= 1 ? '+' : '−'}${Math.abs(Math.round((c.factor - 1) * 100))}% outside workouts` : 'After 2–4 weeks of logs'}</b></div>
+      <p class="muted small">${c.ready ? `Your weight trend and food log imply you burn ~${r0(c.tdee).toLocaleString()} kcal/day overall. Resting and daily-activity estimates are scaled to match, so the balance reflects what your scale shows.` : 'Once there are about two weeks of food logs and 6+ weigh-ins, the app compares predicted and actual weight change and scales the estimates to fit you.'} ${ctx.refChips(['hall2008'])}</p>
+      <p class="muted small">Calorie estimates for a single workout are typically within about ±20–30%. Your calorie target uses the weekly average, so a hard training day doesn't need to be "eaten back".</p>
+      <button class="btn block" data-a="close-sheet">Close</button>`);
   }
 
   // ---------- Sheets ----------
@@ -154,7 +194,7 @@ export function createFood(ctx) {
     ctx.openSheet(`<h2>Add to meal ${meal}</h2>
       <input id="food-q" class="search" type="search" placeholder="Search foods" autocomplete="off">
       <div class="chips pk-filters">${[['all', 'All'], ['mine', 'Mine'], ...Object.entries(CATS)].map(([k, v]) => `<button class="chip ${k === 'all' ? 'on' : ''}" data-a="food-cat" data-v="${k}">${v}</button>`).join('')}</div>
-      <button class="btn block" data-a="food-custom">Create your own food</button>
+      <div class="chips"><button class="chip" data-a="meal-saved" data-meal="${meal}">Saved meals</button><button class="chip" data-a="food-ideas" data-meal="${meal}">Meal ideas</button><button class="chip" data-a="food-custom">Create a food</button></div>
       <div id="food-list">${foodList()}</div>`);
   }
 
@@ -276,6 +316,7 @@ export function createFood(ctx) {
   const actions = {
     'food-day': (d) => { ui.foodDate = addDays(date(), +d.v); if (ui.foodDate > todayStr()) ui.foodDate = todayStr(); ctx.render(); },
     'food-why': () => openWhy(),
+    'energy-why': () => openEnergyWhy(),
     'food-add': (d) => openAdd(+d.meal),
     'food-cat': (d, el) => { st.cat = d.v; el.parentElement.querySelectorAll('.chip').forEach((c) => c.classList.toggle('on', c === el)); $('#food-list').innerHTML = foodList(); },
     'food-pick': (d) => openAmount(d.id),

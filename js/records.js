@@ -1,13 +1,17 @@
 // Personal records and check-in based plan adjustments.
 import { e1rm } from './engine.js';
+import { weightOn } from './energy.js';
 
 const goodSets = (sets) => sets.filter((s) => !s.pain && s.reps > 0 && (s.done ?? true));
+
+// For bodyweight lifts the load is body weight plus added weight, so a weighted pullup's 1RM is real.
+const loaded = (db, exId, sets, date) => (db.exercises[exId]?.type === 'bodyweight' ? sets.map((x) => ({ ...x, added: x.weight || 0, weight: weightOn(db, date) + (x.weight || 0) })) : sets);
 
 function history(db, exId, beforeTs = Infinity) {
   const out = [];
   for (const s of db.sessions) {
     if ((s.finishedAt || 0) >= beforeTs) continue;
-    for (const e of s.entries) if (e.exerciseId === exId) out.push({ s, sets: goodSets(e.sets) });
+    for (const e of s.entries) if (e.exerciseId === exId) out.push({ s, sets: loaded(db, exId, goodSets(e.sets), s.date) });
   }
   return out.filter((h) => h.sets.length);
 }
@@ -34,13 +38,14 @@ export function bestRecords(db, exId) {
 
 // PRs set by an entry compared with everything logged before it.
 export function detectPRs(db, entry, beforeTs) {
-  const sets = goodSets(entry.sets);
+  const bw = db.exercises[entry.exerciseId]?.type === 'bodyweight';
+  const sets = loaded(db, entry.exerciseId, goodSets(entry.sets), new Date(beforeTs).toISOString().slice(0, 10));
   if (!sets.length || entry.pain) return [];
   const prior = history(db, entry.exerciseId, beforeTs);
   if (!prior.length) return [];
   const prev = prior.flatMap((p) => p.sets);
   const prs = [];
-  const allBW = sets.every((x) => x.weight === 0) && prev.every((x) => x.weight === 0);
+  const allBW = bw && sets.every((x) => !x.added) && prev.every((x) => !x.added);
   if (allBW) {
     const best = Math.max(...sets.map((x) => x.reps));
     const prevBest = Math.max(...prev.map((x) => x.reps));
@@ -50,7 +55,7 @@ export function detectPRs(db, entry, beforeTs) {
   const bestNow = sets.reduce((a, x) => (e1rm(x.weight, x.reps) > e1rm(a.weight, a.reps) ? x : a));
   const prevE1 = Math.max(...prev.map((x) => e1rm(x.weight, x.reps)));
   if (e1rm(bestNow.weight, bestNow.reps) > prevE1 + 0.5) {
-    prs.push({ type: 'e1rm', text: `Est. 1RM ${Math.round(e1rm(bestNow.weight, bestNow.reps))} lb (${bestNow.weight}×${bestNow.reps}), up from ${Math.round(prevE1)}` });
+    prs.push({ type: 'e1rm', text: `Est. 1RM ${Math.round(e1rm(bestNow.weight, bestNow.reps))} lb${bw ? ' incl. body weight' : ''} (${bw ? `+${bestNow.added}` : bestNow.weight}×${bestNow.reps}), up from ${Math.round(prevE1)}` });
   }
   // Rep PR: more reps than ever at this weight or heavier (report the heaviest one).
   const repPRs = sets.filter((x) => x.weight > 0 && x.reps > Math.max(0, ...prev.filter((p) => p.weight >= x.weight).map((p) => p.reps)))

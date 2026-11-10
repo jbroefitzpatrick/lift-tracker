@@ -1,8 +1,18 @@
 # Lift Tracker
 
-A workout, cardio and nutrition tracker that runs as a web page saved to your iPhone home screen. Plain HTML/CSS/JS — no build step, no backend. All data stays on the phone.
+A workout, cardio and nutrition tracker that runs on your phone like an app.
 
-See [SPEC.md](SPEC.md) for the original requirements.
+## Start here (no setup needed)
+
+**Open this on your phone: https://jbroefitzpatrick.github.io/lift-tracker/**
+
+Then add it to your home screen: on iPhone, Safari → Share → Add to Home Screen; on Android, Chrome → ⋮ → Add to Home screen. Step-by-step help for anyone, no tech knowledge needed: [docs/GETTING-STARTED.md](docs/GETTING-STARTED.md).
+
+Everything below is for people changing the app's code. You don't need any of it to use the app.
+
+---
+
+Plain HTML/CSS/JS, no build step and no backend. All data stays on the phone (optional encrypted cloud backup). See [SPEC.md](SPEC.md) for the original requirements.
 
 ## What it does
 
@@ -11,6 +21,13 @@ See [SPEC.md](SPEC.md) for the original requirements.
 - **Exercises:** 155-exercise library grouped by muscle, compound, accessory and conditioning, similarity-based swaps, form cues, step-by-step instructions and photos, favorite / never / "not at this gym" marks, multiple gyms with their own bars, plates and dumbbell steps.
 - **Cardio:** day types, a cardio bank, muscle-freshness tracking, and suggestions that respect fatigue and upcoming lift days.
 - **Conditioning:** sprints, erg intervals, plyometrics and circuit moves log rounds by time, distance, calories or reps, and link into circuits just like lifts. Built-in templates (Tabata, sprint intervals, 10 × 1 min, 4 × 4 min, the 7-minute circuit, kettlebell and plyometric circuits and more) follow published protocols. Timed rounds have a work timer that rolls into rest.
+- **Flexible weeks:** tell it how many days you can train this week and how long each day; every main lift still gets done and accessories fit your time. Per day: short on time, extra time, a different gym (limited equipment), or two shorter sessions. Missed a day? It offers to fit it into the rest of the week.
+- **Recovery that learns:** the day after hard training it asks how those muscles feel. Not recovered by the next session? Swap days, do a recovery routine, easy cardio, or train lighter, and next week that muscle group gets a set less. Timed stretching and foam-rolling routines are built in.
+- **Finishers and conditioning scores:** add a 5–15 minute finisher that burns out (or spares) what you trained. Sprints, air bike and circuits remember your results and set the next target.
+- **Running goal:** train for a faster 5k alongside lifting, with paces from your current time, hard runs kept away from heavy leg days, and lifting at maintenance if you want.
+- **Weighted pullups and grip rotation:** any lift can be a focus lift; rotate variations (grips) each block or each workout. Bodyweight lifts count body weight in strength estimates.
+- **Pain and injuries:** tap where it hurts on the body map (muscles or joints, left and right separately) and how bad it is. Exercises that load it are flagged with a lighter weight or gentler alternatives, cardio suggestions steer around it, and a daily check-in tracks it until it clears. Guidance follows the pain-monitoring model used in sports rehab.
+- **Calories burned:** each workout and cardio session gets an active-calorie estimate (Compendium METs scaled to your own resting rate; heart rate or pace when logged). The Food tab shows eaten vs burned, and the estimate is tuned to your actual weight trend.
 - **Nutrition:** calorie and macro targets from your phase, adaptive maintenance from your logs, weekly check-ins with suggested adjustments, a 138-food USDA database plus your own foods, meal logging, saved meals and scaled meal ideas.
 - **Body:** bodyweight with 7-day average and target rate, measurements, and private progress photos.
 - **Data:** IndexedDB + localStorage mirror, daily snapshots, encrypted backups. See [docs/DATA-SECURITY.md](docs/DATA-SECURITY.md).
@@ -45,6 +62,9 @@ Every recommendation links to its sources in the app (Plan builder → Why these
 | `js/science.js` | References shown in the app |
 | `js/store.js` | Storage, snapshots, schema migrations, import/export |
 | `js/crypto.js` | Encrypted backups (AES-256-GCM) |
+| `js/week.js`, `js/recovery.js`, `js/running.js`, `js/ui-train.js` | Week planner, recovery check-ins, running goal, finishers and sharing |
+| `js/energy.js` | Resting rate, workout and cardio calorie estimates |
+| `js/pain.js`, `js/ui-pain.js` | Pain reports on the body map and lighter alternatives |
 | `js/cloud.js`, `js/ui-cloud.js` | Optional encrypted cloud backup (client and settings) |
 | `cloud/` | The Cloudflare Worker for cloud backup and its config |
 | `js/plan.js` | The original sample plan |
@@ -53,9 +73,9 @@ Every recommendation links to its sources in the app (Plan builder → Why these
 | `docs/` | Data & security notes, native iPhone app plan |
 | `sw.js` | Service worker for offline use |
 
-## Run it locally
+## Run it locally (developers only)
 
-The service worker and ES modules need a web server (opening the file directly won't work). From this folder:
+Only needed to test code changes on a computer. The service worker and ES modules need a web server (opening the file directly won't work). From the project folder:
 
 ```
 npx serve .
@@ -63,7 +83,9 @@ npx serve .
 
 ## Deploy (GitHub Pages)
 
-1. Push this folder to a GitHub repo.
+Already set up: pushing to `main` publishes to the link above within a minute or two. To set it up from scratch:
+
+1. Push the project to a GitHub repo.
 2. **Settings → Pages → Deploy from a branch**, pick `main` and `/ (root)`.
 3. The site goes live at `https://<your-username>.github.io/<repo-name>/`.
 

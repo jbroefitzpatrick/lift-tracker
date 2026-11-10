@@ -1,5 +1,6 @@
 // Progression engine: double progression + adaptation + deloads (spec section 3).
-import { daysBetween, parseDate, todayStr } from './store.js';
+import { daysBetween, parseDate, todayStr, mondayOf } from './store.js';
+import { runItemsFor } from './running.js';
 import { ROW_ROTATION } from './plan.js';
 
 export const DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
@@ -51,16 +52,55 @@ export function nextRowCompound(db) {
 
 // ---------- Plan resolution ----------
 
-// Returns the day's items with race-block and row-rotation swaps applied.
-// The stored plan is never changed by these, so toggling them off restores it.
-export function resolveDay(db, day) {
-  const plan = db.plan[day];
-  if (!plan) return [];
+// Muscle groups used for recovery check-ins and "lighter next week" adjustments.
+export const RECOVERY_GROUPS = {
+  legs: { name: 'Legs', muscles: ['quads', 'hamstrings', 'glutes', 'calves', 'adductors', 'abductors'] },
+  push: { name: 'Chest and shoulders', muscles: ['chest', 'front-delts', 'side-delts', 'triceps'] },
+  pull: { name: 'Back and arms', muscles: ['lats', 'upper-back', 'rear-delts', 'biceps', 'traps', 'forearms'] },
+  core: { name: 'Core and lower back', muscles: ['abs', 'obliques', 'lower-back', 'hip-flexors'] },
+};
+export const groupOf = (m) => Object.keys(RECOVERY_GROUPS).find((g) => RECOVERY_GROUPS[g].muscles.includes(m));
+
+// This week's adjusted version of a day (from the week planner or "adjust today"), if any.
+// Overrides belong to one Monday-to-Sunday week and are ignored once it's over.
+export function weekOverride(db, day, date = todayStr()) {
+  const w = db.week;
+  if (!w || w.start !== mondayOf(date)) return null;
+  return w.days?.[day] || null;
+}
+
+// The day's lifting plan this week: the override if there is one, otherwise the weekly plan.
+export function dayPlan(db, day) {
+  const o = weekOverride(db, day);
+  if (o) return o.items?.length ? o : null;
+  return db.plan[day] || null;
+}
+
+// Rotating variations (e.g. pullup grips): which one is up, per training block or per workout.
+function pickVariant(db, item) {
+  const v = item.variants;
+  if (!Array.isArray(v) || v.length < 2) return item.exerciseId;
+  if (item.rotate === 'workout') {
+    const n = db.sessions.filter((s) => s.entries.some((e) => v.includes(e.exerciseId))).length;
+    return v[n % v.length];
+  }
+  const wi = weekInfo(db);
+  return v[(Math.ceil(wi.week / wi.cycleLen) - 1) % v.length];
+}
+
+// Returns the day's items with weekly overrides, rotations, race-block swaps, recovery and
+// running-goal adjustments applied. The stored plan is never changed by these.
+// opts.template: the weekly plan as written, without this week's overrides or runs.
+export function resolveDay(db, day, opts = {}) {
+  const plan = opts.template ? db.plan[day] || null : dayPlan(db, day);
+  const runs = opts.template ? [] : runItemsFor(db, day);
+  if (!plan) return runs.map((r) => ({ ...r, ex: db.exercises[r.exerciseId] })).filter((r) => r.ex);
   const race = db.settings.raceBlock;
   const compound = ROW_ROTATION[db.settings.rowRotation % ROW_ROTATION.length];
   const out = [];
   for (const raw of plan.items) {
     const item = { ...raw };
+    if (item.variants) item.exerciseId = pickVariant(db, item);
     if (item.role === 'rowCompound') item.exerciseId = compound;
     if (item.role === 'rowAccessory') item.exerciseId = compound === 'lat-pulldown' ? 'cable-row' : 'lat-pulldown';
     if (race && day === 'mon' && raw.exerciseId === 'iso-row') {
@@ -71,8 +111,18 @@ export function resolveDay(db, day) {
     }
     if (race && raw.exerciseId === 'ghr') continue;
     item.ex = db.exercises[item.exerciseId];
-    if (item.ex) out.push(item);
+    if (!item.ex) continue;
+    // Slow recovery last week: one set fewer this week on that muscle group (learned from check-ins).
+    const adj = db.recoveryAdjust?.[groupOf(item.ex.primary[0])];
+    if (adj && adj.week === mondayOf(todayStr()) && item.ex.category !== 'conditioning' && item.sets > 2) {
+      item.sets -= 1;
+      item.note = item.note || 'One set lighter this week to help recovery';
+    }
+    // Running goal with lifting at maintenance: accessories drop to 2–3 sets (bickel2011).
+    if (db.runGoal?.liftMaintenance && item.ex.category === 'accessory' && item.sets > 2) item.sets -= 1;
+    out.push(item);
   }
+  for (const r of runs) { const ex = db.exercises[r.exerciseId]; if (ex) out.push({ ...r, ex }); }
   return out;
 }
 

@@ -2,6 +2,7 @@
 // tracked (best estimated 1RM vs the previous block), and a check-in during the deload week.
 import { weekInfo, e1rm, resolveDay } from './engine.js';
 import { addDays, todayStr } from './store.js';
+import { weightOn } from './energy.js';
 
 export function blockInfo(db, date = todayStr()) {
   const wi = weekInfo(db, date);
@@ -49,7 +50,8 @@ function bestE1rm(db, exId, from, to) {
     const e = s.entries.find((x) => x.exerciseId === exId);
     if (!e) continue;
     sessions += 1;
-    for (const x of e.sets) if (!x.pain && x.reps > 0) best = Math.max(best, e1rm(x.weight, x.reps));
+    const bw = db.exercises[exId]?.type === 'bodyweight' ? weightOn(db, s.date) : 0; // weighted pullups: body weight + added
+    for (const x of e.sets) if (!x.pain && x.reps > 0) best = Math.max(best, e1rm(bw + (x.weight || 0), x.reps));
   }
   return { best, sessions };
 }
@@ -63,7 +65,7 @@ export function liftProgress(db, exId, block) {
   if (!base) {
     const first = db.sessions.filter((s) => !s.isDeload && s.date >= block.start && s.date <= block.end)
       .map((s) => s.entries.find((x) => x.exerciseId === exId)).find(Boolean);
-    if (first) base = Math.max(0, ...first.sets.filter((x) => !x.pain && x.reps > 0).map((x) => e1rm(x.weight, x.reps)));
+    if (first) { const bw = db.exercises[exId]?.type === 'bodyweight' ? weightOn(db, block.start) : 0; base = Math.max(0, ...first.sets.filter((x) => !x.pain && x.reps > 0).map((x) => e1rm(bw + (x.weight || 0), x.reps))); }
   }
   const pct = base && now.best ? ((now.best - base) / base) * 100 : null;
   return { base: Math.round(base), now: Math.round(now.best), pct, sessions: now.sessions };

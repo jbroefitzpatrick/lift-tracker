@@ -44,6 +44,71 @@ export const REFS = {
     finding: 'The Mifflin-St Jeor equation estimates resting energy use from weight, height, age and sex; it is among the most accurate common equations.',
     url: 'https://pubmed.ncbi.nlm.nih.gov/?term=A+new+predictive+equation+for+resting+energy+expenditure+in+healthy+individuals',
   },
+  laurent2011: {
+    cite: 'Laurent CM, et al. (2011). A practical approach to monitoring recovery: development of a perceived recovery status scale. J Strength Cond Res 25(3):620–628.',
+    finding: 'A simple self-rating of how recovered you feel tracked actual performance in the next session, so asking is a useful recovery check.',
+    url: search('A practical approach to monitoring recovery: development of a perceived recovery status scale'),
+  },
+  wiewelhove2019: {
+    cite: 'Wiewelhove T, et al. (2019). A meta-analysis of the effects of foam rolling on performance and recovery. Front Physiol 10:376.',
+    finding: 'Foam rolling after exercise slightly reduced perceived muscle pain and had small benefits for recovery; effects are modest but consistent.',
+    url: search('A meta-analysis of the effects of foam rolling on performance and recovery'),
+  },
+  behm2016: {
+    cite: 'Behm DG, et al. (2016). Acute effects of muscle stretching on physical performance, range of motion, and injury incidence in healthy active individuals: a systematic review. Appl Physiol Nutr Metab 41(1):1–11.',
+    finding: 'Stretching improves range of motion; long static holds right before maximal efforts can blunt performance slightly, so stretch after training or on rest days.',
+    url: search('Acute effects of muscle stretching on physical performance, range of motion, and injury incidence in healthy active individuals'),
+  },
+  daniels2014: {
+    cite: 'Daniels J (2014). Daniels\' Running Formula, 3rd ed. Human Kinetics.',
+    finding: 'Training paces set from a recent race time: easy runs well slower than race pace, threshold (tempo) runs around 1-hour race pace, intervals near 3–5k pace.',
+    url: 'https://us.humankinetics.com/products/daniels-running-formula-3rd-edition',
+  },
+  bickel2011: {
+    cite: 'Bickel CS, et al. (2011). Exercise dosing to retain resistance training adaptations in young and older adults. Med Sci Sports Exerc 43(7):1177–1187.',
+    finding: 'After building strength, young adults kept their strength and muscle size for 32 weeks on as little as one-third of their previous training volume.',
+    url: search('Exercise dosing to retain resistance training adaptations in young and older adults'),
+  },
+  herrmann2024: {
+    cite: 'Herrmann SD, et al. (2024). 2024 Adult Compendium of Physical Activities: a third update of the energy costs of human activities. J Sport Health Sci 13(1):6–12.',
+    finding: 'Measured energy costs (METs) for 1,114 activities in adults 19–59, e.g. resistance training 3.5 (8–15 reps, varied), 5.0 (heavy squats/deadlifts), 5.8 (circuits with supersets).',
+    url: 'https://pacompendium.com/adult-compendium/',
+  },
+  byrne2005: {
+    cite: 'Byrne NM, et al. (2005). Metabolic equivalent: one size does not fit all. J Appl Physiol 99(3):1112–1119.',
+    finding: 'The standard 1 MET = 3.5 mL/kg/min overstated measured resting metabolism by about 35% on average; using a person\'s own resting rate improves estimates.',
+    url: search('Metabolic equivalent: one size does not fit all Byrne'),
+  },
+  kozey2010: {
+    cite: 'Kozey S, et al. (2010). Errors in MET estimates of physical activities using 3.5 ml·kg−1·min−1 as the baseline oxygen consumption. J Phys Act Health 7(4):508–516.',
+    finding: 'Standard METs misestimate activity cost, most for people with higher body fat or older age; correcting to individual resting rate reduces the error.',
+    url: search('Errors in MET estimates of physical activities using 3.5 ml kg min as the baseline oxygen consumption'),
+  },
+  cunningham1991: {
+    cite: 'Cunningham JJ (1991). Body composition as a determinant of energy expenditure: a synthetic review and a proposed general prediction equation. Am J Clin Nutr 54(6):963–969.',
+    finding: 'Lean (fat-free) mass is the main determinant of resting energy: RMR ≈ 370 + 21.6 × fat-free mass (kg).',
+    url: search('Body composition as a determinant of energy expenditure a synthetic review and a proposed general prediction equation'),
+  },
+  keytel2005: {
+    cite: 'Keytel LR, et al. (2005). Prediction of energy expenditure from heart rate monitoring during submaximal exercise. J Sports Sci 23(3):289–297.',
+    finding: 'Energy expenditure during exercise predicted from heart rate, weight, age and sex (r ≈ 0.86 without a VO2max test).',
+    url: 'https://pubmed.ncbi.nlm.nih.gov/15966347/',
+  },
+  acsm2021: {
+    cite: 'American College of Sports Medicine (2021). ACSM\'s Guidelines for Exercise Testing and Prescription, 11th ed. Metabolic calculations.',
+    finding: 'Oxygen cost of walking and running from speed: walking VO2 = 0.1 × speed + 3.5, running VO2 = 0.2 × speed + 3.5 (mL/kg/min, speed in m/min, level ground).',
+    url: search('ACSM metabolic equations walking running oxygen cost'),
+  },
+  silbernagel2007: {
+    cite: 'Silbernagel KG, et al. (2007). Continued sports activity, using a pain-monitoring model, during rehabilitation in patients with Achilles tendinopathy. Am J Sports Med 35(6):897–906.',
+    finding: 'Training could continue when pain stayed at or below 5/10 during activity and settled by the next morning; higher or lingering pain meant reducing load.',
+    url: search('Continued sports activity, using a pain-monitoring model, during rehabilitation in patients with Achilles tendinopathy'),
+  },
+  manca2017: {
+    cite: 'Manca A, et al. (2017). Cross-education of muscular strength following unilateral resistance training: a meta-analysis. Eur J Appl Physiol 117(11):2335–2354.',
+    finding: 'Training one limb raised strength in the untrained opposite limb by about 12% (16% in legs), which helps protect strength when one side is hurt.',
+    url: search('Cross-education of muscular strength following unilateral resistance training: a meta-analysis'),
+  },
   ainsworth2011: {
     cite: 'Ainsworth BE, et al. (2011). 2011 Compendium of Physical Activities: a second update of codes and MET values. Med Sci Sports Exerc 43(8):1575–1581.',
     finding: 'Standard energy costs (METs) for activities — used here to estimate calories burned by lifting and cardio.',

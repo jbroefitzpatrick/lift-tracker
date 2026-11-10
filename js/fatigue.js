@@ -4,7 +4,9 @@
 // Cardio adds set-equivalents from its duration, intensity and which muscles it loads.
 // Fatigue fades exponentially; big muscles take longer to recover than small ones.
 // Freshness = 1 - fatigue / FULL_FATIGUE, so ~10 hard sets on a muscle leaves it at 0% fresh.
-import { resolveDay } from './engine.js';
+import { resolveDay, weekOverride } from './engine.js';
+import { runDays } from './running.js';
+import { muscleRecoveryMultipliers } from './recovery.js';
 import { CARDIO, cardioLoad } from './cardio-bank.js';
 
 export const FULL_FATIGUE = 10;
@@ -22,7 +24,9 @@ export const MUSCLE_GROUPS = {
   Lower: ['glutes', 'quads', 'hamstrings', 'adductors', 'abductors', 'calves'],
 };
 
-const decay = (m, hoursAgo) => 0.5 ** (Math.max(0, hoursAgo) / (HALF_LIFE_H[m] || DEFAULT_HALF_LIFE_H));
+// Personal recovery speed per muscle, learned from recovery check-ins (recovery.js); 1 = typical.
+let personal = {};
+const decay = (m, hoursAgo) => 0.5 ** (Math.max(0, hoursAgo) / ((HALF_LIFE_H[m] || DEFAULT_HALF_LIFE_H) * (personal[m] || 1)));
 
 function addLoads(into, loads, hoursAgo = 0, scale = 1) {
   for (const [m, v] of Object.entries(loads)) into[m] = (into[m] || 0) + v * scale * decay(m, hoursAgo);
@@ -34,7 +38,7 @@ export function liftLoads(db, items) {
   const out = {};
   for (const { exerciseId, sets } of items) {
     const ex = db.exercises[exerciseId];
-    if (!ex || !sets) continue;
+    if (!ex || !sets || ex.pattern === 'mobility') continue; // stretching and foam rolling don't add fatigue
     for (const m of ex.primary) out[m] = (out[m] || 0) + sets;
     for (const m of ex.secondary) out[m] = (out[m] || 0) + sets * 0.5;
   }
@@ -49,15 +53,18 @@ export function plannedLoads(db, day) {
 }
 
 export function dayMode(db, day) {
-  const m = db.settings.dayModes?.[day];
-  if (m) return m;
-  return db.plan[day] ? 'lift' : 'rest';
+  const o = weekOverride(db, day);
+  let m = o ? (o.mode || (o.items?.length ? 'lift' : 'rest')) : db.settings.dayModes?.[day] || (db.plan[day] ? 'lift' : 'rest');
+  // Running-goal days add cardio to whatever the day already is.
+  if (runDays(db).includes(day)) m = m === 'lift' ? 'both' : m === 'rest' ? 'cardio' : m;
+  return m;
 }
 
 const goodSets = (entry) => entry.sets.filter((s) => !s.pain && (s.done ?? true) && (s.reps > 0 || s.time > 0 || s.dist > 0 || s.cal > 0)).length;
 
 // Measured fatigue right now from logged lifting (including an in-progress workout) and cardio.
 export function currentFatigue(db, now = Date.now()) {
+  personal = muscleRecoveryMultipliers(db);
   const f = {};
   for (const s of db.sessions) {
     const t = s.finishedAt || s.startedAt;

@@ -442,7 +442,8 @@ export function estimateMinutes(items) {
   for (const g of Object.values(groups)) {
     const rounds = Math.max(...g.map((x) => x.sets));
     const rest = Math.max(...g.map((x) => x.restSec || 0));
-    total += g.reduce((a, x) => a + x.sets * WORK_MIN, 0) + (rounds - 1) * (rest / 60) + 1;
+    const work = (x) => (x.metric === 'time' && x.target ? x.target / 60 : x.metric === 'distance' && x.paceSec ? x.paceSec / 60 : WORK_MIN);
+    total += g.reduce((a, x) => a + x.sets * work(x), 0) + (rounds - 1) * (rest / 60) + 1;
   }
   return Math.round(total);
 }

@@ -4,6 +4,9 @@ import { FOODS } from './foods.js';
 import { todayStr, daysBetween, addDays } from './store.js';
 import { activePhase, PHASE_TYPES, cardioTargetFor } from './year.js';
 import { estimateMinutes } from './builder.js';
+import { bmr, restingKcal, dayExercise } from './energy.js';
+
+export { bmr };
 
 export const ACTIVITY = {
   low: { label: 'Mostly sitting (desk job)', pal: 1.2 },
@@ -24,14 +27,6 @@ export function latestWeight(db) {
 
 // ---------- Energy ----------
 
-// Mifflin-St Jeor (mifflin1990). Without a sex, the midpoint of the two equations.
-export function bmr(p, lb) {
-  const kg = lb / LB_PER_KG;
-  const cm = (+p.heightIn || 70) * 2.54;
-  const age = +p.age || 30;
-  const s = p.sex === 'male' ? 5 : p.sex === 'female' ? -161 : -78;
-  return 10 * kg + 6.25 * cm - 5 * age + s;
-}
 
 // Planned weekly training minutes from the current plan and cardio target.
 export function weeklyTrainingMinutes(db) {
@@ -44,17 +39,30 @@ export function weeklyTrainingMinutes(db) {
   return { lift, cardio: cardioTargetFor(db) };
 }
 
-// Net exercise energy per day using Compendium METs (ainsworth2011): lifting ~5 METs, mixed cardio ~7.
-export function exerciseKcalPerDay(db, lb) {
-  const kg = lb / LB_PER_KG;
-  const { lift, cardio } = weeklyTrainingMinutes(db);
-  return ((5 - 1) * kg * (lift / 60) + (7 - 1) * kg * (cardio / 60)) / 7;
+// Days of logged history (first workout or cardio up to today), capped at 28.
+function loggedSpan(db, today) {
+  const first = [...db.sessions.map((s) => s.date), ...(db.cardio || []).map((c) => c.date)].sort()[0];
+  return first ? Math.min(28, daysBetween(first, today) + 1) : 0;
 }
 
+// Active exercise kcal per day. With two weeks of logs, the average of what was actually done
+// (energy.js); before that, the plan: lifting ~4 METs, mixed cardio ~7 (herrmann2024).
+export function exerciseKcalPerDay(db, lb, today = todayStr()) {
+  const span = loggedSpan(db, today);
+  if (span >= 14) {
+    let sum = 0;
+    for (let i = 0; i < span; i++) sum += dayExercise(db, addDays(today, -i));
+    return sum / span;
+  }
+  const perMin = restingKcal(db.profile || {}, lb) / 1440;
+  const { lift, cardio } = weeklyTrainingMinutes(db);
+  return ((4 - 1) * perMin * lift + (7 - 1) * perMin * cardio) / 7;
+}
+
+export const palOf = (db) => ACTIVITY[db.nutrition.activity]?.pal || 1.35;
+
 export function estimatedMaintenance(db, lb) {
-  const p = db.profile || {};
-  const pal = ACTIVITY[db.nutrition.activity]?.pal || 1.35;
-  return bmr(p, lb) * pal + exerciseKcalPerDay(db, lb);
+  return restingKcal(db.profile || {}, lb) * palOf(db) + exerciseKcalPerDay(db, lb);
 }
 
 // Daily totals for a date.
@@ -93,6 +101,53 @@ export function adaptiveMaintenance(db, today = todayStr()) {
   const intake = days.reduce((a, b) => a + b, 0) / days.length;
   const lbPerDay = slope(weights);
   return { ready: true, tdee: intake - lbPerDay * KCAL_PER_LB, intake, lbPerWeek: lbPerDay * 7, loggedDays: days.length, weighIns: weights.length };
+}
+
+// ---------- Energy balance ----------
+
+// How far the formulas are off for this person, from the weight trend: the adaptive estimate of
+// total burn minus logged exercise, divided by the formula's resting + daily-activity burn.
+// 1 = formulas match; 0.9 = this person burns ~10% less outside workouts than predicted.
+export function calibration(db, today = todayStr()) {
+  const a = adaptiveMaintenance(db, today);
+  if (!a.ready) return { ready: false, factor: 1 };
+  let base = 0; let ex = 0;
+  for (let i = 1; i <= 28; i++) {
+    const d = addDays(today, -i);
+    base += restingKcal(db.profile || {}, weightAt(db, d)) * palOf(db);
+    ex += dayExercise(db, d);
+  }
+  base /= 28; ex /= 28;
+  const raw = (a.tdee - ex) / base;
+  return { ready: true, factor: Math.max(0.75, Math.min(1.25, raw)), raw, tdee: a.tdee };
+}
+
+function weightAt(db, date) {
+  let best = null;
+  for (const b of db.bodyweight) if (b.date <= date && (!best || b.date > best.date)) best = b;
+  return best?.weight || latestWeight(db) || 180;
+}
+
+// One day's energy: resting + daily activity (scaled by the calibration) + exercise, against intake.
+export function dayEnergy(db, date, cal = calibration(db)) {
+  const lb = weightAt(db, date);
+  const pal = palOf(db);
+  const resting = restingKcal(db.profile || {}, lb) * cal.factor;
+  const lifestyle = resting * (pal - 1); // everyday movement and digestion
+  const exercise = dayExercise(db, date);
+  const intake = dayTotals(db, date);
+  const total = resting + lifestyle + exercise;
+  return { date, resting, lifestyle, exercise, total, intake: intake.kcal, logged: intake.kcal > 300, balance: intake.kcal - total, calibrated: cal.ready };
+}
+
+// The last 7 days with food logged: average balance and the weight change it predicts.
+export function weekEnergy(db, today = todayStr()) {
+  const cal = calibration(db, today);
+  const days = [];
+  for (let i = 0; i < 7; i++) days.push(dayEnergy(db, addDays(today, -i), cal));
+  const logged = days.filter((d) => d.logged);
+  const avg = logged.length ? logged.reduce((a, d) => a + d.balance, 0) / logged.length : null;
+  return { days: days.reverse(), logged: logged.length, avgBalance: avg, lbPerWeek: avg == null ? null : (avg * 7) / KCAL_PER_LB, cal };
 }
 
 // ---------- Targets ----------

@@ -769,3 +769,103 @@ body.resting .ex-nav { bottom: calc(var(--tabbar-h) + 104px + env(safe-area-inse
 .bad-text { color: var(--bad); }
 .list-group.flush { margin: 10px -16px -16px; border: 0; border-top: 1px solid var(--line); border-radius: 0; background: transparent; }
 .wrap-any { word-break: break-all; text-align: right; }
+
+/* ---------- v10: refinements (HIG type weights, quieter surfaces), pain picker, energy ---------- */
+/* Apple's large titles are bold, not black; heavier weights read as shouting on small screens. */
+h1 { font-weight: 700; letter-spacing: -0.015em; }
+.hero-num, .empty .big, #rest-time, .goal-val { font-weight: 700; }
+/* Quieter surfaces: separate cards by tone and spacing, with only a hairline edge. */
+:root { --hairline: rgb(255 255 255 / 0.06); }
+:root[data-theme="light"] { --hairline: rgb(15 17 21 / 0.07); }
+@media (prefers-color-scheme: light) { :root:not([data-theme]) { --hairline: rgb(15 17 21 / 0.07); } }
+.card, .list-group, .stat, .banner { border-color: var(--hairline); }
+.card + .btn.block, .card + .list-group { margin-top: 4px; }
+.card h3 { font-size: 1.0625rem; font-weight: 600; }
+.stats { grid-template-columns: repeat(2, 1fr); }
+button.stat { font: inherit; color: inherit; cursor: pointer; }
+.pill.good { background: var(--good-soft); color: var(--good); border-radius: 999px; padding: 2px 8px; font-size: 0.75rem; font-weight: 600; }
+.plan-actions { display: flex; flex-wrap: wrap; gap: 4px 16px; padding-top: 8px; }
+.small-text { font-size: 0.875rem; }
+.fr-pct b { font-weight: 600; }
+
+/* Slim reminder row */
+.slim-banner { display: flex; align-items: center; gap: 10px; padding: 10px 12px 10px 16px; margin-bottom: 12px; border-radius: var(--radius); background: var(--accent-soft); }
+.slim-banner .pick-sub { display: block; }
+
+/* Energy balance */
+.energy-nums { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 6px 0 12px; }
+.energy-nums > div { display: flex; flex-direction: column; gap: 2px; }
+.energy-nums b { font-size: 1.375rem; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+.energy-nums b.neg { color: var(--accent); }
+.energy-nums b.pos { color: var(--warn); }
+.energy-bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; gap: 2px; margin-bottom: 8px; }
+.energy-bar i, .energy-legend .dot { background: var(--surface-3); }
+.en-rest { background: var(--surface-3) !important; }
+.en-life { background: color-mix(in srgb, var(--accent) 45%, var(--surface-3)) !important; }
+.en-ex { background: var(--accent) !important; }
+.energy-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; color: var(--muted); margin: 0 0 8px; }
+.energy-legend .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; }
+
+/* Pain picker */
+.pain-map { max-width: 260px; margin: 8px auto 4px; }
+.pain-map .mus, .pain-map .joint { cursor: pointer; }
+.pain-map .mus.hint { stroke: var(--accent); stroke-width: 1.6; }
+.pain-map .mus.sel { fill: var(--bad); }
+.joint { fill: var(--surface-3); stroke: var(--muted); stroke-width: 1.4; }
+.joint.sel { fill: var(--bad); stroke: var(--bad); }
+.pain-sel { min-height: 36px; justify-content: center; }
+.pain-list summary { color: var(--accent); font-size: 0.9375rem; padding: 8px 0; cursor: pointer; }
+.pain-list .row { gap: 8px; }
+.pain-list select { flex: 1; min-width: 0; }
+.pain-levels { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.pain-levels button { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 10px 12px; min-height: 56px; border-radius: var(--radius-sm); border: 1.5px solid var(--line-strong); background: transparent; color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+.pain-levels button span { font-size: 0.75rem; color: var(--muted); }
+.pain-levels button.on.lv-1 { border-color: var(--warn); background: var(--warn-soft); }
+.pain-levels button.on.lv-2 { border-color: #fb923c; background: rgb(251 146 60 / 0.14); }
+.pain-levels button.on.lv-3 { border-color: var(--bad); background: var(--bad-soft); }
+#pain-advice { min-height: 1em; margin: 10px 0; }
+
+/* Pain on Today and the exercise screen */
+.pain-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); }
+.pain-row:first-of-type { border-top: 0; }
+.lv-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.lv-dot.lv-1 { background: var(--warn); } .lv-dot.lv-2 { background: #fb923c; } .lv-dot.lv-3 { background: var(--bad); }
+.pain-advice { border-left: 3px solid var(--warn); background: var(--warn-soft); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; padding: 10px 12px; margin: 10px 0; }
+.pain-advice.lv-2 { border-left-color: #fb923c; background: rgb(251 146 60 / 0.12); }
+.pain-advice.lv-3 { border-left-color: var(--bad); background: var(--bad-soft); }
+.pain-advice p { margin: 0 0 8px; }
+.pain-advice .row { gap: 8px; }
+.pain-card .row.between + .pain-row { border-top: 0; }
+.energy-nums b.neg, .energy-nums b.pos { color: var(--text); }
+.en-rest { background: color-mix(in srgb, var(--text) 22%, var(--surface-2)) !important; }
+.energy-legend .dot.en-rest { background: color-mix(in srgb, var(--text) 22%, var(--surface-2)) !important; }
+.fr-pct { white-space: nowrap; }
+.fresh-row.vol { grid-template-columns: 92px 1fr auto; }
+
+/* ---------- v11: flexible week, recovery, finishers, running goal, sharing ---------- */
+.week-bar { display: flex; gap: 8px; margin-bottom: 12px; }
+.avail-list { display: flex; flex-direction: column; gap: 6px; margin: 10px 0; }
+.avail-row { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: var(--radius-sm); background: var(--surface-2); }
+.avail-row.on { background: var(--accent-soft); }
+.avail-day { display: flex; align-items: center; gap: 10px; flex: 1; min-height: 44px; font-weight: 600; }
+.avail-day input { width: 22px; height: 22px; accent-color: var(--accent-strong); }
+.avail-row select { min-width: 0; max-width: 42%; }
+.wk-preview { display: flex; flex-direction: column; }
+.wk-day { display: flex; gap: 12px; padding: 8px 0; border-top: 1px solid var(--line); font-size: 0.9375rem; }
+.wk-day:first-child { border-top: 0; }
+.wk-day > b { width: 36px; flex: none; }
+.wk-notes { margin: 8px 0 12px; padding-left: 18px; color: var(--muted); font-size: 0.8125rem; }
+.wk-notes li { margin: 2px 0; }
+.recov-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); flex-wrap: wrap; }
+.recov-card h3 + .recov-row { border-top: 0; }
+.notready-card { border-left: 3px solid var(--warn); }
+.list-group.flush-inner { margin: 8px 0; }
+.run-row { display: flex; gap: 12px; padding: 8px 0; border-top: 1px solid var(--line); }
+.run-row > b { width: 36px; flex: none; }
+.cond-target { margin: 4px 0; font-size: 0.9375rem; }
+.cond-target b { color: var(--accent); font-weight: 600; }
+.fin-list { margin: 8px 0 14px; padding-left: 22px; }
+.fin-list li { margin: 4px 0; }
+.steps { padding-left: 22px; margin: 8px 0 12px; }
+.steps li { margin: 6px 0; line-height: 1.45; }
+.finish-bar .btn.block:not(.primary) { margin-bottom: 8px; }

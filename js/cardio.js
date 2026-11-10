@@ -5,6 +5,7 @@ import { CARDIO, INTENSITY } from './cardio-bank.js';
 import { currentFatigue, remainingPlannedLoads, plannedLoads, dayMode, freshness, addLoads } from './fatigue.js';
 import { DAY_KEYS, DAY_NAMES } from './engine.js';
 import { MUSCLES } from './bank.js';
+import { painMap, cardioPain } from './pain.js';
 
 const shiftDay = (day, n) => DAY_KEYS[(DAY_KEYS.indexOf(day) + n + 7) % 7];
 const HEAVY_SETS = 8; // planned sets on a muscle that count as "fully trained" that day
@@ -27,7 +28,7 @@ export function cardioContext(db, day, isToday, now = Date.now()) {
     const d = shiftDay(day, n);
     return { day: d, loads: plannedLoads(db, d), weight: n === 1 ? 1 : 0.5, name: db.plan[d]?.name || '' };
   });
-  return { day, mode, fatigue: fat, fresh: freshness(fat), next };
+  return { day, mode, fatigue: fat, fresh: freshness(fat), next, pain: painMap(db) };
 }
 
 function pctList(ms, fresh) {
@@ -74,6 +75,9 @@ export function scoreCardio(db, c, ctx) {
 
   let score = 100 - todayPenalty - nextPenalty;
   if (restDay) score -= I.factor >= 1.4 ? 25 : 5; // rest days favour easy work
+  // Sore or injured areas: steer away from options that load them.
+  const cp = cardioPain(c, ctx.pain || {});
+  if (cp.penalty >= 5) { score -= cp.penalty; reasons.unshift(`Loads your ${cp.label.toLowerCase()}`); }
   const recent = (db.cardio || []).slice(-3).some((x) => x.cardioId === c.id);
   if (recent) score -= 4; // a little variety
 

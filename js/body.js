@@ -47,19 +47,42 @@ const NAMES = {
   adductors: 'Adductors', abductors: 'Abductors', calves: 'Calves', 'hip-flexors': 'Hip flexors',
 };
 
-// values: muscle → 0..1 (how strongly to colour it). mode: 'fatigue' | 'target'.
-export function bodySvg(view, values = {}, { cls = '', label = '', viewBox = '0 0 200 400' } = {}) {
+// Joint markers for the pain picker, in left-half coordinates (neck sits on the midline).
+const JOINT_POS = {
+  neck: [100, 53], shoulder: [64, 72], elbow: [53, 145], wrist: [45, 196], hip: [75, 190], knee: [83, 297], ankle: [80, 387],
+};
+const JOINT_NAMES = { neck: 'Neck', shoulder: 'Shoulder', elbow: 'Elbow', wrist: 'Wrist', hip: 'Hip', knee: 'Knee', ankle: 'Ankle' };
+
+// Which side of the person a half of the drawing is. Half "a" is the left of the drawing:
+// on the front view that's the person's right side (they face you); on the back view, their left.
+export const sideOf = (view, half) => (view === 'back' ? (half === 'a' ? 'left' : 'right') : (half === 'a' ? 'right' : 'left'));
+
+// values: muscle → 0..1 (how strongly to colour it).
+// Options for the pain picker: sel (Set of "area:side" to mark), joints (draw joint markers),
+// hint (muscles to outline, e.g. the current exercise's).
+export function bodySvg(view, values = {}, { cls = '', label = '', viewBox = '0 0 200 400', sel = null, joints = false, hint = [] } = {}) {
   const regions = view === 'back' ? BACK : FRONT;
-  const shapes = Object.entries(regions).map(([m, d]) => {
-    const v = Math.max(0, Math.min(1, values[m] || 0));
-    const fill = v > 0.02 ? `style="--v:${v.toFixed(2)}"` : '';
-    return `<path d="${d}" data-m="${m}" class="mus ${v > 0.02 ? 'on' : ''}" ${fill}><title>${NAMES[m]}</title></path>`;
-  }).join('');
+  const half = (h) => {
+    const side = sideOf(view, h);
+    const shapes = Object.entries(regions).map(([m, d]) => {
+      const v = Math.max(0, Math.min(1, values[m] || 0));
+      const fill = v > 0.02 ? `style="--v:${v.toFixed(2)}"` : '';
+      const on = sel?.has(`${m}:${side}`);
+      return `<path d="${d}" data-m="${m}" class="mus ${v > 0.02 ? 'on' : ''} ${on ? 'sel' : ''} ${hint.includes(m) ? 'hint' : ''}" ${fill}><title>${NAMES[m]}</title></path>`;
+    }).join('');
+    const js = joints ? Object.entries(JOINT_POS).filter(([j]) => j !== 'neck' || h === 'a').map(([j, [x, y]]) => {
+      const s = j === 'neck' ? 'center' : side;
+      return `<circle cx="${x}" cy="${y}" r="7" data-j="${j}" class="joint ${sel?.has(`${j}:${s}`) ? 'sel' : ''}"><title>${JOINT_NAMES[j]}</title></circle>`;
+    }).join('') : '';
+    return shapes + js;
+  };
   return `<svg class="body-map ${cls}" viewBox="${viewBox}" role="img" aria-label="${label || `Body, ${view} view`}">
     <g class="sil">${SIL}<g transform="translate(200 0) scale(-1 1)">${SIL}</g></g>
-    <g class="muscles">${shapes}<g transform="translate(200 0) scale(-1 1)">${shapes}</g></g>
+    <g class="muscles"><g data-half="a">${half('a')}</g><g data-half="b" transform="translate(200 0) scale(-1 1)">${half('b')}</g></g>
   </svg>`;
 }
+
+export const JOINT_LABELS = JOINT_NAMES;
 
 // A front + back pair, side by side.
 export function bodyPair(values, opts = {}) {
