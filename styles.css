@@ -966,3 +966,11 @@ button.stat { font: inherit; color: inherit; cursor: pointer; }
   .set-row, .ex-item, .ring .ring-fg, .wb-progress { transition: none; }
   .set-row.lift.done .check { animation: none; }
 }
+
+/* Focus lifts picker */
+.chip.ghost { background: transparent; border-style: dashed; color: var(--muted); }
+.chip.search-chip { color: var(--accent); display: inline-flex; align-items: center; gap: 6px; }
+.chip.search-chip .ic { width: 16px; height: 16px; }
+.accent-text { color: var(--accent); }
+.fx-day { padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+.fx-day:last-of-type { border-bottom: 0; }

@@ -40,6 +40,7 @@ import { liftTemplates, doneTemplates } from './week.js';
 import { targets as foodTargets, dayTotals } from './nutrition.js';
 import { VARIETY, applyVariety } from './variety.js';
 import { initSwipe } from './swipe.js';
+import { createFocus } from './ui-focus.js';
 
 let db = null; // loaded asynchronously at startup (see bottom)
 const ui = {
@@ -1210,7 +1211,7 @@ function blockCard() {
       const ex = db.exercises[id];
       if (!ex) return '';
       const p = liftProgress(db, id, b);
-      return `<div class="list-row focus-row"><span class="thumb sm">${thumb(ex)}</span><span class="grow"><b>${esc(ex.name)}</b><span class="pick-sub">${progressText(p)}</span></span>
+      return `<div class="list-row focus-row"><span class="thumb sm">${thumb(ex)}</span><span class="grow"><b>${esc(ex.name)}</b><span class="pick-sub">${focusUi.dayOf(b.index, id) ? `${FULL_DAY[focusUi.dayOf(b.index, id)]} · ` : ''}${progressText(p)}</span></span>
         ${p.pct != null ? `<span class="delta ${p.pct >= 0 ? 'up' : 'down'}">${p.pct >= 0 ? '+' : ''}${p.pct.toFixed(1)}%</span>` : ''}</div>`;
     }).join('') : '<p class="muted small">No focus lifts yet.</p>'}
     ${b.isDeload && !db.blocks.reviews[b.index] ? `<button class="btn primary block" data-a="block-review" data-i="${b.index}">Review this block</button>` : ''}
@@ -1225,21 +1226,7 @@ function focusChooser(selected) {
   }).join('')}</div>`;
 }
 
-function openFocusPicker(index) {
-  ui.focusDraft = [...focusFor(db, index)];
-  ui.focusIndex = index;
-  openSheet(`<h2>Focus lifts · block ${index}</h2>
-    <p class="muted small">Pick the compound lifts you want to push this block (up to 4). Their progress is tracked from block to block and reviewed at each deload.</p>
-    <div id="focus-chooser">${focusChooser(ui.focusDraft)}</div>
-    <details class="pain-list"><summary>Add a lift that isn't in your plan</summary>
-      <p class="muted small">For example a weighted pullup. It's added to the day you pick, and you can rotate its grip in Plan.</p>
-      <div class="row"><select id="focus-add-ex" aria-label="Lift">${Object.values(db.exercises).filter((e) => e.category === 'compound' && !planCompounds(db).some((p) => p.id === e.id)).sort((a, b) => a.name.localeCompare(b.name)).map((e) => `<option value="${e.id}">${esc(e.name)}</option>`).join('')}</select>
-      <select id="focus-add-day" aria-label="Day">${DAY_KEYS.filter((d) => db.plan[d]).map((d) => `<option value="${d}">${FULL_DAY[d]}</option>`).join('')}</select>
-      <button class="btn sm" data-a="focus-add">Add</button></div>
-    </details>
-    <button class="btn primary block" data-a="focus-save">Save</button>
-    <button class="btn plain block" data-a="close-sheet">Cancel</button>`);
-}
+function openFocusPicker(index) { focusUi.open(index); }
 
 function openBlockReview(index) {
   const b = blockInfo(db);
@@ -1258,8 +1245,7 @@ function openBlockReview(index) {
     ${focus.map((id) => { const ex = db.exercises[id]; const p = liftProgress(db, id, blk); return ex ? `<div class="list-row focus-row"><span class="thumb sm">${thumb(ex)}</span><span class="grow"><b>${esc(ex.name)}</b><span class="pick-sub">${progressText(p)} · ${p.sessions} sessions</span></span></div>` : ''; }).join('')}
     <h3 class="sheet-h">How did the block feel?</h3>
     <div class="seg-mini wide" role="group" aria-label="How did the block feel">${['Too easy', 'About right', 'Too much'].map((l, i) => `<button data-a="block-feel" data-v="${i}" class="${ui.blockFeel === i ? 'on' : ''}">${l}</button>`).join('')}</div>
-    <h3 class="sheet-h">Focus for block ${index + 1}</h3>
-    <div id="focus-chooser">${focusChooser(ui.focusDraft)}</div>
+    <p class="muted small">Block ${index + 1} keeps the same focus lifts. To change them, use Edit focus on the Plan tab after saving.</p>
     <div class="field"><span>Notes</span><textarea id="block-note" rows="2" placeholder="What worked, what to change"></textarea></div>
     <button class="btn primary block big" data-a="block-save" data-i="${index}">Save check-in</button>
     <p class="muted small">Want different exercises or rep ranges for the next block? Rebuild from Goals & plan builder, or edit days in Plan.</p>`);
@@ -2471,6 +2457,20 @@ const ctx = {
   },
   swapEntry(uid, newId) { swapInSession(uid, newId); render(); toast(`Swapped to ${db.exercises[newId].name}.`); },
   sessionFor: (day) => sessionFor(day),
+  thumb: (ex) => thumb(ex),
+  muscleLine: (ex) => muscleLine(ex),
+  isAvailable: (ex) => isAvailable(db, ex),
+  focusFor: (index) => focusFor(db, index),
+  planSwap: (day, uid, newId) => swapInPlan(day, uid, newId),
+  // A new main lift goes first in the day, with heavy-compound defaults.
+  planAddTop(day, exId) {
+    addToPlanDay(day, exId);
+    const items = db.plan[day].items;
+    const it = items.pop();
+    items.unshift({ ...it, sets: 3, repMin: 4, repMax: 8, restSec: 180 });
+    relabel(items, (x) => `g${groupNum(x.group)}`);
+  },
+  reapplyVariety: () => applyVariety(db, db.settings.variety || 'low', focusFor(db, blockInfo(db).index) || []),
   fresh: () => freshness(currentFatigue(db)),
   openCardioOptions: (day) => openCardioAll(day),
   startTemplate: (id) => actions['tpl-start']({ id }),
@@ -2492,6 +2492,7 @@ const extras = createExtras(ctx);
 const cloud = createCloud(ctx);
 const pain = createPain(ctx);
 const train = createTrain(ctx);
+const focusUi = createFocus(ctx);
 
 // ---------- Render ----------
 
@@ -2818,6 +2819,7 @@ const actions = {
       results: focusFor(db, index).map((id) => ({ exerciseId: id, ...liftProgress(db, id, b.index === index ? b : { ...b, index }) })),
     };
     db.blocks.focus[index + 1] = [...ui.focusDraft];
+    if (db.blocks.byDay?.[index]) db.blocks.byDay[index + 1] = JSON.parse(JSON.stringify(db.blocks.byDay[index]));
     ui.blockFeel = undefined;
     persist(); closeSheet(); render(); toast(`Block ${index} saved. Block ${index + 1} focus is set.`);
   },
@@ -3103,7 +3105,7 @@ const actions = {
   },
 };
 
-Object.assign(actions, food.actions, year.actions, extras.actions, cloud.actions, pain.actions, train.actions);
+Object.assign(actions, food.actions, year.actions, extras.actions, cloud.actions, pain.actions, train.actions, focusUi.actions);
 
 onReorder('session', (uid, to) => {
   const { list, save } = editableList();
