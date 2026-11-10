@@ -3,6 +3,11 @@
 
 const P = {
   check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+  body: '<circle cx="12" cy="5" r="2.2"/><path d="M5 9.5h14M12 9.5v5.5M12 15l-3.5 6M12 15l3.5 6"/>',
+  search: '<circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/>',
+  bolt: '<path d="M13 3L5 13.5h6L10 21l8-10.5h-6z"/>',
+  copy: '<path d="M9 9h10v11H9zM5 15V4h10"/>',
+  bookmark: '<path d="M7 4h10v16l-5-4-5 4z"/>',
   x: '<path d="M6 6l12 12M18 6L6 18"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
   minus: '<path d="M5 12h14"/>',

@@ -2,7 +2,7 @@
 import { e1rm } from './engine.js';
 import { weightOn } from './energy.js';
 
-const goodSets = (sets) => sets.filter((s) => !s.pain && s.reps > 0 && (s.done ?? true));
+const goodSets = (sets) => sets.filter((s) => !s.pain && s.type !== 'w' && s.reps > 0 && (s.done ?? true));
 
 // For bodyweight lifts the load is body weight plus added weight, so a weighted pullup's 1RM is real.
 const loaded = (db, exId, sets, date) => (db.exercises[exId]?.type === 'bodyweight' ? sets.map((x) => ({ ...x, added: x.weight || 0, weight: weightOn(db, date) + (x.weight || 0) })) : sets);

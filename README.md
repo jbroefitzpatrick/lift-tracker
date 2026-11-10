@@ -21,6 +21,8 @@ Plain HTML/CSS/JS, no build step and no backend. All data stays on the phone (op
 - **Exercises:** 155-exercise library grouped by muscle, compound, accessory and conditioning, similarity-based swaps, form cues, step-by-step instructions and photos, favorite / never / "not at this gym" marks, multiple gyms with their own bars, plates and dumbbell steps.
 - **Cardio:** day types, a cardio bank, muscle-freshness tracking, and suggestions that respect fatigue and upcoming lift days.
 - **Conditioning:** sprints, erg intervals, plyometrics and circuit moves log rounds by time, distance, calories or reps, and link into circuits just like lifts. Built-in templates (Tabata, sprint intervals, 10 × 1 min, 4 × 4 min, the 7-minute circuit, kettlebell and plyometric circuits and more) follow published protocols. Timed rounds have a work timer that rolls into rest.
+- **Fast logging:** each set row shows last time's result next to weight and reps (tap it to reuse the numbers), with warm-up, drop and failure set types, swipe to delete, a pinned workout bar with elapsed time, and an optional expanded list for logging every exercise from one screen.
+- **Exercise variety:** choose consistent lifts, accessories that rotate each block, or high variety (accessories weekly, secondary compounds each block). Focus lifts never rotate; swaps keep the same movement and muscle.
 - **Flexible weeks:** tell it how many days you can train this week and how long each day; every main lift still gets done and accessories fit your time. Per day: short on time, extra time, a different gym (limited equipment), or two shorter sessions. Missed a day? It offers to fit it into the rest of the week.
 - **Recovery that learns:** the day after hard training it asks how those muscles feel. Not recovered by the next session? Swap days, do a recovery routine, easy cardio, or train lighter, and next week that muscle group gets a set less. Timed stretching and foam-rolling routines are built in.
 - **Finishers and conditioning scores:** add a 5–15 minute finisher that burns out (or spares) what you trained. Sprints, air bike and circuits remember your results and set the next target.
@@ -63,6 +65,7 @@ Every recommendation links to its sources in the app (Plan builder → Why these
 | `js/store.js` | Storage, snapshots, schema migrations, import/export |
 | `js/crypto.js` | Encrypted backups (AES-256-GCM) |
 | `js/week.js`, `js/recovery.js`, `js/running.js`, `js/ui-train.js` | Week planner, recovery check-ins, running goal, finishers and sharing |
+| `js/variety.js`, `js/swipe.js` | Exercise rotation levels; swipe actions on rows |
 | `js/energy.js` | Resting rate, workout and cardio calorie estimates |
 | `js/pain.js`, `js/ui-pain.js` | Pain reports on the body map and lighter alternatives |
 | `js/cloud.js`, `js/ui-cloud.js` | Optional encrypted cloud backup (client and settings) |

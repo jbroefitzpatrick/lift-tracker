@@ -869,3 +869,100 @@ button.stat { font: inherit; color: inherit; cursor: pointer; }
 .steps { padding-left: 22px; margin: 8px 0 12px; }
 .steps li { margin: 6px 0; line-height: 1.45; }
 .finish-bar .btn.block:not(.primary) { margin-bottom: 8px; }
+
+/* ---------- v12: logging layout, live workout bar, week rings, ribbon, swipe ---------- */
+/* Rounded numerals for the numbers people read at a glance (as in Apple Fitness). */
+.num, .hero-num, .stat b, #rest-time, .cell, .energy-nums b, .set-badge, .prev {
+  font-family: ui-rounded, "SF Pro Rounded", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Set table: Set | Previous | lb | Reps | check */
+.set-table { overflow-x: clip; }
+.set-head.lift, .set-row.lift { grid-template-columns: 34px minmax(58px, 0.85fr) 1fr 1fr 48px; gap: 6px; }
+.set-head.lift span { text-align: center; }
+.set-head.lift span:first-child { text-align: left; padding-left: 6px; }
+.set-row { position: relative; border-radius: 12px; transition: transform 0.18s ease, background-color 0.2s ease; }
+.set-row.lift { margin-bottom: 4px; padding: 3px 0; }
+.set-row.lift .cell { min-height: 44px; font-size: 1.125rem; border-color: transparent; background: var(--surface-2); }
+.set-row.lift .cell:focus { border-color: var(--accent); background: var(--surface); }
+.set-row.lift .check { width: 44px; min-height: 44px; border-radius: 10px; background: var(--surface-2); border-color: transparent; color: var(--faint); justify-self: end; }
+.set-row.lift .set-badge { width: 30px; height: 30px; margin-left: 2px; }
+.prev { min-height: 44px; border: 0; background: none; color: var(--muted); font-size: 0.875rem; font-weight: 500; text-align: center; padding: 0; white-space: nowrap; }
+.prev.none { display: flex; align-items: center; justify-content: center; color: var(--faint); }
+.prev:disabled { opacity: 0.7; }
+/* A finished set tints the whole row (as in Hevy and Strong), so progress reads at a glance. */
+.set-row.lift.done { background: var(--good-soft); }
+.set-row.lift.done .cell { background: transparent; color: var(--text); }
+.set-row.lift.done .check { background: var(--good); border-color: var(--good); color: var(--on-good); animation: pop 0.22s ease; }
+.set-row.lift.done .set-badge { background: transparent; color: var(--good); }
+@keyframes pop { 0% { transform: scale(0.82); } 60% { transform: scale(1.08); } 100% { transform: scale(1); } }
+.set-badge.ty-w { background: var(--warn-soft); color: var(--warn); }
+.set-badge.ty-d { background: rgb(167 139 250 / 0.16); color: var(--legs); }
+.set-badge.ty-f { background: var(--bad-soft); color: var(--bad); }
+
+/* Swipe actions */
+.swipe-act { position: absolute; left: calc(100% + 8px); top: 0; bottom: 0; width: 76px; border: 0; border-radius: 12px; background: var(--bad); color: #fff; font: inherit; font-weight: 600; font-size: 0.875rem; }
+.ex-list { overflow-x: clip; }
+.ex-item { transition: transform 0.18s ease; }
+
+/* Expanded list */
+.ex-full { background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--radius); padding: 10px 12px 8px; margin-bottom: 10px; }
+.link-group .ex-full { margin-left: 4px; }
+.ex-full-head { display: flex; align-items: center; gap: 6px; }
+.ex-full .set-table { margin: 8px 0 2px; }
+.ex-full.is-done { border-color: color-mix(in srgb, var(--good) 35%, transparent); }
+.ex-full .ex-item-main { min-height: 48px; }
+
+/* Live workout bar: pinned, frosted like the tab bar */
+.workout-bar {
+  position: sticky; top: 0; z-index: 15; display: flex; align-items: center; gap: 12px;
+  margin: calc(-14px - env(safe-area-inset-top)) -16px 12px; padding: calc(env(safe-area-inset-top) + 8px) 16px 9px;
+  background: color-mix(in srgb, var(--bg) 82%, transparent); backdrop-filter: blur(18px) saturate(1.4); -webkit-backdrop-filter: blur(18px) saturate(1.4);
+  border-bottom: 1px solid var(--hairline);
+}
+.wb-info { flex: 1; display: flex; align-items: baseline; gap: 10px; }
+.wb-info b { font-size: 1.25rem; font-weight: 700; letter-spacing: -0.01em; }
+.wb-progress { position: absolute; left: 0; bottom: -1px; height: 2px; background: var(--accent); border-radius: 0 2px 2px 0; transition: width 0.3s ease; }
+.workout-bar + .ex-screen .ex-hero { margin-top: -12px; }
+
+/* Rings (one colour per goal, soft track of the same colour, as in Apple's activity rings) */
+.ring circle { fill: none; stroke-linecap: round; }
+.ring .ring-fg { transition: stroke-dasharray 0.5s ease; }
+.r-lift .ring-fg { stroke: var(--accent); } .r-lift .ring-bg { stroke: var(--accent-soft); }
+.r-cardio .ring-fg { stroke: var(--cardio); } .r-cardio .ring-bg { stroke: rgb(251 146 60 / 0.16); }
+.r-protein .ring-fg { stroke: var(--good); } .r-protein .ring-bg { stroke: var(--good-soft); }
+.week-strip { display: flex; justify-content: space-between; gap: 8px; width: 100%; margin: 0 0 12px; padding: 10px 14px; border: 1px solid var(--hairline); border-radius: var(--radius); background: var(--surface); color: var(--text); font: inherit; text-align: left; }
+.wk-item { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.wk-item > span { display: flex; flex-direction: column; line-height: 1.15; }
+.wk-item b { font-size: 0.9375rem; font-weight: 700; }
+.wk-item .muted { font-size: 0.6875rem; }
+.ring-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 6px; }
+.ring-stat { display: flex; flex-direction: column; align-items: center; gap: 2px; text-align: center; }
+.ring-wrap { position: relative; width: 84px; height: 84px; margin-bottom: 4px; }
+.ring-wrap b { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 1.375rem; font-weight: 700; }
+.ring-label { font-weight: 600; font-size: 0.9375rem; }
+
+/* Hero photo fades into the page (as in Fitbod), so the title sits on a clean background */
+.ex-hero::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 72px; background: linear-gradient(to bottom, transparent, var(--bg)); pointer-events: none; }
+
+/* Food: one row with every way to add */
+.ribbon { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 6px; }
+.ribbon button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-height: 64px; padding: 8px 4px; border: 1px solid var(--hairline); border-radius: 14px; background: var(--surface); color: var(--text); font: inherit; font-size: 0.75rem; font-weight: 600; }
+.ribbon button .ic { width: 22px; height: 22px; color: var(--accent); }
+.ribbon button:disabled { opacity: 0.4; }
+.quick-links { margin: 0 2px 12px; }
+
+/* Tips and the "why" sheet */
+.tip { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; margin-bottom: 12px; border-radius: var(--radius); background: var(--accent-soft); }
+.tip p { margin: 0; flex: 1; font-size: 0.875rem; line-height: 1.45; }
+.why-row { padding: 10px 0; border-top: 1px solid var(--line); }
+.why-row:first-of-type { border-top: 0; }
+.why-row p { margin: 4px 0 0; }
+.link-btn.inline { display: inline; min-height: 0; padding: 0; font-size: inherit; }
+.recovery.in-sheet { margin-bottom: 12px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .set-row, .ex-item, .ring .ring-fg, .wb-progress { transition: none; }
+  .set-row.lift.done .check { animation: none; }
+}

@@ -43,6 +43,8 @@ export function createFood(ctx) {
       </section>`;
     }).join('');
     const yEntries = db.foodLog.filter((x) => x.date === addDays(d, -1));
+    // New food goes to the first meal that's still empty, else the last one.
+    const nextMeal = meals.find((m) => !entries.some((x) => Math.min(x.meal, t.meals) === m)) || t.meals;
     const macro = (label, val, target, cls) => {
       const p = target ? Math.min(100, (val / target) * 100) : 0;
       return `<div class="macro ${cls}"><div class="row between"><span>${label}</span><span class="tnum small">${r0(val)}<span class="muted">/${r0(target)} g</span></span></div>
@@ -71,12 +73,13 @@ export function createFood(ctx) {
         </div>
       </section>
       ${energyCard(d)}
-      <div class="chips quick-row">
-        <button class="chip" data-a="food-quick">Quick add</button>
-        ${!entries.length && yEntries.length ? '<button class="chip" data-a="food-copy">Copy yesterday</button>' : ''}
-        <button class="chip" data-a="food-mine">My foods</button>
-        <button class="chip" data-a="food-settings">Settings</button>
+      <div class="ribbon" role="group" aria-label="Add food">
+        <button data-a="food-add" data-meal="${nextMeal}">${icon('search')}<span>Search</span></button>
+        <button data-a="food-quick">${icon('bolt')}<span>Quick add</span></button>
+        <button data-a="meal-saved" data-meal="${nextMeal}">${icon('bookmark')}<span>Saved meals</span></button>
+        <button data-a="food-copy" aria-label="Copy yesterday's food" ${yEntries.length ? '' : 'disabled'}>${icon('copy')}<span>Yesterday</span></button>
       </div>
+      <div class="row between quick-links"><button class="link-btn" data-a="food-mine">My foods</button><button class="link-btn" data-a="food-settings">Nutrition settings</button></div>
       ${mealCards}
       ${checkinCard()}
       <p class="muted small center pad">Food data: USDA FoodData Central (public domain). Phases are set in Plan → Year.</p>`;

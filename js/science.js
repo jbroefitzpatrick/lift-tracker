@@ -44,6 +44,26 @@ export const REFS = {
     finding: 'The Mifflin-St Jeor equation estimates resting energy use from weight, height, age and sex; it is among the most accurate common equations.',
     url: 'https://pubmed.ncbi.nlm.nih.gov/?term=A+new+predictive+equation+for+resting+energy+expenditure+in+healthy+individuals',
   },
+  simao2012: {
+    cite: 'Simão R, et al. (2012). Exercise order in resistance training. Sports Med 42(3):251–265.',
+    finding: 'Exercises done first in a session are performed best and improve most, so the priority lifts should come first.',
+    url: search('Exercise order in resistance training Simão Sports Medicine 2012'),
+  },
+  fonseca2014: {
+    cite: 'Fonseca RM, et al. (2014). Changes in exercises are more effective than in loading schemes to improve muscle strength. J Strength Cond Res 28(11):3085–3092.',
+    finding: 'Varying exercises for the same muscle group produced more uniform muscle growth across the quadriceps and good strength gains.',
+    url: search('Changes in exercises are more effective than in loading schemes to improve muscle strength'),
+  },
+  bazvalle2019: {
+    cite: 'Baz-Valle E, et al. (2019). The effects of exercise variation in muscle thickness, maximal strength and motivation in resistance trained men. PLoS One 14(12):e0226989.',
+    finding: 'Rotating exercises session to session gave similar muscle growth to fixed exercises and higher motivation to train.',
+    url: search('The effects of exercise variation in muscle thickness, maximal strength and motivation in resistance trained men'),
+  },
+  kassiano2022: {
+    cite: 'Kassiano W, et al. (2022). Does varying resistance exercises promote superior muscle hypertrophy and strength gains? A systematic review. J Strength Cond Res 36(6):1753–1762.',
+    finding: 'Some planned variation can help muscle growth across regions of a muscle, but excessive or random rotation can compromise strength and size gains.',
+    url: search('Does varying resistance exercises promote superior muscle hypertrophy and strength gains? A systematic review'),
+  },
   laurent2011: {
     cite: 'Laurent CM, et al. (2011). A practical approach to monitoring recovery: development of a perceived recovery status scale. J Strength Cond Res 25(3):620–628.',
     finding: 'A simple self-rating of how recovered you feel tracked actual performance in the next session, so asking is a useful recovery check.',

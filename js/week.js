@@ -195,7 +195,7 @@ export function composeWeek(db, avail, fromDay = todayKey()) {
   const extra = lagging(db, Object.fromEntries(Object.entries(days).map(([d, v]) => [d, { items: v.base || [] }])));
   for (const d of DAY_KEYS) {
     const v = days[d];
-    if (!v.base || dayIndex(d) < dayIndex(fromDay)) continue;
+    if (!v?.base || dayIndex(d) < dayIndex(fromDay)) continue; // earlier days this week may have nothing stored
     const g = adaptToGym(db, clone(v.base), gymOf(d));
     const fit = fitItems(db, g.items, v.minutes, { focus, extraFor: extra });
     v.items = [...fit.items, ...(v.cond || [])];

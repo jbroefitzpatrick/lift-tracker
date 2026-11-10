@@ -85,6 +85,7 @@ function pickVariant(db, item) {
     return v[n % v.length];
   }
   const wi = weekInfo(db);
+  if (item.rotate === 'week') return v[(wi.week - 1) % v.length];
   return v[(Math.ceil(wi.week / wi.cycleLen) - 1) % v.length];
 }
 
