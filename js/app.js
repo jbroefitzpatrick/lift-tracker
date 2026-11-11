@@ -43,6 +43,7 @@ import { targets as foodTargets, dayTotals } from './nutrition.js';
 import { VARIETY, applyVariety } from './variety.js';
 import { initSwipe, initPullDown, initSideSwipe } from './swipe.js';
 import { createFocus } from './ui-focus.js';
+import { createExerciseEditor } from './ui-exercise.js';
 
 let db = null; // loaded asynchronously at startup (see bottom)
 const ui = {
@@ -1657,7 +1658,7 @@ function openPicker(opts) {
       <option value="all">All muscles</option>
       ${Object.entries(MUSCLES).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}
     </select>
-    ${picker.mode === 'add' ? '<button class="btn block" data-a="pk-custom">Create a custom exercise</button>' : ''}
+    <button class="btn block new-ex-btn" data-a="pk-custom">${icon('plus')} New exercise</button>
     <div id="pk-list"></div>`);
   renderPickerList();
 }
@@ -1704,7 +1705,7 @@ function renderPickerList() {
     return `<h3 class="sect">${label(k)} <span class="muted small">${list.length}</span></h3>${list.map((ex) => pickRow(ex)).join('')}`;
   }).join('');
   if (hiddenCount && picker.mode !== 'browse') html += `<button class="btn ghost block" data-a="pk-hidden">${picker.showHidden ? 'Hide' : 'Show'} ${hiddenCount} hidden exercises (never / not at this gym)</button>`;
-  el.innerHTML = html || '<p class="muted small pad">No matches.</p>';
+  el.innerHTML = html || `<div class="empty small-empty"><p class="muted">No matches${q ? ` for “${esc(picker.q.trim())}”` : ''}.</p>${q ? `<button class="btn primary" data-a="pk-custom" data-name="${esc(picker.q.trim())}">Create “${esc(picker.q.trim())}”</button>` : ''}</div>`;
 }
 
 function planItemFor(day, uid) {
@@ -2607,6 +2608,7 @@ const ctx = {
   },
   swapEntry(uid, newId) { swapInSession(uid, newId); render(); toast(`Swapped to ${db.exercises[newId].name}.`); },
   sessionFor: (day) => sessionFor(day),
+  helpBtn: () => helpBtn(),
   thumb: (ex) => thumb(ex),
   muscleLine: (ex) => muscleLine(ex),
   isAvailable: (ex) => isAvailable(db, ex),
@@ -2643,6 +2645,7 @@ const cloud = createCloud(ctx);
 const pain = createPain(ctx);
 const train = createTrain(ctx);
 const focusUi = createFocus(ctx);
+const exEditor = createExerciseEditor(ctx);
 
 // ---------- Render ----------
 
@@ -3225,7 +3228,10 @@ const actions = {
     el.parentElement.querySelectorAll('.chip').forEach((c) => c.classList.toggle('on', c === el));
     renderPickerList();
   },
-  'pk-custom': () => openPlanEdit(-1),
+  // New exercise from the picker: after saving, it's picked as if chosen from the list.
+  'pk-custom': (d) => exEditor.open({ name: d.name || picker.q.trim(), then: (id) => { renderPickerList(); actions.pick({ id }); } }),
+  'ex-edit': (d) => exEditor.open({ id: d.id }),
+  'ex-new': () => exEditor.open({}),
   'pk-hidden': () => { picker.showHidden = !picker.showHidden; renderPickerList(); },
   pick: (d) => {
     const ex = db.exercises[d.id];
@@ -3276,7 +3282,7 @@ const actions = {
   },
 };
 
-Object.assign(actions, food.actions, year.actions, extras.actions, cloud.actions, pain.actions, train.actions, focusUi.actions);
+Object.assign(actions, food.actions, year.actions, extras.actions, cloud.actions, pain.actions, train.actions, focusUi.actions, exEditor.actions);
 
 onReorder('session', (uid, to) => {
   const { list, save } = editableList();

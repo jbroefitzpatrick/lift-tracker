@@ -36,7 +36,9 @@ export function createExtras(ctx) {
         <p class="muted small">${info.approx ? `Photos show a close variation (${esc(info.src)}). ` : ''}Images & steps: <a href="https://github.com/yuhonas/free-exercise-db" target="_blank" rel="noopener">free-exercise-db</a> (public domain).</p>` : ''}
       ${info.cues ? `<h3 class="sect">Key cues</h3><ul class="cues">${info.cues.split(' · ').map((c) => `<li>${esc(c)}</li>`).join('')}</ul>` : ''}
       ${info.steps ? `<details class="refs"><summary>Step by step${info.level ? ` · ${esc(info.level)}` : ''}</summary><ol>${info.steps.map((s) => `<li>${esc(s)}</li>`).join('')}</ol></details>` : ''}
+      ${ex.notes ? `<h3 class="sect">Your notes</h3><p class="small">${esc(ex.notes)}</p>` : ''}
       <a class="btn block demo-link" href="${demo}" target="_blank" rel="noopener">Watch a demo on YouTube</a>
+      <button class="btn block" data-a="ex-edit" data-id="${ex.id}">${ex.custom ? 'Edit exercise' : 'Edit muscles and notes'}</button>
       <div class="row wrap controls">
         <button class="mini ${pref === 'fav' ? 'on-good' : ''}" data-a="pref" data-id="${ex.id}" data-v="fav">${pref === 'fav' ? 'Favorited' : 'Favorite'}</button>
         <button class="mini ${pref === 'never' ? 'on-bad' : ''}" data-a="pref" data-id="${ex.id}" data-v="never">${pref === 'never' ? 'Never suggested' : 'Never suggest'}</button>
