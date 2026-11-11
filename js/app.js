@@ -41,7 +41,7 @@ import { goalWeek } from './running.js';
 import { liftTemplates, doneTemplates } from './week.js';
 import { targets as foodTargets, dayTotals } from './nutrition.js';
 import { VARIETY, applyVariety } from './variety.js';
-import { initSwipe } from './swipe.js';
+import { initSwipe, initPullDown, initSideSwipe } from './swipe.js';
 import { createFocus } from './ui-focus.js';
 
 let db = null; // loaded asynchronously at startup (see bottom)
@@ -371,8 +371,16 @@ function prefillFollowing(entry, fromIdx) {
   }
 }
 
+function resumeSession(s = db.activeSession) {
+  if (!s?.pausedAt) return;
+  s.pausedMs = (s.pausedMs || 0) + (Date.now() - s.pausedAt);
+  delete s.pausedAt;
+  keepAwake();
+}
+
 function logSet(uid, idx, vals) {
   const session = sessionFor(ui.day);
+  resumeSession(session); // logging a set picks the workout back up
   const entry = session.entries[uid];
   Object.assign(entry.sets[idx], vals, { done: true });
   prefillFollowing(entry, idx);
@@ -415,6 +423,7 @@ function weeklyCapReached(exId) {
 function finishWorkout() {
   const s = db.activeSession;
   if (!s) return;
+  resumeSession(s);
   const finishedAt = Date.now();
   const results = [];
   const entries = [];
@@ -458,7 +467,7 @@ function finishWorkout() {
   }
   const saved = {
     id: s.id, date: s.date, day: s.day, isDeload: s.isDeload, freestyle: s.freestyle || undefined,
-    startedAt: s.startedAt, finishedAt, entries, results, prs, stateBefore,
+    startedAt: s.startedAt, finishedAt, pausedMs: s.pausedMs || undefined, entries, results, prs, stateBefore,
   };
   const o = !s.freestyle ? weekOverride(db, s.day) : null;
   if (o?.from) saved.templates = o.from;
@@ -685,8 +694,8 @@ function screenToday() {
   if (session) {
     html += `<div class="finish-bar">
       <button class="btn block" data-a="fin-open">${icon('plus')} Add finisher</button>
-      <button class="btn primary block big" data-a="finish">Finish workout</button>
-      <button class="btn plain block" data-a="discard">Discard workout</button>
+      ${session.pausedAt ? '<button class="btn primary block big" data-a="resume">Resume workout</button>' : '<button class="btn primary block big" data-a="finish">Finish workout</button>'}
+      <div class="row">${session.pausedAt ? '<button class="btn grow" data-a="finish">Finish</button>' : '<button class="btn grow" data-a="pause">Pause</button>'}<button class="btn plain grow" data-a="discard">Discard</button></div>
     </div>`;
   }
   return html;
@@ -760,12 +769,12 @@ function workoutBar(session) {
   const total = es.reduce((a, e) => a + (e.pain ? e.sets.filter((s) => s.done).length : e.sets.length), 0);
   const done = es.reduce((a, e) => a + e.sets.filter((s) => s.done).length, 0);
   return `<div class="workout-bar" role="group" aria-label="Workout in progress">
-    <div class="wb-info"><b class="num" id="wb-time" data-start="${session.startedAt}">${fmtElapsed(Date.now() - session.startedAt)}</b><span class="muted small">${done} of ${total} sets</span></div>
-    <button class="btn sm primary" data-a="finish">Finish</button>
+    <div class="wb-info"><b class="num" id="wb-time" data-start="${session.startedAt + (session.pausedMs || 0)}" ${session.pausedAt ? 'data-paused="1"' : ''}>${fmtElapsed((session.pausedAt || Date.now()) - session.startedAt - (session.pausedMs || 0))}</b><span class="muted small">${session.pausedAt ? 'Paused' : `${done} of ${total} sets`}</span></div>
+    ${session.pausedAt ? '<button class="btn sm primary" data-a="resume">Resume</button>' : '<button class="btn sm primary" data-a="finish">Finish</button>'}
     <i class="wb-progress" style="width:${total ? (done / total) * 100 : 0}%" aria-hidden="true"></i>
   </div>`;
 }
-setInterval(() => { const el = document.getElementById('wb-time'); if (el) el.textContent = fmtElapsed(Date.now() - +el.dataset.start); }, 1000);
+setInterval(() => { const el = document.getElementById('wb-time'); if (el && !el.dataset.paused) el.textContent = fmtElapsed(Date.now() - +el.dataset.start); }, 1000);
 
 // ---------- This week at a glance ----------
 
@@ -813,6 +822,49 @@ function weekStreak() {
   return n;
 }
 
+// Longest run of consecutive weeks with at least one workout.
+function bestStreak() {
+  const weeks = [...new Set(db.sessions.map((x) => mondayOf(x.date)))].sort();
+  let best = 0; let run = 0; let prev = null;
+  for (const w of weeks) { run = prev && addDays(prev, 7) === w ? run + 1 : 1; best = Math.max(best, run); prev = w; }
+  return best;
+}
+
+// Month calendar: lifting days filled, cardio-only days dotted, minutes under each workout.
+function calendarCard() {
+  const today = todayStr();
+  const month = ui.calMonth || today.slice(0, 7);
+  const [y, m] = month.split('-').map(Number);
+  const first = `${month}-01`;
+  const daysIn = new Date(y, m, 0).getDate();
+  const lead = (new Date(y, m - 1, 1).getDay() + 6) % 7; // Monday first
+  const byDate = {};
+  for (const s of db.sessions) if (s.date.startsWith(month)) (byDate[s.date] ||= { lift: [], cardio: 0 }).lift.push(s);
+  for (const c of db.cardio) if (c.date.startsWith(month) && !c.fromWorkout) (byDate[c.date] ||= { lift: [], cardio: 0 }).cardio += c.minutes;
+  const cells = [];
+  for (let i = 0; i < lead; i++) cells.push('<span class="cal-cell empty"></span>');
+  for (let d = 1; d <= daysIn; d++) {
+    const date = `${month}-${String(d).padStart(2, '0')}`;
+    const x = byDate[date];
+    const mins = x ? Math.round(x.lift.reduce((a, s) => a + workoutBurn(db, s).minutes, 0) + x.cardio) : 0;
+    const cls = [x?.lift.length ? 'lift' : x?.cardio ? 'cardio' : '', date === today ? 'today' : '', date > today ? 'future' : ''].join(' ');
+    const label = `${parseDate(date).toLocaleDateString(undefined, { month: 'long', day: 'numeric' })}${x ? `: ${x.lift.length ? `${x.lift.length} workout${x.lift.length > 1 ? 's' : ''}` : 'cardio'}, ${mins} minutes` : ''}`;
+    cells.push(x?.lift.length
+      ? `<button class="cal-cell ${cls}" data-a="cal-day" data-date="${date}" aria-label="${label}"><span class="cal-n">${d}</span><span class="cal-m">${mins}m</span></button>`
+      : `<span class="cal-cell ${cls}" aria-label="${label}"><span class="cal-n">${d}</span>${x?.cardio ? '<span class="cal-dot"></span>' : '<span class="cal-m"></span>'}</span>`);
+  }
+  const count = Object.values(byDate).filter((x) => x.lift.length).length;
+  const prev = addDays(first, -1).slice(0, 7);
+  const next = addDays(`${month}-${String(daysIn).padStart(2, '0')}`, 1).slice(0, 7);
+  return `<section class="card cal-card" aria-label="Workout calendar">
+    <div class="cal-head"><h3>${parseDate(first).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</h3>
+      <div class="row"><button class="icon-btn" data-a="cal-month" data-v="${prev}" aria-label="Previous month">${icon('left')}</button><button class="icon-btn" data-a="cal-month" data-v="${next}" aria-label="Next month" ${next > today.slice(0, 7) ? 'disabled' : ''}>${icon('right')}</button></div></div>
+    <div class="cal-grid" aria-hidden="true">${['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((x) => `<span class="cal-wd">${x}</span>`).join('')}</div>
+    <div class="cal-grid">${cells.join('')}</div>
+    <div class="tile-row three"><div class="tile"><span>This month</span><b class="num">${count}</b></div><div class="tile"><span>Streak</span><b class="num">${weekStreak()} wk</b></div><div class="tile"><span>Best</span><b class="num">${bestStreak()} wk</b></div></div>
+  </section>`;
+}
+
 function weekRingsCard() {
   const w = weekStats();
   const big = (cls, pct, value, of, label) => `<div class="ring-stat"><div class="ring-wrap">${ring(pct, cls, 84, 9)}<b class="num">${value}</b></div><span class="ring-label">${label}</span><span class="muted small">${of}</span></div>`;
@@ -823,7 +875,7 @@ function weekRingsCard() {
       ${big('r-cardio', w.cardioTarget ? w.cardioMin / w.cardioTarget : 0, w.cardioMin, w.cardioTarget ? `of ${w.cardioTarget} min` : 'minutes', 'Cardio')}
       ${big('r-protein', w.protein != null ? w.protein / w.pTarget : 0, w.protein != null ? Math.round(w.protein) : '—', w.protein != null ? `of ${w.pTarget} g a day` : 'log food to see', 'Protein')}
     </div>
-    <div class="tile-row"><div class="tile"><span>Workouts</span><b class="num">${db.sessions.length}</b></div><div class="tile"><span>Streak</span><b class="num">${weekStreak()} wk</b></div></div>
+
   </section>`;
 }
 
@@ -858,7 +910,7 @@ function screenExercise() {
   const barbell = ex.type?.startsWith('barbell');
   const grp = groupsOf(items).find((g) => g.items.includes(item));
   const firstCompound = items.find((i) => i.ex.category === 'compound' && i.ex.type !== 'bodyweight');
-  const warm = db.settings.warmups && item === firstCompound && target ? warmupSets(ex, target, gym) : [];
+  const warm = entry?.warm || (db.settings.warmups && item === firstCompound && target ? warmupSets(ex, target, gym) : []);
   const rir = rirTarget(weekInfo(db));
   const allDone = entry && sets.every((s) => s.done);
   const prev = items[idx - 1];
@@ -897,7 +949,7 @@ function screenExercise() {
     ${item.note && conditioning ? `<p class="small">${esc(item.note)}</p>` : ''}
     ${notices.filter((n) => n[2] !== 'pain').map(([c, m]) => `<p class="notice ${c}">${esc(m)}</p>`).join('')}
     ${pain.exerciseCard(ex, item, entry, t, (e) => isAvailable(db, e))}
-    ${warm.length ? `<details class="warmup"><summary>Warm-up · ${warm.length} sets</summary>${warm.map((w) => `<div class="wu-row"><span>${fmtW(w.weight, ex)} × ${w.reps}</span><span class="muted small">${barbell ? plateText(w.weight, gym) : ''}</span></div>`).join('')}</details>` : ''}
+    ${warmBlock(item, entry, warm, ex, gym, barbell)}
     <div class="set-table" role="group" aria-label="Sets">
       ${setHead(conditioning, fields, ex)}
       ${rows}
@@ -913,6 +965,40 @@ function screenExercise() {
           : '<button class="btn primary grow" data-a="finish">Finish workout</button>'}
     </div>
   </div>`;
+}
+
+// Warm-up sets: collapsed by default, editable, checked off like work sets (they don't count
+// toward progression, volume or records). Stored on the workout entry once edited or started.
+function warmBlock(item, entry, warm, ex, gym, barbell) {
+  if (!warm.length) return '';
+  const done = warm.filter((w) => w.done).length;
+  const open = ui.warmOpen?.[item.uid];
+  return `<details class="warmup" data-uid="${item.uid}" ${open ? 'open' : ''}>
+    <summary>Warm-up · ${done ? `${done} of ${warm.length} done` : `${warm.length} sets`}</summary>
+    <div class="set-head warm" aria-hidden="true"><span></span><span>${ex.type === 'dumbbell' ? 'lb each' : 'lb'}</span><span>Reps</span><span></span></div>
+    ${warm.map((w, i) => `<div class="set-row warm ${w.done ? 'done' : ''}" data-swipe="warm-del" data-swipe-label="Delete" data-uid="${item.uid}" data-i="${i}">
+      <span class="set-badge ty-w">W</span>
+      <input class="cell" type="text" inputmode="decimal" data-warm="${item.uid}:${i}:weight" value="${w.weight}" aria-label="Warm-up ${i + 1} weight">
+      <input class="cell" type="text" inputmode="numeric" data-warm="${item.uid}:${i}:reps" value="${w.reps}" aria-label="Warm-up ${i + 1} reps">
+      <button class="check" data-a="warm-check" data-uid="${item.uid}" data-i="${i}" aria-pressed="${!!w.done}" aria-label="${w.done ? 'Undo' : 'Complete'} warm-up ${i + 1}">${icon('check')}</button>
+      ${barbell ? `<span class="wu-plates">${plateText(w.weight, gym)}</span>` : ''}
+    </div>`).join('')}
+    <button class="text-btn small-text" data-a="warm-add" data-uid="${item.uid}">${icon('plus')} Add warm-up</button>
+  </details>`;
+}
+
+// The warm-ups for an entry, copied onto the workout the first time they're touched.
+function warmFor(uid) {
+  const sx = ensureSession(ui.day);
+  const e = sx?.entries[uid];
+  if (!e) return null;
+  if (!e.warm) {
+    const item = todayItems(ui.day).find((i) => i.uid === uid);
+    const t = targetsFor(db, item, sx.isDeload);
+    const gym = activeGym(db);
+    e.warm = warmupSets(item.ex, roundToGym(item.ex, t.weight, gym), gym).map((w) => ({ ...w, done: false }));
+  }
+  return e.warm;
 }
 
 const SET_TYPES = { w: ['W', 'Warm-up'], d: ['D', 'Drop set'], f: ['F', 'To failure'] };
@@ -1542,6 +1628,7 @@ function closeSheet() {
   }, 180);
 }
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#sheet').hidden) closeSheet(); });
+document.addEventListener('toggle', (e) => { const d = e.target; if (d.matches?.('details.warmup')) (ui.warmOpen ||= {})[d.dataset.uid] = d.open; }, true);
 
 const num = (id) => {
   const v = parseFloat(String($(`#${id}`)?.value ?? '').replace(',', '.'));
@@ -1715,7 +1802,7 @@ const STATUS = {
 function screenSummary() {
   const s = db.sessions.find((x) => x.id === ui.summaryId);
   if (!s) { ui.tab = 'today'; return screenToday(); }
-  const mins = Math.round((s.finishedAt - s.startedAt) / 60000);
+  const mins = Math.round((s.finishedAt - s.startedAt - (s.pausedMs || 0)) / 60000);
   const sets = s.entries.reduce((a, e) => a + e.sets.filter((x) => !x.pain).length, 0);
   const vol = s.entries.reduce((a, e) => a + e.sets.reduce((b, x) => b + (x.pain ? 0 : (x.weight || 0) * (x.reps || 0)), 0), 0);
   const res = s.results.filter((r) => r.status !== 'skipped');
@@ -1830,6 +1917,7 @@ function screenHistory() {
     ${progressTabs()}
     ${!db.sessions.length && !db.cardio.length ? '<div class="empty"><div class="big">No workouts yet</div><p class="muted">Finished workouts show up here.</p></div>' : ''}
     ${weekRingsCard()}
+    ${calendarCard()}
     ${extras.volumeCard()}
     ${recent.length ? `<div class="card"><h3>Recent workouts</h3>${recent.map((s) => `
       <button class="list-row" data-a="summary" data-id="${s.id}">
@@ -2602,6 +2690,23 @@ const actions = {
   tab: (d) => { if (!$('#sheet').hidden) closeSheet(); ui.summaryFresh = false; ui.selecting = false; ui.tab = d.tab === 'progress' ? ui.progressTab || 'history' : d.tab; if (d.tab === 'today') ui.summaryId = null; if (d.tab === 'history') ui.historyEx = null; window.scrollTo(0, 0); render(); },
   day: (d) => { ui.day = d.day; ui.tab = 'today'; ui.showCardio = false; ui.selecting = false; render(); },
   'open-set': (d) => openSetSheet(d.uid, +d.i),
+  'warm-check': (d) => { const w = warmFor(d.uid); if (!w?.[+d.i]) return; w[+d.i].done = !w[+d.i].done; (ui.warmOpen ||= {})[d.uid] = true; persist(); haptic(); render(); },
+  'warm-add': (d) => { const w = warmFor(d.uid); if (!w) return; const last = w[w.length - 1] || { weight: 45, reps: 5 }; w.push({ weight: last.weight, reps: last.reps, done: false }); (ui.warmOpen ||= {})[d.uid] = true; persist(); render(); },
+  'warm-del': (d) => { const w = warmFor(d.uid); if (!w) return; w.splice(+d.i, 1); persist(); render(); },
+  pause: () => {
+    const s = db.activeSession;
+    if (!s || s.pausedAt) return;
+    s.pausedAt = Date.now();
+    stopRest(); releaseAwake(); persist(); render();
+    toast('Workout paused. The clock stops until you resume.');
+  },
+  resume: () => { resumeSession(); persist(); render(); },
+  'cal-month': (d) => { ui.calMonth = d.v; render(); },
+  'cal-day': (d) => {
+    const list = db.sessions.filter((s) => s.date === d.date);
+    if (list.length === 1) return actions.summary({ id: list[0].id });
+    openSheet(`<h2>${fmtDate(d.date)}</h2><div class="list-group">${list.map((s) => `<button class="list-row" data-a="summary" data-id="${s.id}"><span class="grow"><b>${s.freestyle ? 'Freestyle' : esc(db.plan[s.day]?.name || 'Workout')}</b><span class="pick-sub">${Math.round(workoutBurn(db, s).minutes)} min</span></span>${icon('right', 'chev')}</button>`).join('')}</div><button class="btn block" data-a="close-sheet">Close</button>`);
+  },
   'rec-pick': (d) => { ui.recSel = { area: d.m, side: null }; refreshRecovery(); },
   // A "?" next to a label shows or hides its explanation.
   help: (d, el) => { const p = el.closest('.field, .help-wrap, label, h3, div')?.querySelector('.help-text') || el.parentElement.nextElementSibling; if (!p) return; p.hidden = !p.hidden; el.setAttribute('aria-expanded', String(!p.hidden)); },
@@ -3212,6 +3317,13 @@ document.addEventListener('change', (e) => {
   const a = el.dataset?.a;
   if (el.id === 'import-file' || el.id === 'photo-file' || el.id === 'check-file') { extras.onChange(e); return; }
   if (food.onChange(e) || year.onChange(e) || train.onChange(e)) return;
+  if (el.dataset?.warm) {
+    const [uid, i, k] = el.dataset.warm.split(':');
+    const w = warmFor(uid);
+    const v = k === 'reps' ? parseInt(el.value, 10) : parseFloat(el.value);
+    if (w?.[+i] && Number.isFinite(v)) { w[+i][k] = v; persist(); }
+    return;
+  }
   if (el.dataset?.set) {
     const [uid, i, k] = el.dataset.set.split(':');
     const sx = ensureSession(ui.day);
@@ -3310,6 +3422,17 @@ actions['recovery-download'] = () => recoveryRaw && download(`lift-recovery-${to
   dailySnapshot(db);
   cloud.onBoot();
   initSwipe();
+  // Pull the sheet down to close it; pull the rest timer down to skip the rest.
+  initPullDown($('#sheet-body'), closeSheet, { canStart: () => $('#sheet-body').scrollTop <= 0 });
+  initPullDown($('#rest'), stopRest);
+  // Swipe across the exercise photo to go to the next or previous exercise.
+  initSideSwipe('.ex-hero', (dir) => {
+    const items = todayItems(ui.day);
+    const i = items.findIndex((x) => x.uid === ui.exUid);
+    const next = items[i + dir];
+    if (ui.tab !== 'exercise' || !next) return;
+    ui.backUid = null; ui.exUid = next.uid; window.scrollTo(0, 0); haptic(); render();
+  });
   // Ask once to keep data permanently (granted more readily for Home Screen apps).
   if (!db.settings.persistAsked) { db.settings.persistAsked = true; persist(); requestPersistence(); }
 })();

@@ -82,7 +82,7 @@ export function workoutMet(db, entries) {
 }
 
 export function workoutMinutes(s) {
-  const m = ((s.finishedAt || 0) - (s.startedAt || 0)) / 60000;
+  const m = ((s.finishedAt || 0) - (s.startedAt || 0) - (s.pausedMs || 0)) / 60000;
   if (m >= 5 && m <= 240) return m;
   // No reliable clock (edited or imported workouts): about 2.5 minutes per set including rest.
   return Math.max(10, s.entries.reduce((a, e) => a + entrySets(e), 0) * 2.5);

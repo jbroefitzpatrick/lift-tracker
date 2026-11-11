@@ -56,20 +56,36 @@ export function plateText(weight, gym) {
 }
 
 // Ramp-up sets before the first working set (common practice: ~40/60/80% of working weight).
+// Warm-up sets that only ever add plates on the way up.
+// Barbell: every warm-up is the bar plus the first few plates of the working set's stack
+// (largest plates first), so 365 goes 45 → 135 → 225 → 315 → 365 with nothing taken off.
+// Small change plates (2.5s, 5s) only appear on the working set. Targets are roughly 40/60/80%
+// of the working weight; a step is used only if it's reasonably close to its target.
+// Dumbbells and machines round down to easy numbers (whole dumbbells, 10 lb on a stack).
 export function warmupSets(ex, workWeight, gym) {
   if (!workWeight || ex?.type === 'bodyweight') return [];
-  const out = [];
+  const plan = [[0.4, 5], [0.6, 3], [0.8, 2]];
   if (isBarbell(ex)) {
-    if (workWeight >= gym.barWeight * 2) out.push({ weight: gym.barWeight, reps: 10 });
-    for (const [pct, reps] of [[0.4, 5], [0.6, 3], [0.8, 2]]) {
-      const w = roundToGym(ex, workWeight * pct, gym);
-      if (w > (out[out.length - 1]?.weight || 0) && w < workWeight) out.push({ weight: w, reps });
+    const bar = gym.barWeight;
+    if (workWeight <= bar) return [];
+    const out = [{ weight: bar, reps: 10 }];
+    const { perSide } = platesFor(workWeight, gym);
+    const steps = [];
+    let acc = bar;
+    for (const p of perSide) { acc += 2 * p; if (acc < workWeight - 0.01 && p >= 10) steps.push(acc); }
+    for (const [pct, reps] of plan) {
+      const target = workWeight * pct;
+      const pick = steps.filter((w) => w > out[out.length - 1].weight)
+        .sort((x, y) => Math.abs(x - target) - Math.abs(y - target))[0];
+      if (pick && Math.abs(pick - target) <= workWeight * 0.16) out.push({ weight: pick, reps });
     }
-  } else {
-    for (const [pct, reps] of [[0.5, 8], [0.75, 4]]) {
-      const w = roundToGym(ex, workWeight * pct, gym);
-      if (w > 0 && w > (out[out.length - 1]?.weight || 0) && w < workWeight) out.push({ weight: w, reps });
-    }
+    return out;
+  }
+  const step = ex?.type === 'dumbbell' ? Math.max(5, gym.dbStep || 5) : 10;
+  const out = [];
+  for (const [pct, reps] of [[0.5, 8], [0.75, 4]]) {
+    const w = Math.floor((workWeight * pct) / step) * step;
+    if (w > 0 && w > (out[out.length - 1]?.weight || 0) && w < workWeight) out.push({ weight: w, reps });
   }
   return out;
 }

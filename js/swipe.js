@@ -23,6 +23,57 @@ function ensureButton(el) {
   el.appendChild(b);
 }
 
+// Pull a bottom sheet (or the rest timer) down to dismiss it, the way iOS sheets work.
+// Only starts when the sheet is scrolled to the top, so normal scrolling inside it still works.
+export function initPullDown(target, onDismiss, { canStart = () => true } = {}) {
+  let start = null;
+  target.addEventListener('touchstart', (e) => {
+    if (!canStart(e) || e.target.closest('input, textarea, select, [data-swipe]')) { start = null; return; }
+    start = { y: e.touches[0].clientY, x: e.touches[0].clientX, t: Date.now(), dy: 0, on: false };
+  }, { passive: true });
+  target.addEventListener('touchmove', (e) => {
+    if (!start) return;
+    const dy = e.touches[0].clientY - start.y;
+    const dx = e.touches[0].clientX - start.x;
+    if (!start.on) {
+      if (dy < 8 || Math.abs(dx) > Math.abs(dy)) { if (dy < -8 || Math.abs(dx) > 12) start = null; return; }
+      start.on = true;
+      target.style.transition = 'none';
+    }
+    start.dy = Math.max(0, dy);
+    target.style.transform = `translateY(${start.dy}px)`;
+  }, { passive: true });
+  const end = () => {
+    if (!start?.on) { start = null; return; }
+    const fast = start.dy / Math.max(1, Date.now() - start.t) > 0.6;
+    target.style.transition = '';
+    if (start.dy > 110 || (fast && start.dy > 40)) {
+      target.style.transform = 'translateY(100%)';
+      setTimeout(() => { target.style.transform = ''; }, 260);
+      onDismiss();
+    } else target.style.transform = '';
+    start = null;
+  };
+  target.addEventListener('touchend', end, { passive: true });
+  target.addEventListener('touchcancel', end, { passive: true });
+}
+
+// Swipe left or right across an area (e.g. the exercise photo) to move between items.
+export function initSideSwipe(selector, onSwipe) {
+  let s = null;
+  document.addEventListener('touchstart', (e) => {
+    const el = e.target.closest(selector);
+    s = el ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : null;
+  }, { passive: true });
+  document.addEventListener('touchend', (e) => {
+    if (!s) return;
+    const dx = e.changedTouches[0].clientX - s.x;
+    const dy = e.changedTouches[0].clientY - s.y;
+    s = null;
+    if (Math.abs(dx) > 70 && Math.abs(dx) > Math.abs(dy) * 1.5) onSwipe(dx < 0 ? 1 : -1);
+  }, { passive: true });
+}
+
 export function initSwipe() {
   document.addEventListener('touchstart', (e) => {
     const el = e.target.closest('[data-swipe]');

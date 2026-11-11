@@ -1036,3 +1036,38 @@ button { touch-action: manipulation; }
 .btn { white-space: nowrap; }
 .recov-row { flex-wrap: nowrap; padding: 6px 0; }
 .recov-row b.grow { font-size: 0.9375rem; }
+
+/* ---------- v14: editable warm-ups, calendar, pull-to-dismiss ---------- */
+.set-head.warm, .set-row.warm { grid-template-columns: 34px 1fr 1fr 48px; gap: 6px; }
+.set-row.warm { margin-bottom: 2px; padding: 3px 0; row-gap: 0; }
+.set-row.warm .cell { min-height: 40px; font-size: 1rem; border-color: transparent; background: var(--surface-2); }
+.set-row.warm .check { width: 44px; min-height: 40px; border-radius: 10px; background: var(--surface-2); border-color: transparent; color: var(--faint); justify-self: end; }
+.set-row.warm.done { background: var(--good-soft); }
+.set-row.warm.done .cell { background: transparent; color: var(--muted); }
+.set-row.warm.done .check { background: var(--good); color: var(--on-good); }
+.wu-plates { grid-column: 2 / 4; font-size: 0.75rem; color: var(--muted); padding: 0 4px 4px; }
+.set-head.warm { margin-top: 4px; }
+.warmup[open] summary { margin-bottom: 2px; }
+
+.cal-head { display: flex; align-items: center; justify-content: space-between; }
+.cal-head h3 { margin: 0; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.cal-wd { text-align: center; font-size: 0.6875rem; font-weight: 600; color: var(--muted); padding: 8px 0 4px; }
+.cal-cell { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; min-height: 46px; border: 0; border-radius: 12px; background: transparent; color: var(--text); font: inherit; padding: 2px 0; }
+.cal-cell.empty { min-height: 0; }
+.cal-n { font-weight: 600; font-size: 0.9375rem; line-height: 1.1; }
+.cal-m { font-size: 0.625rem; font-weight: 600; min-height: 12px; }
+.cal-cell.lift { background: var(--accent-soft); }
+.cal-cell.lift .cal-n { color: var(--accent); }
+.cal-cell.lift .cal-m { color: var(--accent); }
+.cal-cell.today { box-shadow: inset 0 0 0 1.5px var(--text); }
+.cal-cell.future { color: var(--faint); }
+.cal-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--cardio); margin-top: 3px; }
+.tile-row.three { grid-template-columns: repeat(3, 1fr); }
+
+#sheet-body, #rest { will-change: transform; }
+.grabber { cursor: grab; }
+.set-row.warm .set-badge { display: flex; align-items: center; justify-content: center; width: 30px; height: 30px; margin-left: 2px; }
+.set-row.warm.done .set-badge { background: transparent; color: var(--good); }
+.tile-row.three .tile { flex-direction: column; align-items: flex-start; gap: 2px; }
+.tile-row.three .tile b { white-space: nowrap; }
