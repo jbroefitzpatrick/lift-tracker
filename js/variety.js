@@ -23,11 +23,11 @@ export const VARIETY = {
   high: { name: 'High variety', desc: 'Accessories change every week and secondary compounds each block. Focus lifts stay.' },
 };
 
-function candidates(db, item, taken, n) {
+function candidates(db, item, taken, n, level) {
   const ex = db.exercises[item.exerciseId];
   return similarExercises(db.exercises, ex.id, 40)
     .filter(({ ex: e, samePattern }) => e.category === ex.category
-      && (samePattern || e.primary[0] === ex.primary[0])
+      && (level === 'high' || samePattern) // some variety: the same movement; high: anything for that muscle
       && e.primary[0] === ex.primary[0]
       && isAvailable(db, e)
       && !['never', 'avoid'].includes(db.exPrefs?.[e.id])
@@ -44,7 +44,7 @@ export function applyVariety(db, level, focus = []) {
     const taken = new Set(plan.items.map((i) => i.exerciseId));
     for (const item of plan.items) {
       if (item.autoVar) { delete item.variants; delete item.rotate; delete item.autoVar; }
-      if (item.role || item.variants || item.autoCore) continue; // hand-made rotations and core (which keeps its own weekly balance) stay as they are
+      if (item.role || item.variants || item.autoCore || item.lock) continue; // hand-made rotations and core (which keeps its own weekly balance) stay as they are
       const ex = db.exercises[item.exerciseId];
       if (!ex || ex.category === 'conditioning' || level === 'low' || !VARIETY[level]) continue;
       let n = 0;
@@ -52,7 +52,7 @@ export function applyVariety(db, level, focus = []) {
       if (ex.category === 'accessory') { n = level === 'high' ? 3 : 2; rotate = level === 'high' ? 'week' : 'block'; }
       else if (level === 'high' && !focus.includes(ex.id)) { n = 2; rotate = 'block'; }
       if (!n) continue;
-      const alts = candidates(db, item, taken, n);
+      const alts = candidates(db, item, taken, n, level);
       if (!alts.length) continue;
       for (const id of alts) taken.add(id);
       Object.assign(item, { variants: [item.exerciseId, ...alts], rotate, autoVar: true });

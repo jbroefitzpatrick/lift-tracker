@@ -74,6 +74,7 @@ export const PATTERNS = {
   isometric: 'Isometric hold',
   run: 'Run',
   mobility: 'Stretch and foam roll',
+  prehab: 'Warm-up and prehab',
 };
 
 // [id, name, category (C/A), equipment type, pattern, primary muscles, secondary muscles]
@@ -285,6 +286,23 @@ const RAW = [
   ['run-easy', 'Easy run', 'X', 'bodyweight', 'run', 'calves', 'quads hamstrings', 'time'],
   ['run-long', 'Long run', 'X', 'bodyweight', 'run', 'calves quads', 'hamstrings glutes', 'time'],
   ['run-5k', '5k time trial', 'X', 'bodyweight', 'run', 'quads calves hamstrings', 'glutes hip-flexors', 'distance'],
+
+  // ---- Warm-up and physical-therapy style drills (no training fatigue) ----
+  ['warmup-cardio', 'Easy cardio', 'X', 'bodyweight', 'prehab', 'quads calves', '', 'time'],
+  ['leg-swing', 'Leg swings', 'X', 'bodyweight', 'prehab', 'hip-flexors hamstrings', 'glutes', 'reps'],
+  ['arm-circle', 'Arm circles', 'X', 'bodyweight', 'prehab', 'front-delts side-delts', 'rear-delts', 'time'],
+  ['band-pull-apart', 'Band pull-apart', 'X', 'bodyweight', 'prehab', 'rear-delts upper-back', 'traps', 'reps'],
+  ['scap-pushup', 'Scapular pushup', 'X', 'bodyweight', 'prehab', 'upper-back', 'chest front-delts', 'reps'],
+  ['band-external-rotation', 'Band external rotation', 'X', 'bodyweight', 'prehab', 'rear-delts', 'upper-back', 'reps'],
+  ['spanish-squat-hold', 'Spanish squat hold', 'X', 'bodyweight', 'prehab', 'quads', 'glutes', 'time'],
+  ['tke', 'Terminal knee extension (band)', 'X', 'bodyweight', 'prehab', 'quads', '', 'reps'],
+  ['glute-bridge', 'Glute bridge', 'X', 'bodyweight', 'prehab', 'glutes', 'hamstrings', 'reps'],
+  ['clamshell', 'Clamshell', 'X', 'bodyweight', 'prehab', 'abductors glutes', '', 'reps'],
+  ['wrist-ext-eccentric', 'Slow wrist extension lowering', 'X', 'dumbbell', 'prehab', 'forearms', '', 'reps'],
+  ['forearm-stretch', 'Forearm stretch', 'X', 'bodyweight', 'prehab', 'forearms', '', 'time'],
+  ['wrist-circle', 'Wrist circles', 'X', 'bodyweight', 'prehab', 'forearms', '', 'time'],
+  ['calf-raise-slow', 'Slow calf raise', 'X', 'bodyweight', 'prehab', 'calves', '', 'reps'],
+  ['chin-tuck', 'Chin tuck', 'X', 'bodyweight', 'prehab', 'traps', '', 'reps'],
 
   // ---- Recovery: stretching and foam rolling (timed holds, no training fatigue) ----
   ['roll-quads', 'Foam roll quads', 'X', 'bodyweight', 'mobility', 'quads', '', 'time'],

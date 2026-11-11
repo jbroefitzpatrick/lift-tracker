@@ -38,7 +38,7 @@ export function liftLoads(db, items) {
   const out = {};
   for (const { exerciseId, sets } of items) {
     const ex = db.exercises[exerciseId];
-    if (!ex || !sets || ex.pattern === 'mobility') continue; // stretching and foam rolling don't add fatigue
+    if (!ex || !sets || ['mobility', 'prehab'].includes(ex.pattern)) continue; // stretching, rolling and warm-up drills don't add fatigue
     for (const m of ex.primary) out[m] = (out[m] || 0) + sets;
     for (const m of ex.secondary) out[m] = (out[m] || 0) + sets * 0.5;
   }

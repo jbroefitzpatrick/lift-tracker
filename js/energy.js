@@ -51,7 +51,7 @@ function kcalFromMet(db, met, minutes, date) {
 // Compendium values for resistance work (herrmann2024): multiple exercises at 8–15 reps 3.5,
 // heavy squats/deadlifts 5.0, circuits with reciprocal supersets 5.8.
 // Conditioning patterns: bodyweight high-intensity 6.5; others from the nearest Compendium activity.
-const COND_MET = { sprint: 9.0, erg: 8.0, plyo: 7.0, 'circuit-move': 6.5, isometric: 3.0, carry: 6.0, hinge: 8.0, run: 9.0, mobility: 2.3 };
+const COND_MET = { sprint: 9.0, erg: 8.0, plyo: 7.0, 'circuit-move': 6.5, isometric: 3.0, carry: 6.0, hinge: 8.0, run: 9.0, mobility: 2.3, prehab: 2.8 };
 
 function entrySets(e) {
   return e.sets.filter((x) => (x.done ?? true) && !x.pain).length;

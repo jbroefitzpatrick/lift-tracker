@@ -136,6 +136,7 @@ export function getState(db, exId) {
     targetWeight: st.targetWeight !== undefined ? st.targetWeight : ex?.startWeight ?? null,
     targetReps: st.targetReps ?? null,
     targetTotal: st.targetTotal ?? null,
+    tm: st.tm ?? null, // training max, for wave progression
     misses: st.misses || 0,
     stallCount: st.stallCount || 0,
     lastIncreaseDate: st.lastIncreaseDate || null,
@@ -150,11 +151,76 @@ export function painWarning(st, date = todayStr()) {
   return st.painDates.filter((d) => daysBetween(d, date) <= 14).length >= 2;
 }
 
+// ---------- Progression schemes ----------
+// How a lift moves forward (db.settings.progression). Accessories always use "double".
+//   double — add reps until every set hits the top of the range, then add weight (acsm2009).
+//   linear — fixed reps; add weight every session all sets are completed (rippetoe2011).
+//   wave   — three-week waves of heavier top sets at a percentage of a training max, with the last
+//            set taken for as many good reps as possible; the training max rises each wave
+//            (wendler2009). Periodized loading like this builds maximal strength better than
+//            unvaried loading (williams2017).
+// The strength schemes (linear, wave) apply to the block's focus lifts only.
+export const PROGRESSIONS = {
+  double: { name: 'Reps, then weight', desc: 'Add reps until every set reaches the top of the range, then add weight and start again. Works for any goal.' },
+  linear: { name: 'Add weight', desc: 'Same reps every session; the weight goes up each time you complete every set. Fastest for newer lifters.' },
+  wave: { name: 'Strength waves', desc: 'Three-week waves on your focus lifts: 5s, 3s, then a heavy single-plus, each ending in an all-out set. Built to raise your max.' },
+};
+const WAVES = [
+  { pct: [0.65, 0.75, 0.85], reps: [5, 5, 5] },
+  { pct: [0.70, 0.80, 0.90], reps: [3, 3, 3] },
+  { pct: [0.75, 0.85, 0.95], reps: [5, 3, 1] },
+];
+
+function currentFocus(db) {
+  const f = db.blocks?.focus || {};
+  const wi = weekInfo(db);
+  for (let i = Math.ceil(wi.week / wi.cycleLen); i >= 1; i--) if (f[i]?.length) return f[i];
+  return [];
+}
+
+export function schemeFor(db, exId) {
+  const s = db.settings.progression || 'double';
+  if (s === 'double') return 'double';
+  const ex = db.exercises[exId];
+  if (!ex || ex.category !== 'compound' || !currentFocus(db).includes(exId)) return 'double';
+  return s;
+}
+
+// Training max for wave progression: 90% of the best recent estimated 1RM.
+function trainingMax(st) {
+  if (st.tm) return st.tm;
+  const best = st.last ? Math.max(...st.last.weights.map((w, i) => e1rm(w, st.last.reps[i]))) : 0;
+  const base = best || (st.targetWeight ? e1rm(st.targetWeight, 6) : 0);
+  return base ? roundTo(base * 0.9, 5) : null;
+}
+
+export function waveFor(db, st, date = todayStr()) {
+  const tm = trainingMax(st);
+  if (!tm) return null;
+  const week = (weekInfo(db, date).cyclePos - 1) % 3;
+  return { tm, week, ...WAVES[week] };
+}
+
 export function targetsFor(db, item, isDeload) {
   const st = getState(db, item.exerciseId);
+  const scheme = schemeFor(db, item.exerciseId);
+  if (scheme === 'wave') {
+    const w = waveFor(db, st);
+    if (w) {
+      const pct = isDeload ? [0.4, 0.5, 0.6] : w.pct;
+      const setWeights = pct.map((p) => roundTo(w.tm * p, 5));
+      const setReps = isDeload ? [5, 5, 5] : w.reps;
+      return {
+        weight: setWeights[2], reps: setReps[2], sets: 3, total: null, rir: isDeload ? '3–4' : null,
+        stalled: false, painWarning: painWarning(st), st, scheme, setWeights, setReps, wave: { week: w.week + 1, tm: w.tm, amrap: !isDeload },
+      };
+    }
+  }
   const sets = isDeload ? Math.ceil(item.sets / 2) : item.sets;
-  const reps = Math.min(Math.max(st.targetReps ?? item.repMin, item.repMin), item.repMax);
+  const repMax = scheme === 'linear' ? item.repMin : item.repMax;
+  const reps = Math.min(Math.max(st.targetReps ?? item.repMin, item.repMin), repMax);
   return {
+    scheme,
     weight: st.targetWeight, // null = TBD
     reps,
     sets,
@@ -166,6 +232,40 @@ export function targetsFor(db, item, isDeload) {
   };
 }
 
+// Wave progression: judge the top (last) set, and move the training max at the end of each wave.
+function evaluateWave(db, entry, session, ex, st) {
+  const done = entry.sets.filter((s) => s.done && s.reps > 0);
+  const w = waveFor(db, st, session.date);
+  if (!done.length || !w) return null;
+  const top = done.reduce((a, s) => (s.weight >= a.weight ? s : a));
+  const need = w.reps[2];
+  const est = Math.round(e1rm(top.weight, top.reps));
+  const inc = Number(ex.increment) || 5;
+  const next = { ...st, tm: w.tm, targetTotal: null, stallCount: 0 };
+  let status = 'held';
+  let message = `Top set ${top.weight} × ${top.reps} (est. max ${est} lb).`;
+  if (top.reps < need) {
+    next.misses = st.misses + 1;
+    status = 'missed';
+    if (next.misses >= 2) { next.tm = roundTo(w.tm * 0.9, 5); next.misses = 0; status = 'reduced'; message += ` Missed the minimum twice: training max back to ${next.tm} lb to rebuild.`; }
+    else message += ` Under the ${need}-rep minimum. Same plan next time.`;
+  } else {
+    next.misses = 0;
+    if (w.week === 2) { next.tm = w.tm + inc; next.lastIncreaseDate = session.date; status = 'progressed'; message += ` Wave done: training max +${inc} lb to ${next.tm}.`; }
+    else message += ` Next week: ${WAVES[w.week + 1].reps[2]}+ at ${roundTo(w.tm * WAVES[w.week + 1].pct[2], 5)} lb.`;
+  }
+  const nw = WAVES[(w.week + 1) % 3];
+  next.targetWeight = roundTo(next.tm * nw.pct[2], 5);
+  next.targetReps = nw.reps[2];
+  next.status = status;
+  next.message = message;
+  next.last = { date: session.date, weight: top.weight, weights: done.map((s) => s.weight), reps: done.map((s) => s.reps), totalReps: done.reduce((a, s) => a + s.reps, 0) };
+  return {
+    result: { exerciseId: entry.exerciseId, name: ex.name, prevWeight: st.targetWeight, status, message, stalled: false, next: { weight: next.targetWeight, reps: next.targetReps, total: null } },
+    state: next,
+  };
+}
+
 // ---------- Evaluate one exercise after a session ----------
 
 // entry: { exerciseId, repMin, repMax, dropSet, pain, painFree, sets: [{ weight, reps, rir, done }] }
@@ -173,7 +273,13 @@ export function targetsFor(db, item, isDeload) {
 export function evaluate(db, entry, session) {
   const ex = db.exercises[entry.exerciseId];
   const st = getState(db, entry.exerciseId);
-  const { repMin, repMax } = entry;
+  const scheme = entry.scheme || 'double';
+  if (scheme === 'wave' && !session.isDeload && !entry.pain) {
+    const r = evaluateWave(db, entry, session, ex, st);
+    if (r) return r;
+  }
+  const repMin = entry.repMin;
+  const repMax = scheme === 'linear' ? entry.repMin : entry.repMax;
   const inc = Number(ex.increment) || 5;
   const res = { exerciseId: entry.exerciseId, name: ex.name, prevWeight: st.targetWeight };
   const next = { ...st };
@@ -194,7 +300,7 @@ export function evaluate(db, entry, session) {
     };
   }
 
-  const done = entry.sets.filter((s) => s.done && s.reps > 0);
+  const done = entry.sets.filter((s) => s.done && s.reps > 0 && s.type !== 'd'); // drop sets are extra work, not judged
   if (!done.length) return { result: { ...res, status: 'skipped', message: 'No sets logged.' }, state: null };
 
   const evalSets = entry.dropSet ? [done[0]] : done;

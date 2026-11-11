@@ -489,11 +489,31 @@ function placeCardio(liftDays, legDays, cardioDays) {
   return modes;
 }
 
+// The split's day templates in default order, and the main-lift choices for one of them.
+export const splitTemplates = (liftDays, splitId) => LAYOUT[liftDays]?.[splitId] || [];
+export function mainLiftOptions(db, p, key) {
+  const t = TEMPLATES[key.replace(/2$/, '')];
+  const main = t?.slots.find(([, role]) => role === 'main');
+  if (!main) return [];
+  const slot = SLOTS[main[0]];
+  const equip = p.equipment?.length ? p.equipment : Object.keys(EQUIPMENT);
+  const blocked = new Set((p.limits || []).flatMap((l) => JOINT_STRESS[l] || []));
+  // Same movement first, then other compounds for the day's main muscles.
+  const first = pickExercise(db, p, main[0], key.endsWith('2') ? 1 : 0, new Set(), 'main');
+  const muscles = new Set(first ? first.primary : []);
+  return Object.values(db.exercises)
+    .filter((e) => e.category === 'compound' && equip.includes(equipOf(e.type)) && !blocked.has(e.id) && (slot.patterns.includes(e.pattern) || muscles.has(e.primary[0])))
+    .sort((a, b) => (b.id === first?.id) - (a.id === first?.id) || slot.patterns.includes(b.pattern) - slot.patterns.includes(a.pattern) || a.name.localeCompare(b.name));
+}
+
 // ---------- Generate ----------
 
 export function generatePlan(db, p, rx, liftDays, cardioDays, splitId) {
-  const templates = LAYOUT[liftDays]?.[splitId];
-  if (!templates) throw new Error('That split does not fit that many days.');
+  const base = LAYOUT[liftDays]?.[splitId];
+  if (!base) throw new Error('That split does not fit that many days.');
+  // The lifter's own order of the split's days (e.g. PPLUL instead of ULPPL), if it's a valid reordering.
+  const custom = p.dayOrder || [];
+  const templates = custom.length === base.length && [...custom].sort().join() === [...base].sort().join() ? custom : base;
   // The lifter's chosen weekdays if they match the day count, otherwise the default layout.
   const order = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
   const chosen = (p.liftDayKeys || []).filter((d) => order.includes(d)).sort((a, b) => order.indexOf(a) - order.indexOf(b));
@@ -512,7 +532,8 @@ export function generatePlan(db, p, rx, liftDays, cardioDays, splitId) {
       if (slotKey === 'abs' || slotKey === 'core2') continue; // core is placed by core.js
       if (prio === 'p' && !rx.includePhysique) continue;
       if (prio === 3 && p.experience === 'beginner') continue;
-      const ex = pickExercise(db, p, slotKey, variant, used, role);
+      const wanted = role === 'main' ? db.exercises[p.mainLift?.[key]] : null; // the lifter's chosen main lift for this day
+      const ex = wanted && !used.has(wanted.id) ? wanted : pickExercise(db, p, slotKey, variant, used, role);
       if (!ex) continue;
       used.add(ex.id);
       items.push({ slotKey, role, prio, exerciseId: ex.id, ...roleRx(rx, role) });

@@ -16,7 +16,7 @@ export function groupSets(db, entries) {
   const out = {};
   for (const e of entries) {
     const ex = db.exercises[e.exerciseId];
-    if (!ex || ex.pattern === 'mobility') continue;
+    if (!ex || ['mobility', 'prehab'].includes(ex.pattern)) continue;
     const n = e.sets.filter((x) => (x.done ?? true) && !x.pain).length;
     const g = groupOf(ex.primary[0]);
     if (g && n) out[g] = (out[g] || 0) + n;

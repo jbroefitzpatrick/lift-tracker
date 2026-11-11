@@ -45,6 +45,10 @@ import { initSwipe, initPullDown, initSideSwipe } from './swipe.js';
 import { createFocus } from './ui-focus.js';
 import { createExerciseEditor } from './ui-exercise.js';
 import { CORE_PLACEMENTS, applyCore, coreCircuit } from './core.js';
+import { PROGRESSIONS } from './engine.js';
+import { dayExtras, setDayExtra, warmupItems, cooldownItems } from './warmcool.js';
+import { adjustDay } from './week.js';
+import { splitTemplates, mainLiftOptions } from './builder.js';
 
 let db = null; // loaded asynchronously at startup (see bottom)
 const ui = {
@@ -253,7 +257,7 @@ function makeEntry(item, isDeload) {
     const key = METRIC_FIELDS[metric][0][0];
     return {
       uid: item.uid, exerciseId: item.exerciseId, group: item.group, repMin: item.repMin, repMax: item.repMax,
-      restSec: item.restSec, metric, target: item.target, dropSet: false, pain: false, painFree: false,
+      restSec: item.restSec, metric, target: item.target, phase: item.phase, dropSet: false, pain: false, painFree: false,
       sets: Array.from({ length: n }, () => ({ [key]: item.target ?? null, rir: null, done: false, pain: false })),
     };
   }
@@ -267,10 +271,14 @@ function makeEntry(item, isDeload) {
     repMin: item.repMin,
     repMax: item.repMax,
     restSec: item.restSec,
+    scheme: t.scheme !== 'double' ? t.scheme : undefined,
     dropSet: false,
     pain: false,
     painFree: false,
-    sets: Array.from({ length: t.sets }, () => newSet(weight, t.reps)),
+    // Strength waves ladder up to a top set; the other schemes repeat one weight.
+    sets: t.setWeights
+      ? t.setWeights.map((w, i) => newSet(roundToGym(db.exercises[item.exerciseId], w, activeGym(db)), t.setReps[i]))
+      : Array.from({ length: t.sets }, () => newSet(weight, t.reps)),
   };
 }
 
@@ -361,6 +369,7 @@ function maybeRest(session, uid, setIndex) {
 }
 
 function prefillFollowing(entry, fromIdx) {
+  if (entry.scheme === 'wave') return; // each set has its own planned weight
   const src = entry.sets[fromIdx];
   const st = getState(db, entry.exerciseId);
   for (let j = fromIdx + 1; j < entry.sets.length; j++) {
@@ -477,7 +486,10 @@ function finishWorkout() {
   if (o?.later?.length) { o.items = o.later; delete o.later; o.name = `${o.name} (part 2)`; }
   saved.adjustments = applyCheckins(db, saved, weeklyCapReached);
   // Conditioning work counts toward the week's cardio minutes.
-  const condEntries = entries.filter((e) => db.exercises[e.exerciseId]?.category === 'conditioning');
+  const isCond = (e) => db.exercises[e.exerciseId]?.category === 'conditioning';
+  const light = (e) => ['mobility', 'prehab'].includes(db.exercises[e.exerciseId]?.pattern);
+  // Warm-up and cool-down drills inside a lifting workout don't count as cardio.
+  const condEntries = entries.filter((e) => isCond(e) && (!light(e) || entries.every(isCond)));
   if (condEntries.length) {
     const all = entries.reduce((a, e) => a + e.sets.length, 0);
     const cond = condEntries.reduce((a, e) => a + e.sets.length, 0);
@@ -529,6 +541,11 @@ function rirTarget(wi) {
 // On cardio days only the plan's conditioning work is on; lifting stays parked for when the day switches back.
 function plannedFor(day) {
   const items = resolveDay(db, day);
+  const lifts = items.filter((i) => i.ex.category !== 'conditioning');
+  if (lifts.length && dayMode(db, day) !== 'cardio') {
+    const x = dayExtras(db, day);
+    return [...(x.warm ? warmupItems(db, day, lifts) : []), ...items, ...(x.cool ? cooldownItems(db, day, lifts) : [])];
+  }
   if (dayMode(db, day) !== 'cardio') return items;
   return items.filter((i) => db.exercises[i.exerciseId]?.category === 'conditioning');
 }
@@ -651,6 +668,8 @@ function screenToday() {
       : `<div class="day-pills">
           <button class="pill" data-a="adj-open" data-day="${day}" aria-label="About ${est} minutes. Change time">${est} min ${icon('down')}</button>
           <button class="pill" data-a="adj-open" data-day="${day}" aria-label="Gym: ${esc(activeGym(db).name)}. Change">${esc(db.gyms.find((g) => g.id === weekOverride(db, day)?.gymId)?.name || activeGym(db).name)} ${icon('down')}</button>
+          <button class="pill toggle-pill ${dayExtras(db, day).warm ? 'on' : ''}" data-a="extra-toggle" data-k="warm" data-day="${day}" aria-pressed="${dayExtras(db, day).warm}">Warm-up</button>
+          <button class="pill toggle-pill ${dayExtras(db, day).cool ? 'on' : ''}" data-a="extra-toggle" data-k="cool" data-day="${day}" aria-pressed="${dayExtras(db, day).cool}">Cool-down</button>
           <span class="pill-note">${allCond ? `${total} rounds` : `${total} sets`}${isDeload ? ' · deload' : ''}</span>
           <button class="help-btn" data-a="why-workout" aria-label="Why this workout is built this way">?</button>
         </div>
@@ -671,9 +690,13 @@ function screenToday() {
   </div>`;
   if (selecting) html += `<p class="muted small">Select exercises to link into a superset or circuit, or drag to reorder. ${session ? 'Changes apply to today\'s workout.' : `Changes apply to every ${FULL_DAY[day]}.`}</p>`;
   html += '<div class="ex-list">';
+  let lastPhase = null;
   for (const grp of groupsOf(items)) {
     const full = db.settings.listView === 'full' && !selecting;
     const rows = grp.items.map((i) => (full ? exerciseFull(i, session, isDeload) : exerciseRow(i, session, isDeload, selecting, sel))).join('');
+    const phase = grp.items[0].phase || 'main';
+    if (phase !== lastPhase && (phase !== 'main' || lastPhase)) html += `<h3 class="phase-h">${phase === 'warmup' ? 'Warm-up' : phase === 'cooldown' ? 'Cool-down' : 'Workout'}</h3>`;
+    lastPhase = phase;
     if (grp.linked) {
       const restSec = Math.max(...grp.items.map((i) => i.restSec || 0));
       html += `<section class="link-group" aria-label="${linkLabel(grp.items.length)}">
@@ -727,7 +750,9 @@ function exerciseRow(item, session, isDeload, selecting, sel) {
   const weight = target != null ? ` · ${fmtW(target, ex)}` : '';
   const meta = conditioning
     ? `${entry && doneN ? `${doneN} of ${sets.length} rounds` : `${t.sets} ${t.sets === 1 ? 'round' : 'rounds'}`} · ${fmtTarget(metric, item.target)}${item.restSec ? ` · rest ${fmtRest(item.restSec)}` : ''}`
-    : entry && doneN ? `${doneN} of ${sets.length} sets${weight}` : `${t.sets} sets · ${reps} reps${weight}`;
+    : entry && doneN ? `${doneN} of ${sets.length} sets${weight}`
+      : t.setReps ? `${t.setReps.join(' / ')}${t.wave?.amrap ? '+' : ''} reps · top set ${fmtW(target, ex)}`
+        : t.scheme === 'linear' ? `${t.sets} × ${item.repMin}${weight}` : `${t.sets} sets · ${reps} reps${weight}`;
   const checked = sel.has(item.uid);
   return `<div class="ex-item ${allDone ? 'is-done' : ''} ${checked ? 'is-selected' : ''}" data-drag-item data-drag-list="session" data-drag-id="${item.uid}" ${session && !selecting ? `data-swipe="ex-remove" data-swipe-label="Remove" data-uid="${item.uid}"` : ''}>
     ${selecting ? `<label class="sel"><input type="checkbox" data-a="sel-toggle" data-uid="${item.uid}" ${checked ? 'checked' : ''} aria-label="Select ${esc(ex.name)}"></label>` : ''}
@@ -921,6 +946,8 @@ function screenExercise() {
   const next = items[idx + 1];
   const aim = conditioning ? `${t.sets} × ${fmtTarget(metric, item.target)}${item.restSec ? `, rest ${fmtRest(item.restSec)}` : ''}`
     : t.weight == null ? 'Pick a working weight to set your baseline'
+    : t.wave ? `Week ${t.wave.week} of 3 · last set: ${t.reps}${t.wave.amrap ? '+ reps, as many as you can with good form' : ' reps'}`
+    : t.scheme === 'linear' ? `${t.sets} × ${t.reps} · complete every set to add weight next time`
     : t.total ? `Aim for ${t.reps}+ reps · beat ${t.total - 1} total` : `Aim for ${t.reps} reps`;
 
   const rows = conditioning ? condRows(item, sets, fields, metric, ended, train.condPlaceholder(item, ex, metric)) : liftRows(item, sets, ended, t, ex);
@@ -946,7 +973,7 @@ function screenExercise() {
       ${grp.linked ? `<button class="chip" data-a="unlink-one" data-uid="${item.uid}">Unlink</button>` : next ? `<button class="chip" data-a="link-next" data-uid="${item.uid}">Link</button>` : ''}
     </div>
     ${grp.linked ? `<div class="group-note"><b>${linkLabel(grp.items.length)}</b>${entry ? (() => { const n = Math.max(...grp.items.map((i) => session.entries[i.uid]?.sets.length || i.sets)); const r = entry.sets.findIndex((x) => !x.done); return ` · round ${r < 0 ? entry.sets.length : r + 1} of ${n}`; })() : ''} · ${grp.items.map((i) => (i === item ? `<span class="cur">${esc(i.ex.name)}</span>` : esc(i.ex.name))).join(' → ')}</div>` : ''}
-    <p class="aim-line">${aim}${conditioning ? '' : t.rir ? ` · ${t.rir} RIR` : rir ? ` · about ${rir} in reserve` : ''}</p>
+    <p class="aim-line">${aim}${conditioning || t.wave ? '' : t.rir ? ` · ${t.rir} RIR` : rir ? ` · about ${rir} in reserve` : ''}</p>
     ${conditioning ? train.condInfo(item, entry, ex, metric) : ''}
     ${item.note && conditioning ? `<p class="small">${esc(item.note)}</p>` : ''}
     ${notices.filter((n) => n[2] !== 'pain').map(([c, m]) => `<p class="notice ${c}">${esc(m)}</p>`).join('')}
@@ -957,7 +984,7 @@ function screenExercise() {
       ${rows}
     </div>
     ${barbell && target ? `<p class="muted small plates">Plates: ${plateText(target, gym)}</p>` : ''}
-    ${!ended ? `<button class="text-btn" data-a="add-set" data-uid="${item.uid}">${icon('plus')} ${conditioning ? 'Add round' : 'Add set'}</button>` : ''}
+    ${!ended ? `<button class="text-btn" data-a="add-set" data-uid="${item.uid}">${icon('plus')} ${conditioning ? 'Add round' : 'Add set'}</button>${conditioning ? '' : `<button class="text-btn" data-a="add-drop" data-uid="${item.uid}">${icon('arrowDown')} Drop set</button>`}` : ''}
     ${ex.rules?.rehab && !ended ? `<label class="toggle"><input type="checkbox" data-a="painfree" data-uid="${item.uid}" ${entry?.painFree ? 'checked' : ''}><span>Pain-free today (needed to increase weight)</span></label>` : ''}
     ${checkin}
     <div class="ex-nav">
@@ -1143,7 +1170,7 @@ function sessionItems(session, planItems) {
     return {
       uid: u, exerciseId: e.exerciseId, ex, group: e.group, repMin: e.repMin, repMax: e.repMax, restSec: e.restSec,
       sets: e.sets.length, note: planned && !swappedFrom ? planned.note : '', swappedFrom, extra: !!e.parentUid || !!e.added, swapChild: !!e.parentUid,
-      metric: e.metric, target: e.target,
+      metric: e.metric, target: e.target, phase: e.phase,
     };
   }).filter(Boolean);
 }
@@ -1171,6 +1198,7 @@ const CHEVRON = icon('down');
 // A short flag when an exercise loads a sore area (details and fixes are on the exercise screen).
 function painNotice(ex, entry) {
   if (entry?.pain) return null;
+  if (['mobility', 'prehab'].includes(ex.pattern)) return null; // warm-up and stretch drills are already the gentle option
   const p = pain.exercisePain(ex, pain.painMap());
   if (!p) return null;
   return [p.level === 3 ? 'bad' : 'warn', `${p.labels[0]}${p.labels.length > 1 ? ` and ${p.labels.length - 1} more` : ''}: ${p.verb}`, 'pain'];
@@ -1193,7 +1221,7 @@ function cardModel(item, session, isDeload) {
   const t = targetsFor(db, item, isDeload);
   const target = t.weight == null ? null : roundToGym(ex, t.weight, gym);
   const entry = session?.entries[item.uid];
-  const sets = entry ? entry.sets : Array.from({ length: t.sets }, () => newSet(target, t.reps));
+  const sets = entry ? entry.sets : t.setWeights ? t.setWeights.map((w, i) => newSet(roundToGym(ex, w, gym), t.setReps[i])) : Array.from({ length: t.sets }, () => newSet(target, t.reps));
   const notices = [];
   if (!isAvailable(db, ex)) notices.push(['warn', db.exPrefs[ex.id] === 'never' ? 'Marked "never suggest" — swap it' : `Not available at ${gym.name} — swap it`]);
   if (entry?.pain) notices.push(['bad', `Stopped for pain${ex.substitute ? ` · try ${ex.substitute}` : ''}`]);
@@ -1205,6 +1233,27 @@ function cardModel(item, session, isDeload) {
 }
 
 // Details & options for one exercise: kept off the card so the card stays simple.
+// The three-dot menu: a few plain actions. Details live one tap further in.
+function openExMenu(uid) {
+  const items = todayItems(ui.day);
+  const item = items.find((x) => x.uid === uid);
+  if (!item) return;
+  const grp = groupsOf(items).find((g) => g.items.includes(item));
+  const i = items.indexOf(item);
+  const planIt = db.plan[ui.day]?.items.find((x) => x.uid === uid);
+  const row = (a, ic, label, extra = '', cls = '') => `<button class="list-row ${cls}" data-a="${a}" data-uid="${uid}" ${extra}>${icon(ic)}<span class="grow">${label}</span></button>`;
+  openSheet(`<h2>${esc(item.ex.name)}</h2>
+    <div class="list-group menu">
+      ${row('ex-open-close', 'check', 'Log sets')}
+      ${row('swap', 'swap', 'Swap')}
+      ${grp?.linked ? row('unlink-one', 'x', 'Unlink') : i < items.length - 1 ? row('link-next', 'plus', 'Link with next') : ''}
+      ${planIt && item.ex.category !== 'conditioning' ? row('ex-lock', 'bookmark', planIt.lock ? 'Allow variety' : 'Keep every week') : ''}
+      ${row('ex-details', 'info', 'More info')}
+      ${row('ex-remove', 'trash', 'Delete', '', 'danger-row')}
+    </div>
+    <button class="btn plain block" data-a="close-sheet">Cancel</button>`);
+}
+
 function openExerciseSheet(uid, focus) {
   const day = ui.day;
   const session = sessionFor(day);
@@ -1602,6 +1651,20 @@ const sheetState = { rir: null };
 // Bottom sheets: a grab handle, focus moves into the sheet (and back out when it closes),
 // Escape or a tap on the backdrop closes it, and the page behind is hidden from screen readers.
 let sheetReturnFocus = null;
+// While a sheet is open the page behind it can't scroll or be dragged (iOS would otherwise move both).
+let lockedAt = null;
+function lockPage(on) {
+  const b = document.body;
+  if (on && lockedAt == null) {
+    lockedAt = window.scrollY;
+    Object.assign(b.style, { position: 'fixed', top: `-${lockedAt}px`, left: '0', right: '0', width: '100%' });
+  } else if (!on && lockedAt != null) {
+    Object.assign(b.style, { position: '', top: '', left: '', right: '', width: '' });
+    window.scrollTo(0, lockedAt);
+    lockedAt = null;
+  }
+}
+
 function openSheet(html) {
   const sh = $('#sheet');
   const body = $('#sheet-body');
@@ -1609,6 +1672,7 @@ function openSheet(html) {
   body.innerHTML = `<div class="grabber" aria-hidden="true"></div>${html}`;
   const title = body.querySelector('h2');
   if (title) { title.id = 'sheet-title'; body.setAttribute('aria-labelledby', 'sheet-title'); }
+  if (sh.hidden) lockPage(true);
   sh.hidden = false;
   $('#main').setAttribute('aria-hidden', 'true');
   requestAnimationFrame(() => {
@@ -1622,6 +1686,7 @@ function closeSheet() {
   const sh = $('#sheet');
   sh.classList.remove('open');
   $('#main').removeAttribute('aria-hidden');
+  lockPage(false);
   setTimeout(() => {
     sh.hidden = true;
     $('#sheet-body').innerHTML = '';
@@ -1629,6 +1694,7 @@ function closeSheet() {
     sheetReturnFocus = null;
   }, 180);
 }
+let typingSave = null;
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#sheet').hidden) closeSheet(); });
 document.addEventListener('toggle', (e) => { const d = e.target; if (d.matches?.('details.warmup')) (ui.warmOpen ||= {})[d.dataset.uid] = d.open; }, true);
 
@@ -2099,8 +2165,8 @@ function openPlanEdit(i) {
       const opts = similarExercises(db.exercises, it.exerciseId, 12).filter((x) => x.samePattern).slice(0, 8);
       if (!opts.length) return '';
       const sel = new Set(it.variants || [it.exerciseId]);
-      return `<div class="field"><span>Rotate variations <span class="muted">(e.g. grips)</span></span>
-        <div class="segmented small-seg" role="radiogroup" aria-label="Rotate">${[['', 'Off'], ['block', 'Each block'], ['workout', 'Each workout']].map(([v, l]) => `<button class="${(it.rotate || '') === v ? 'on' : ''}" data-a="pe-rot" data-v="${v}" role="radio">${l}</button>`).join('')}</div>
+      return `<div class="field"><span>Variety ${helpBtn()}</span><p class="help-text" hidden>Auto follows your variety setting. Keep uses this exact exercise every week. The others rotate through the variations you pick below, on that schedule.</p>
+        <div class="segmented small-seg" role="radiogroup" aria-label="Rotate">${[['auto', 'Auto'], ['lock', 'Keep'], ['week', 'Weekly'], ['block', 'Each block'], ['workout', 'Each workout']].map(([v, l]) => `<button class="${(it.lock ? 'lock' : it.variants && !it.autoVar ? it.rotate : 'auto') === v ? 'on' : ''}" data-a="pe-rot" data-v="${v}" role="radio">${l}</button>`).join('')}</div>
         <div class="chips wrap" id="pe-variants" aria-label="Variations">${[db.exercises[it.exerciseId], ...opts.map((o) => o.ex)].map((e) => `<button class="chip ${sel.has(e.id) ? 'on' : ''}" data-a="pe-var" data-id="${e.id}" aria-pressed="${sel.has(e.id)}">${esc(e.name)}</button>`).join('')}</div>
         <p class="muted small">Each variation keeps its own weights and progress.</p></div>`;
     })() : ''}
@@ -2199,8 +2265,10 @@ function savePlanEdit(i) {
   // Rotation: chosen variations, in the order shown, starting with this exercise.
   const rot = document.querySelector('[data-a="pe-rot"].on')?.dataset.v || '';
   const vars = [...document.querySelectorAll('#pe-variants .chip.on')].map((b) => b.dataset.id);
-  if (rot && vars.length > 1) { slot.rotate = rot; slot.variants = vars.includes(exId) ? [exId, ...vars.filter((v) => v !== exId)] : vars; }
-  else { slot.rotate = undefined; slot.variants = undefined; }
+  const prevItem = i === -1 ? null : items[i];
+  if (rot === 'lock') Object.assign(slot, { lock: true, rotate: undefined, variants: undefined, autoVar: undefined });
+  else if (rot && rot !== 'auto' && vars.length > 1) Object.assign(slot, { lock: undefined, autoVar: undefined, rotate: rot, variants: vars.includes(exId) ? [exId, ...vars.filter((v) => v !== exId)] : vars });
+  else { slot.lock = undefined; if (!prevItem?.autoVar) { slot.rotate = undefined; slot.variants = undefined; } }
   const metric = $('#pe-metric')?.value || 'reps';
   if (metric !== 'reps' || ex.category === 'conditioning') {
     slot.metric = metric;
@@ -2291,6 +2359,14 @@ function builderState() {
   return { p, rx, sug, opts };
 }
 
+// Strength-first goals suit a strength scheme: add weight for newer lifters, waves once that stalls.
+function recommendProgression(p) {
+  const g = p?.goals || {};
+  const top = Math.max(0, ...Object.values(g));
+  if (!top || (g.strength || 0) < top || (g.strength || 0) < 3) return 'double';
+  return p.experience === 'beginner' ? 'linear' : 'wave';
+}
+
 const helpBtn = () => '<button class="help-btn" data-a="help" aria-expanded="false" aria-label="What is this?">?</button>';
 
 function bChips(key, options, current, multi = false) {
@@ -2362,6 +2438,9 @@ function screenBuilder() {
         <div class="field"><span>Session length ${helpBtn()}</span><p class="help-text" hidden>How long you usually have. Shorter sessions use more supersets and fewer accessories.</p>${bChips('sessionMin', { 30: '30 min', 45: '45 min', 60: '60 min', 75: '75 min', 90: '90 min', 105: '105 min', 120: '120 min' }, p.sessionMin)}</div>
         <div class="field"><span>Variety ${helpBtn()}</span><p class="help-text" hidden>How often exercises change. Focus lifts always stay the same.</p>${bChips('variety', Object.fromEntries(Object.entries(VARIETY).map(([k, v]) => [k, v.name])), p.variety || 'low')}
           <p class="muted small">${VARIETY[p.variety || 'low'].desc} ${refChips(['kassiano2022', 'bazvalle2019', 'fonseca2014'])}</p></div>
+        <div class="field"><span>Progression ${helpBtn()}</span><p class="help-text" hidden>${Object.values(PROGRESSIONS).map((v) => `${v.name}: ${v.desc}`).join(' ')} Strength options apply to your focus lifts.</p>${bChips('progression', Object.fromEntries(Object.entries(PROGRESSIONS).map(([k, v]) => [k, v.name + (recommendProgression(p) === k ? ' ★' : '')])), p.progression || recommendProgression(p))}
+          <p class="muted small">★ suggested for your goals. ${refChips(['acsm2009', 'wendler2009'])}</p></div>
+        <div class="field"><span>Routines ${helpBtn()}</span><p class="help-text" hidden>Add a short warm-up (easy cardio, dynamic moves, and PT drills for any pain you've logged) and a cool-down stretch to every lifting day. You can switch either off on any day.</p>${bChips('routines', { warm: 'Warm-up', cool: 'Cool-down' }, p.routines || [], true)}</div>
         <div class="field"><span>Core ${helpBtn()}</span><p class="help-text" hidden>Where core work goes. Default: one core exercise to finish each lifting day, mixing weighted and bodyweight.</p>${bChips('corePlacement', Object.fromEntries(Object.entries(CORE_PLACEMENTS).map(([k, v]) => [k, v.name])), p.corePlacement || 'end')}</div>
         <div class="field"><span>Equipment</span>${bChips('equipment', EQUIPMENT, p.equipment, true)}</div>
         <div class="field"><span>Sensitive areas ${helpBtn()}</span><p class="help-text" hidden>Skips exercises that commonly bother these joints.</p>${bChips('limits', LIMITS, p.limits, true)}</div>
@@ -2373,7 +2452,21 @@ function screenBuilder() {
         <div class="row between"><b>${o.label}</b>${o.recommended ? '<span class="verdict good">Recommended</span>' : ''}</div>
         <p class="small muted">${o.desc}</p>
         <p class="small">${o.templates.map((t, i) => `${DAY_NAMES[days[i]]}: ${splitDayName(t)}`).join(' · ')}</p>
-      </button>`).join('')}`;
+      </button>`).join('')}
+      ${(() => {
+        const base = splitTemplates(p.liftDays, p.split);
+        const order = p.dayOrder?.length === base.length ? p.dayOrder : base;
+        return `<div class="card"><h3>Your week ${helpBtn()}</h3><p class="help-text" hidden>Use the arrows to change the order of the days, and pick the main lift each day is built around. Everything else is filled in to match.</p>
+          ${order.map((t, i) => {
+            const optsM = mainLiftOptions(db, p, t);
+            const cur = p.mainLift?.[t] || optsM[0]?.id;
+            return `<div class="order-row"><b class="order-day">${DAY_NAMES[days[i]]}</b>
+              <div class="grow"><span class="order-name">${splitDayName(t)}</span>
+                <select data-a="b-main" data-k="${t}" aria-label="Main lift for ${splitDayName(t)}">${optsM.map((e) => `<option value="${e.id}" ${e.id === cur ? 'selected' : ''}>${esc(e.name)}</option>`).join('')}</select></div>
+              <button class="icon-btn" data-a="b-order" data-i="${i}" data-v="-1" aria-label="Move ${splitDayName(t)} earlier" ${i === 0 ? 'disabled' : ''}>${icon('up')}</button>
+              <button class="icon-btn" data-a="b-order" data-i="${i}" data-v="1" aria-label="Move ${splitDayName(t)} later" ${i === order.length - 1 ? 'disabled' : ''}>${icon('arrowDown')}</button></div>`;
+          }).join('')}</div>`;
+      })()}`;
   } else {
     let out;
     try { out = generatePlan(db, p, rx, p.liftDays, p.cardioDays, p.split); } catch (e) { out = null; body = `<p class="flag bad">${esc(e.message)}</p>`; }
@@ -2486,6 +2579,9 @@ function applyBuilt() {
   retargetWeights(out.plan);
   db.blocks.focus[blockInfo(db).index] = builderFocus(p, out);
   applyCore(db, p.corePlacement || 'end');
+  db.settings.progression = p.progression || recommendProgression(p);
+  db.settings.warmupRoutine = (p.routines || []).includes('warm');
+  db.settings.cooldownRoutine = (p.routines || []).includes('cool');
   applyVariety(db, p.variety || 'low', db.blocks.focus[blockInfo(db).index] || []);
   persist();
   ui.b = null;
@@ -2538,6 +2634,11 @@ function screenSettings() {
         <div class="segmented small-seg grow" role="radiogroup" aria-label="Last week reps in reserve">${[0, 1, 2].map((n) => `<button class="${(s.rampEnd ?? db.profile?.rx?.rirLo ?? 1) === n ? 'on' : ''}" data-a="ramp-end" data-v="${n}" role="radio" aria-checked="${(s.rampEnd ?? db.profile?.rx?.rirLo ?? 1) === n}">${n}</button>`).join('')}</div></div></div>
       <div class="field"><span>Current week of program · week ${wi.cyclePos} of ${wi.cycleLen} in this block${wi.isDeload ? ' (deload)' : ''}</span>
         <div class="row">${stepper('set-week', wi.week, 1)}<button class="btn" data-a="set-week">Set</button></div></div>
+      <div class="field"><span>Progression ${helpBtn()}</span><p class="help-text" hidden>How your lifts move forward. The two strength options apply to your focus lifts; everything else adds reps, then weight.</p>
+        <div class="segmented small-seg wrap-seg" role="radiogroup" aria-label="Progression">${Object.entries(PROGRESSIONS).map(([k, v]) => `<button class="${(s.progression || 'double') === k ? 'on' : ''}" data-a="set-progression" data-v="${k}" role="radio" aria-checked="${(s.progression || 'double') === k}">${v.name}</button>`).join('')}</div>
+        <p class="muted small">${PROGRESSIONS[s.progression || 'double'].desc}${recommendProgression(db.profile) === (s.progression || 'double') ? ' Recommended for your goals.' : ` For your goals: ${PROGRESSIONS[recommendProgression(db.profile)].name.toLowerCase()}.`} ${refChips(['acsm2009', 'rippetoe2011', 'wendler2009', 'williams2017'])}</p></div>
+      <label class="toggle"><input type="checkbox" data-a="set-extra" data-k="warmupRoutine" ${s.warmupRoutine ? 'checked' : ''}><span>Warm-up routine before lifting</span></label>
+      <label class="toggle"><input type="checkbox" data-a="set-extra" data-k="cooldownRoutine" ${s.cooldownRoutine ? 'checked' : ''}><span>Cool-down stretch after lifting</span></label>
       <div class="field"><span>Core</span>
         <div class="segmented small-seg wrap-seg" role="radiogroup" aria-label="Core placement">${Object.entries(CORE_PLACEMENTS).map(([k, v]) => `<button class="${(s.corePlacement || 'end') === k ? 'on' : ''}" data-a="set-core" data-v="${k}" role="radio" aria-checked="${(s.corePlacement || 'end') === k}">${v.name}</button>`).join('')}</div>
         <p class="muted small">${CORE_PLACEMENTS[s.corePlacement || 'end'].desc} ${refChips(['mcgill2010', 'hibbs2008', 'granata2008'])}</p></div>
@@ -2869,6 +2970,7 @@ const actions = {
   'progress-view': (d) => { ui.tab = d.v; ui.progressTab = d.v; ui.historyEx = null; render(); },
   'start-empty': () => { if (db.activeSession) return toast('Finish or discard the current workout first.'); startSession(ui.day, true); render(); openPicker({ mode: 'session-add' }); },
   'session-add': () => openPicker({ mode: 'session-add' }),
+  'ex-open-close': (d) => { closeSheet(); actions['ex-open'](d); },
   'ex-open': (d) => { ui.backUid = null; ui.exUid = d.uid; ui.tab = 'exercise'; window.scrollTo(0, 0); render(); },
   'ex-go': (d) => { ui.backUid = null; ui.exUid = d.uid; window.scrollTo(0, 0); render(); },
   'set-autoadvance': (d, el) => { db.settings.autoAdvance = el.checked; persist(); },
@@ -3014,7 +3116,36 @@ const actions = {
   'deload-off': (d, el) => { db.settings.deloadOff = el.checked; persist(); render(); },
   'ramp-start': (d) => { db.settings.rampStart = +d.v; persist(); render(); },
   'ramp-end': (d) => { db.settings.rampEnd = +d.v; persist(); render(); },
-  'ex-sheet': (d) => openExerciseSheet(d.uid, d.focus),
+  'ex-sheet': (d) => openExMenu(d.uid),
+  'ex-details': (d) => openExerciseSheet(d.uid, d.focus),
+  'ex-lock': (d) => {
+    const it = db.plan[ui.day]?.items.find((i) => i.uid === d.uid);
+    if (!it) return toast('This one isn\'t in your weekly plan.');
+    it.lock = !it.lock;
+    if (it.lock) { delete it.variants; delete it.rotate; delete it.autoVar; }
+    applyVariety(db, db.settings.variety || 'low', focusFor(db, blockInfo(db).index) || []);
+    persist(); closeSheet(); render();
+    toast(it.lock ? 'Kept the same every week.' : 'Follows your variety setting again.');
+  },
+  'add-drop': (d) => {
+    const sx = ensureSession(ui.day);
+    const e = sx?.entries[d.uid];
+    if (!e) return;
+    const last = e.sets[e.sets.length - 1];
+    const ex = db.exercises[e.exerciseId];
+    // About 20% lighter, straight after the last set, for as many reps as you can.
+    const w = last.weight ? roundToGym(ex, last.weight * 0.8, activeGym(db)) : last.weight;
+    e.sets.push({ ...newSet(w, last.reps), type: 'd' });
+    persist(); render();
+    toast(`Drop set added at ${w} lb. Go straight into it after your last set.`);
+  },
+  'extra-toggle': (d) => {
+    const cur = dayExtras(db, d.day)[d.k];
+    setDayExtra(db, d.day, d.k, !cur);
+    persist(); render();
+  },
+  'set-progression': (d) => { db.settings.progression = d.v; persist(); render(); toast(d.v === 'double' ? 'All lifts: add reps, then weight.' : 'Applies to your focus lifts. Other lifts keep adding reps, then weight.'); },
+  'set-extra': (d, el) => { db.settings[d.k] = el.checked; persist(); render(); },
   'ex-more': (d) => openExerciseSheet(d.uid),
   'day-options': () => openDayOptions(),
   'day-mode-today': (d) => { db.settings.dayModes[ui.day] = d.v; persist(); render(); openDayOptions(); },
@@ -3037,6 +3168,15 @@ const actions = {
     persist(); closeSheet(); render();
   },
   'ex-remove': (d) => {
+    if (!sessionFor(ui.day)) {
+      if (d.uid.startsWith('warmup-') || d.uid.startsWith('cooldown-')) return toast('Turn the warm-up or cool-down off with its button above the list.');
+      adjustDay(db, ui.day, { minutes: weekOverride(db, ui.day)?.minutes || null, gymId: weekOverride(db, ui.day)?.gymId || null });
+      const o = db.week.days[ui.day];
+      o.items = o.items.filter((i) => i.uid !== d.uid);
+      if (o.base) o.base = o.base.filter((i) => i.uid !== d.uid);
+      persist(); closeSheet(); render();
+      return toast('Removed for this week. Your plan is unchanged.');
+    }
     const sx = ensureSession(ui.day);
     if (!sx) return; const e = sx.entries[d.uid];
     if (e.sets.some((x) => x.done) && !confirm('Remove this exercise and its logged sets from today?')) return;
@@ -3109,7 +3249,16 @@ const actions = {
     render();
   },
   'b-suggested': () => { ui.b.liftEdited = false; ui.b.cardioEdited = false; ui.b.splitEdited = false; render(); },
-  'b-split': (d) => { ui.b.draft.split = d.v; ui.b.splitEdited = true; render(); },
+  'b-split': (d) => { ui.b.draft.split = d.v; ui.b.draft.dayOrder = null; ui.b.draft.mainLift = {}; ui.b.splitEdited = true; render(); },
+  'b-order': (d) => {
+    const p = ui.b.draft;
+    const order = [...(p.dayOrder?.length ? p.dayOrder : splitTemplates(p.liftDays, p.split))];
+    const i = +d.i; const j = i + +d.v;
+    if (j < 0 || j >= order.length) return;
+    [order[i], order[j]] = [order[j], order[i]];
+    p.dayOrder = order;
+    render();
+  },
   'b-weekday': (d) => {
     const p = ui.b.draft;
     const set = new Set(liftDayKeys(p));
@@ -3351,9 +3500,9 @@ document.addEventListener('change', (e) => {
     const v = k === 'reps' ? parseInt(el.value, 10) : parseFloat(el.value);
     if (!entry || !Number.isFinite(v)) return;
     entry.sets[+i][k] = v;
-    if (k === 'weight') {
+    if (k === 'weight' && entry.scheme !== 'wave') {
       for (let j = +i + 1; j < entry.sets.length; j++) {
-        if (entry.sets[j].done) continue;
+        if (entry.sets[j].done || entry.sets[j].type === 'd') continue;
         entry.sets[j].weight = entry.dropSet ? Math.max(0, v - 10 * (j - +i)) : v;
         const cell = document.querySelector(`[data-set="${uid}:${j}:weight"]`);
         if (cell) cell.value = entry.sets[j].weight;
@@ -3365,6 +3514,7 @@ document.addEventListener('change', (e) => {
   if (el.id === 'session-note') { const sx = db.sessions.find((x) => x.id === el.dataset.sid); if (sx) { sx.note = el.value.trim(); persist(); } return; }
   if (el.dataset?.bgoal && ui.b) { render(); return; }
   if (a === 'pk-muscle') { picker.muscle = el.value; renderPickerList(); return; }
+  if (a === 'b-main') { (ui.b.draft.mainLift ||= {})[el.dataset.k] = el.value; render(); return; }
   if (a === 'pe-ex') { $('#pe-new').hidden = el.value !== '__new'; fillMeta(el.value); return; }
   if (a === 'plan-name') { db.plan[ui.planDay].name = el.value.trim() || db.plan[ui.planDay].name; persist(); return; }
   if (a === 'def-inc') { const v = parseFloat(el.value); if (v > 0) { db.settings.defaultIncrements[el.dataset.k] = v; persist(); } return; }
@@ -3372,6 +3522,14 @@ document.addEventListener('change', (e) => {
 });
 
 document.addEventListener('input', (e) => {
+  // Numbers typed into a set are saved as you type, so nothing is lost if the app closes.
+  const ds = e.target.dataset?.set;
+  if (ds && db.activeSession) {
+    const [uid, i, k] = ds.split(':');
+    const v = k === 'reps' ? parseInt(e.target.value, 10) : parseFloat(e.target.value);
+    const set = sessionFor(ui.day)?.entries[uid]?.sets[+i];
+    if (set && Number.isFinite(v)) { set[k] = v; clearTimeout(typingSave); typingSave = setTimeout(persist, 400); }
+  }
   if (food.onInput(e)) return;
   if (e.target.id === 'pk-q') { picker.q = e.target.value; renderPickerList(); }
   if (e.target.dataset?.b && ui.b) builderInput(e.target);
@@ -3440,11 +3598,14 @@ actions['recovery-download'] = () => recoveryRaw && download(`lift-recovery-${to
   if (db.activeSession) keepAwake();
   dailySnapshot(db);
   cloud.onBoot();
+  // Reopened mid-workout (even after the app was fully closed): go straight back to it.
+  if (db.activeSession) { ui.day = db.activeSession.day; ui.tab = 'today'; render(); setTimeout(() => toast('Workout resumed where you left off.'), 400); }
   // Existing plans: core placement starts at the default once.
   if (db.settings.welcomed && !db.settings.corePlacement) { applyCore(db, 'end'); persist(); render(); }
   initSwipe();
   // Pull the sheet down to close it; pull the rest timer down to skip the rest.
-  initPullDown($('#sheet-body'), closeSheet, { canStart: () => $('#sheet-body').scrollTop <= 0 });
+  // Only the top strip of a sheet (the handle and title) pulls it down; the rest scrolls normally.
+  initPullDown($('#sheet-body'), closeSheet, { canStart: (e) => e.touches[0].clientY - $('#sheet-body').getBoundingClientRect().top < 64 });
   initPullDown($('#rest'), stopRest);
   // Swipe across the exercise photo to go to the next or previous exercise.
   initSideSwipe('.ex-hero', (dir) => {

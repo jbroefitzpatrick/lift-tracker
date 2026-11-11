@@ -1081,3 +1081,23 @@ button { touch-action: manipulation; }
 .segmented.wrap-seg { flex-wrap: wrap; }
 .segmented.wrap-seg button { flex: 1 1 30%; }
 .new-ex-btn { margin: 4px 0 8px; }
+
+/* ---------- v15: sheet behavior, menus, warm-up/cool-down, builder order ---------- */
+#sheet-body { overscroll-behavior: contain; }
+#sheet { touch-action: none; }
+#sheet-body { touch-action: pan-y; }
+.grabber { width: 44px; margin: 2px auto 12px; position: relative; }
+.grabber::after { content: ""; position: absolute; left: -80px; right: -80px; top: -14px; bottom: -22px; } /* bigger grab area */
+.list-group.menu .list-row { min-height: 54px; font-weight: 600; gap: 14px; }
+.list-group.menu .list-row .ic { width: 20px; height: 20px; color: var(--muted); flex: none; }
+.list-group.menu .danger-row, .list-group.menu .danger-row .ic { color: var(--bad); }
+.toggle-pill { padding: 0 14px; background: transparent; box-shadow: inset 0 0 0 1.5px var(--line-strong); color: var(--muted); }
+.toggle-pill.on { background: var(--accent-soft); box-shadow: none; color: var(--accent); }
+.phase-h { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin: 14px 0 2px; }
+.ex-list > .phase-h:first-child { margin-top: 2px; }
+.order-row { display: flex; align-items: center; gap: 8px; padding: 10px 0; border-top: 1px solid var(--line); }
+.order-row:first-of-type { border-top: 0; }
+.order-day { width: 40px; flex: none; }
+.order-name { display: block; font-weight: 600; margin-bottom: 4px; }
+.order-row select { width: 100%; min-height: 40px; }
+.set-badge.ty-d + .prev { visibility: hidden; }

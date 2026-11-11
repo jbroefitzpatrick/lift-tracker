@@ -40,9 +40,10 @@ export function initPullDown(target, onDismiss, { canStart = () => true } = {}) 
       start.on = true;
       target.style.transition = 'none';
     }
+    e.preventDefault(); // the sheet moves, not the page behind it
     start.dy = Math.max(0, dy);
     target.style.transform = `translateY(${start.dy}px)`;
-  }, { passive: true });
+  }, { passive: false });
   const end = () => {
     if (!start?.on) { start = null; return; }
     const fast = start.dy / Math.max(1, Date.now() - start.t) > 0.6;

@@ -59,6 +59,41 @@ export const REFS = {
     finding: 'Fatigued trunk muscles made the torso less stable, a reason to save hard core work for after heavy lifting.',
     url: search('Fatigue influences the dynamic stability of the torso'),
   },
+  rippetoe2011: {
+    cite: 'Rippetoe M (2011). Starting Strength: Basic Barbell Training, 3rd ed. The Aasgaard Company.',
+    finding: 'Novices can add weight to the main barbell lifts every session for months (linear progression) before needing slower, planned cycles.',
+    url: 'https://startingstrength.com/get-started/programs',
+  },
+  wendler2009: {
+    cite: 'Wendler J (2009). 5/3/1: The Simplest and Most Effective Training System to Increase Raw Strength.',
+    finding: 'Sub-maximal three-week waves (5s, 3s, 5/3/1) based on 90% of your max, an all-out final set, and small training-max increases each cycle.',
+    url: 'https://www.jimwendler.com/blogs/jimwendler-com/101065094-5-3-1-for-a-beginner',
+  },
+  williams2017: {
+    cite: 'Williams TD, et al. (2017). Comparison of periodized and non-periodized resistance training on maximal strength: a meta-analysis. Sports Med 47(10):2083–2100.',
+    finding: 'Periodized programs (planned changes in load and reps) produced greater gains in maximal strength than non-periodized ones.',
+    url: search('Comparison of periodized and non-periodized resistance training on maximal strength: a meta-analysis'),
+  },
+  fradkin2010: {
+    cite: 'Fradkin AJ, et al. (2010). Effects of warming-up on physical performance: a systematic review with meta-analysis. J Strength Cond Res 24(1):140–148.',
+    finding: 'Warming up improved performance in 79% of the criteria examined.',
+    url: search('Effects of warming-up on physical performance: a systematic review with meta-analysis'),
+  },
+  vanhooren2018: {
+    cite: 'Van Hooren B, Peake JM (2018). Do we need a cool-down after exercise? Sports Med 48(7):1575–1595.',
+    finding: 'An active cool-down does little for next-day soreness or performance, but it is harmless and many people find it helps them wind down.',
+    url: search('Do we need a cool-down after exercise? A narrative review'),
+  },
+  rio2015: {
+    cite: 'Rio E, et al. (2015). Isometric exercise induces analgesia and reduces inhibition in patellar tendinopathy. Br J Sports Med 49(19):1277–1283.',
+    finding: 'Heavy isometric holds reduced patellar tendon pain for at least 45 minutes, which makes them useful before training.',
+    url: search('Isometric exercise induces analgesia and reduces inhibition in patellar tendinopathy'),
+  },
+  aaos2017: {
+    cite: 'American Academy of Orthopaedic Surgeons. OrthoInfo conditioning programs (shoulder, knee, hip, spine, foot and ankle).',
+    finding: 'Standard physical-therapy exercise programs for common problem areas, such as external rotation and scapular work for shoulders and bridges and clamshells for hips.',
+    url: 'https://orthoinfo.aaos.org/en/recovery/',
+  },
   simao2012: {
     cite: 'Simão R, et al. (2012). Exercise order in resistance training. Sports Med 42(3):251–265.',
     finding: 'Exercises done first in a session are performed best and improve most, so the priority lifts should come first.',

@@ -131,7 +131,7 @@ const FIN_POOL_EXTRA = ['pushup', 'dip', 'pullup', 'chinup', 'inverted-row'];
 export function buildFinisher(db, { minutes = 10, mode = 'burn', format = 'rounds', muscles = [], core = false, coreIds = [] }) {
   const trained = new Set(muscles);
   const OUTDOOR = ['hill-sprint', 'run-sprint', 'run-interval'];
-  const ok = (e) => e && !OUTDOOR.includes(e.id) && e.pattern !== 'mobility' && e.pattern !== 'run' && e.metric !== 'distance' && isAvailable(db, e) && db.exPrefs?.[e.id] !== 'never';
+  const ok = (e) => e && !OUTDOOR.includes(e.id) && e.pattern !== 'mobility' && e.pattern !== 'prehab' && e.pattern !== 'run' && e.metric !== 'distance' && isAvailable(db, e) && db.exPrefs?.[e.id] !== 'never';
   const pool = Object.values(db.exercises).filter((e) => ok(e) && (e.category === 'conditioning' || FIN_POOL_EXTRA.includes(e.id)));
   const overlap = (e) => e.primary.filter((m) => trained.has(m)).length + 0.5 * e.secondary.filter((m) => trained.has(m)).length;
   const scored = pool.map((e) => {
