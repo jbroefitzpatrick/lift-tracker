@@ -1101,3 +1101,19 @@ button { touch-action: manipulation; }
 .order-name { display: block; font-weight: 600; margin-bottom: 4px; }
 .order-row select { width: 100%; min-height: 40px; }
 .set-badge.ty-d + .prev { visibility: hidden; }
+
+/* ---------- v16: grouped muscles ---------- */
+.vol-group > summary { list-style: none; cursor: pointer; position: relative; }
+.vol-group > summary::-webkit-details-marker { display: none; }
+.vol-group > summary .fr-name::after { content: "›"; display: inline-block; margin-left: 6px; color: var(--faint); transition: transform 0.15s; }
+.vol-group[open] > summary .fr-name::after { transform: rotate(90deg); }
+.fresh-row.vol.sub { padding-left: 12px; font-size: 0.8125rem; min-height: 24px; color: var(--muted); }
+.fresh-row.vol.sub .fr-name { color: var(--muted); }
+.vol-group[open] { background: var(--surface-2); border-radius: 12px; margin: 2px -8px 6px; padding: 2px 8px 6px; }
+.low-note { display: block; font-size: 0.6875rem; font-weight: 600; color: var(--warn); line-height: 1.1; }
+.sub-note { margin: 4px 0 0 12px; }
+.rec-members { margin-top: 10px; border-top: 1px solid var(--line); }
+.rec-member { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 40px; padding: 0 2px; border: 0; border-bottom: 1px solid var(--line); background: none; color: var(--text); font: inherit; text-align: left; }
+.rec-member:last-child { border-bottom: 0; }
+.rec-member .ic { width: 16px; height: 16px; color: var(--faint); }
+button.target-tile { border: 0; background: none; color: inherit; font: inherit; padding: 0; }

@@ -13,7 +13,7 @@ export const MUSCLES = {
   'side-delts': 'Side delts',
   'rear-delts': 'Rear delts',
   lats: 'Lats',
-  'upper-back': 'Upper back',
+  'upper-back': 'Mid back',
   traps: 'Traps',
   biceps: 'Biceps',
   triceps: 'Triceps',

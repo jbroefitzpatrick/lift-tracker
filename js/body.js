@@ -42,7 +42,7 @@ const SIL = `
 
 const NAMES = {
   chest: 'Chest', 'front-delts': 'Front delts', 'side-delts': 'Side delts', 'rear-delts': 'Rear delts', lats: 'Lats',
-  'upper-back': 'Upper back', traps: 'Traps', biceps: 'Biceps', triceps: 'Triceps', forearms: 'Forearms', abs: 'Abs',
+  'upper-back': 'Mid back', traps: 'Traps', biceps: 'Biceps', triceps: 'Triceps', forearms: 'Forearms', abs: 'Abs',
   obliques: 'Obliques', 'lower-back': 'Lower back', glutes: 'Glutes', quads: 'Quads', hamstrings: 'Hamstrings',
   adductors: 'Adductors', abductors: 'Abductors', calves: 'Calves', 'hip-flexors': 'Hip flexors',
 };

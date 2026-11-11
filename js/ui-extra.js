@@ -9,6 +9,7 @@ import {
   defaultGym, todayStr, daysBetween, exportJson, exportCsv, download, parseBackup, importData, storageInfo, requestPersistence,
   listSnapshots, readSnapshot, safetySnapshot, putPhoto, getPhoto, deletePhoto, freshDb,
 } from './store.js';
+import { GROUPS, PARTS, weeklySets } from './groups.js';
 import { encryptText, decryptText, isEncrypted, cryptoAvailable } from './crypto.js';
 
 const MEASURES = { waist: 'Waist', chest: 'Chest', arms: 'Arms', thighs: 'Thighs', hips: 'Hips', neck: 'Neck' };
@@ -57,30 +58,35 @@ export function createExtras(ctx) {
 
   function volumeCard() {
     const db = ctx.db;
-    const since = Date.now() - 7 * 86400000;
-    const ws = {};
-    for (const s of db.sessions) {
-      if ((s.finishedAt || 0) < since) continue;
-      for (const e of s.entries) {
-        const ex = db.exercises[e.exerciseId];
-        if (!ex) continue;
-        const n = e.sets.filter((x) => !x.pain && x.reps > 0).length * (s.isDeload ? 1 : 1);
-        for (const m of ex.primary) ws[m] = (ws[m] || 0) + n;
-        for (const m of ex.secondary) ws[m] = (ws[m] || 0) + n * 0.5;
-      }
-    }
+    const { muscles: ws, parts } = weeklySets(db);
     if (!Object.keys(ws).length) return '';
     const rx = { weekly: db.profile?.rx?.weekly || [10, 20], includePhysique: !!db.profile?.rx?.includePhysique };
-    const rows = VOLUME_MUSCLES.map((m) => {
-      const v = Math.round((ws[m] || 0) * 2) / 2;
-      const [lo, hi] = volumeTarget(rx, m);
-      const pct = Math.min(100, (v / hi) * 100);
-      return `<div class="fresh-row vol"><span class="fr-name">${MUSCLES[m]}</span>
-        <span class="fr-bar target" style="--lo:${(lo / hi) * 100}%"><i class="${v < lo ? 'low' : ''}" style="width:${Math.max(pct, 2)}%"></i></span>
-        <span class="fr-pct"><b>${v}</b> <span class="muted">/ ${lo}–${hi}</span></span></div>`;
+    const r = (x) => Math.round(x * 2) / 2;
+    const bar = (v, lo, hi) => `<span class="fr-bar target" style="--lo:${(lo / hi) * 100}%"><i class="${v < lo ? 'low' : ''}" style="width:${Math.max(Math.min(100, (v / hi) * 100), 2)}%"></i></span>`;
+    const line = (name, v, lo, hi, cls = '', note = '') => `<div class="fresh-row vol ${cls}"><span class="fr-name">${name}${note}</span>${bar(v, lo, hi)}<span class="fr-pct"><b>${r(v)}</b> <span class="muted">/ ${lo}–${hi}</span></span></div>`;
+    const rows = GROUPS.map((g) => {
+      const tracked = g.muscles.filter((m) => VOLUME_MUSCLES.includes(m));
+      if (!tracked.length) return '';
+      const t = tracked.map((m) => volumeTarget(rx, m));
+      const v = tracked.reduce((x, m) => x + (ws[m] || 0), 0);
+      const lo = t.reduce((x, y) => x + y[0], 0);
+      const hi = t.reduce((x, y) => x + y[1], 0);
+      const lowOne = tracked.length > 1 ? tracked.find((m, i) => (ws[m] || 0) < t[i][0] && v >= lo) : null;
+      const pm = g.parts && parts[g.parts];
+      const sub = [
+        ...(g.muscles.length > 1 ? g.muscles.map((m) => (VOLUME_MUSCLES.includes(m)
+          ? line(MUSCLES[m], ws[m] || 0, ...volumeTarget(rx, m), 'sub')
+          : `<div class="fresh-row vol sub"><span class="fr-name">${MUSCLES[m]}</span><span></span><span class="fr-pct"><b>${r(ws[m] || 0)}</b></span></div>`)) : []),
+        ...(pm ? Object.entries(PARTS[g.parts]).map(([k, name]) => {
+          const max = Math.max(1, ...Object.values(pm));
+          return `<div class="fresh-row vol sub"><span class="fr-name">${name}</span><span class="fr-bar"><i style="width:${Math.max(2, ((pm[k] || 0) / max) * 100)}%"></i></span><span class="fr-pct"><b>${r(pm[k] || 0)}</b></span></div>`;
+        }) : []),
+      ];
+      const head = line(g.name, v, lo, hi, '', lowOne ? ` <span class="low-note">${MUSCLES[lowOne]} low</span>` : '');
+      return sub.length ? `<details class="vol-group"><summary>${head}</summary>${sub.join('')}${pm ? '<p class="muted small sub-note">Estimated from which exercises you did.</p>' : ''}</details>` : head;
     }).join('');
-    return `<div class="card"><h3>Sets per muscle, last 7 days</h3>
-      <p class="muted small">Hard sets, counting ½ for assisting muscles, against your weekly target${db.profile ? '' : ' (default 10–20)'}. The tick marks the low end of the target. ${ctx.refChips(['pelland2026', 'schoenfeld2017vol'])}</p>${rows}</div>`;
+    return `<div class="card"><div class="row between"><h3>Weekly sets</h3><button class="help-btn" data-a="help" aria-expanded="false" aria-label="What is this?">?</button></div>
+      <p class="help-text" hidden>Hard sets in the last 7 days, counting half for assisting muscles, against your weekly target${db.profile ? '' : ' (default 10–20 per muscle)'}. The tick marks the low end. Tap a row with an arrow to see the muscles or parts inside it. ${ctx.refChips(['pelland2026', 'schoenfeld2017vol'])}</p>${rows}</div>`;
   }
 
   // ---------- Body: measurements & photos ----------

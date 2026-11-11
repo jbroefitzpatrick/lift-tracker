@@ -34,6 +34,7 @@ import { workoutBurn, cardioBurn } from './energy.js';
 import { createPain } from './ui-pain.js';
 import { LEVELS as PAIN_LEVELS, JOINTS, activePain, areaLabel } from './pain.js';
 import { sideOf } from './body.js';
+import { GROUPS, PARTS, groupById, groupOfMuscle, groupFreshness, weeklySets as setsByPart } from './groups.js';
 import { hoursToReady } from './fatigue.js';
 import { createTrain } from './ui-train.js';
 import { condScore, condHistory } from './conditioning.js';
@@ -729,15 +730,18 @@ function screenToday() {
 // The muscles today's exercises train, with how recovered each one is.
 function targetMuscles(items) {
   const loads = liftLoads(db, items.map((i) => ({ exerciseId: i.exerciseId, sets: i.sets || 3 })));
-  const top = Object.entries(loads).filter(([, v]) => v >= 2).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([m]) => m);
-  if (!top.length) return '';
   const fresh = freshness(currentFatigue(db));
+  // One tile per group, ordered by how much work it gets today.
+  const tiles = GROUPS.map((g) => {
+    const used = g.muscles.filter((m) => (loads[m] || 0) >= 2);
+    if (!used.length) return null;
+    const lead = used.sort((x, y) => (loads[y] || 0) - (loads[x] || 0))[0];
+    return { g, lead, load: used.reduce((a, m) => a + loads[m], 0), pct: Math.round(Math.min(...used.map((m) => fresh[m] ?? 1)) * 100) };
+  }).filter(Boolean).sort((x, y) => y.load - x.load).slice(0, 6);
+  if (!tiles.length) return '';
   return `<section class="targets" aria-label="Target muscles">
     <h2>Target muscles</h2>
-    <div class="target-strip">${top.map((m) => {
-      const pct = Math.round((fresh[m] ?? 1) * 100);
-      return `<div class="target-tile"><span class="tile-art">${muscleIcon(m)}<span class="pct-badge ${pct < 50 ? 'low' : pct < 80 ? 'mid' : ''}">${pct}%</span></span><span class="tile-name">${MUSCLES[m]}</span></div>`;
-    }).join('')}</div>
+    <div class="target-strip">${tiles.map(({ g, lead, pct }) => `<button class="target-tile" data-a="open-recovery" data-g="${g.id}" aria-label="${g.name}, ${pct}% recovered"><span class="tile-art">${muscleIcon(lead)}<span class="pct-badge ${pct < 50 ? 'low' : pct < 80 ? 'mid' : ''}">${pct}%</span></span><span class="tile-name">${g.name}</span></button>`).join('')}</div>
   </section>`;
 }
 
@@ -1520,6 +1524,20 @@ function painFor(area, side) {
 // Details for the selected muscle or joint: how recovered it is, when it's ready, any pain logged.
 function recoveryDetail(sel) {
   if (!sel) return '<p class="muted small center">Tap a muscle to see how recovered it is.</p>';
+  if (sel.group) {
+    const g = groupById(sel.group);
+    const fat = currentFatigue(db);
+    const fresh = freshness(fat);
+    const pct = Math.round(groupFreshness(g, fresh) * 100);
+    const h = Math.max(...g.muscles.map((m) => hoursToReady(m, fat[m] || 0)));
+    const pains = g.muscles.flatMap((m) => painFor(m, null)).filter((r, i, arr) => arr.findIndex((x) => x.id === r.id) === i);
+    const pm = g.parts ? setsByPart(db).parts[g.parts] : null;
+    return `<div class="rec-detail-head"><h4>${g.name}</h4></div>
+      <div class="rec-stat"><b class="num">${pct}%</b><span><b>${pct >= 80 ? 'Fresh' : pct >= 50 ? 'Recovering' : 'Fatigued'}</b><span class="pick-sub">${h > 0 ? `Ready in about ${h < 20 ? `${Math.max(1, Math.round(h))} h` : `${Math.round(h / 24)} day${Math.round(h / 24) === 1 ? '' : 's'}`}` : 'Ready to train'}</span></span></div>
+      ${g.muscles.length > 1 ? `<div class="rec-members">${g.muscles.map((m) => `<button class="rec-member" data-a="rec-pick" data-m="${m}"><span class="grow">${MUSCLES[m]}</span><b class="num">${Math.round(fresh[m] * 100)}%</b>${icon('right', 'chev')}</button>`).join('')}</div>` : ''}
+      ${pm && Object.keys(pm).length ? `<div class="rec-members">${Object.entries(PARTS[g.parts]).map(([k, name]) => `<div class="rec-member"><span class="grow">${name}</span><b class="num">${Math.round((pm[k] || 0) * 2) / 2}</b><span class="muted small">sets this week</span></div>`).join('')}</div>` : ''}
+      ${pains.map((r) => `<div class="pain-row"><span class="lv-dot lv-${r.level}" aria-hidden="true"></span><span class="grow"><b>${esc(areaLabel(r.area, r.side))}</b><span class="pick-sub">${PAIN_LEVELS[r.level].name} pain</span></span></div>`).join('')}`;
+  }
   const { area, side } = sel;
   const joint = JOINTS[area];
   const name = side && side !== 'center' ? areaLabel(area, side) : (joint?.name || MUSCLES[area] || area);
@@ -1542,6 +1560,10 @@ function markRecovery() {
   const sel = ui.recSel;
   document.querySelectorAll('.rec-map .picked').forEach((el) => el.classList.remove('picked'));
   if (!sel) return;
+  if (sel.group) {
+    for (const m of groupById(sel.group).muscles) document.querySelectorAll(`.rec-map [data-m="${m}"]`).forEach((el) => el.classList.add('picked'));
+    return;
+  }
   document.querySelectorAll('.rec-map svg').forEach((svg) => svg.querySelectorAll('[data-half]').forEach((g) => {
     const side = sideOf(svg.dataset.view, g.dataset.half);
     if (sel.side && sel.side !== 'center' && sel.side !== side) return;
@@ -1570,15 +1592,16 @@ function freshnessCard() {
   const shade = Object.fromEntries(all.map((m) => [m, Math.min(1, (1 - fresh[m]) / 0.6)]));
   const hurt = new Set(activePain(db).map((r) => `${r.area}:${r.side}`));
   const recovering = all.filter((m) => fresh[m] < 0.8).sort((a, b) => fresh[a] - fresh[b]);
-  if (!ui.recSel && recovering.length) ui.recSel = { area: recovering[0], side: null };
+  const recGroups = GROUPS.map((g) => ({ g, f: groupFreshness(g, fresh) })).filter((x) => x.f < 0.8).sort((x, y) => x.f - y.f);
+  if (!ui.recSel && recGroups.length) ui.recSel = { group: recGroups[0].g.id };
   const opts = { mark: hurt, joints: true };
   setTimeout(markRecovery);
   return `<section class="card recovery">
-    <div class="row between"><h3>Recovery</h3><span class="muted small">${recovering.length ? `${recovering.length} recovering` : 'All fresh'}</span></div>
+    <div class="row between"><h3>Recovery</h3><span class="muted small">${recGroups.length ? `${recGroups.length} recovering` : 'All fresh'}</span></div>
     <div class="body-pair rec-map">${bodySvg('front', shade, { ...opts, label: 'Front of body. Tap a muscle.' })}${bodySvg('back', shade, { ...opts, label: 'Back of body. Tap a muscle.' })}</div>
     <div class="scale" aria-hidden="true"><span>Fresh</span><i></i><span>Fatigued</span>${hurt.size ? '<span class="hurt-key">Pain</span>' : ''}</div>
     <div id="rec-detail" class="rec-detail" aria-live="polite">${recoveryDetail(ui.recSel)}</div>
-    ${recovering.length ? `<div class="chips wrap rec-chips">${recovering.map((m) => `<button class="chip sm" data-a="rec-pick" data-m="${m}">${MUSCLES[m]} <b class="num">${Math.round(fresh[m] * 100)}%</b></button>`).join('')}</div>` : ''}
+    ${recGroups.length ? `<div class="chips wrap rec-chips">${recGroups.map(({ g, f }) => `<button class="chip sm" data-a="rec-pick" data-g="${g.id}">${g.name} <b class="num">${Math.round(f * 100)}%</b></button>`).join('')}</div>` : ''}
   </section>`;
 }
 
@@ -2817,7 +2840,7 @@ const actions = {
     if (list.length === 1) return actions.summary({ id: list[0].id });
     openSheet(`<h2>${fmtDate(d.date)}</h2><div class="list-group">${list.map((s) => `<button class="list-row" data-a="summary" data-id="${s.id}"><span class="grow"><b>${s.freestyle ? 'Freestyle' : esc(db.plan[s.day]?.name || 'Workout')}</b><span class="pick-sub">${Math.round(workoutBurn(db, s).minutes)} min</span></span>${icon('right', 'chev')}</button>`).join('')}</div><button class="btn block" data-a="close-sheet">Close</button>`);
   },
-  'rec-pick': (d) => { ui.recSel = { area: d.m, side: null }; refreshRecovery(); },
+  'rec-pick': (d) => { ui.recSel = d.g ? { group: d.g } : { area: d.m, side: null }; refreshRecovery(); },
   // A "?" next to a label shows or hides its explanation.
   help: (d, el) => { const p = el.closest('.field, .help-wrap, label, h3, div')?.querySelector('.help-text') || el.parentElement.nextElementSibling; if (!p) return; p.hidden = !p.hidden; el.setAttribute('aria-expanded', String(!p.hidden)); },
   'set-type': (d, el) => {
@@ -2844,7 +2867,7 @@ const actions = {
     persist(); render();
   },
   'list-view': () => { db.settings.listView = db.settings.listView === 'full' ? 'cards' : 'full'; persist(); render(); },
-  'open-recovery': () => openSheet(`<h2>Recovery</h2>${freshnessCard().replace('<section class="card recovery">', '<section class="recovery in-sheet">').replace('<h3>Recovery</h3>', '<h3 class="sr-only">Recovery</h3>')}<button class="btn block" data-a="close-sheet">Close</button>`),
+  'open-recovery': (d) => { if (d?.g) ui.recSel = { group: d.g }; return openSheet(`<h2>Recovery</h2>${freshnessCard().replace('<section class="card recovery">', '<section class="recovery in-sheet">').replace('<h3>Recovery</h3>', '<h3 class="sr-only">Recovery</h3>')}<button class="btn block" data-a="close-sheet">Close</button>`); },
   'tip-ok': (d) => { (db.settings.tips ||= {})[d.k] = true; persist(); render(); },
   'why-workout': () => openWhyWorkout(),
   'set-core': (d) => {
