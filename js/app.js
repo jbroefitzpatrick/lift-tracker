@@ -44,6 +44,7 @@ import { VARIETY, applyVariety } from './variety.js';
 import { initSwipe, initPullDown, initSideSwipe } from './swipe.js';
 import { createFocus } from './ui-focus.js';
 import { createExerciseEditor } from './ui-exercise.js';
+import { CORE_PLACEMENTS, applyCore, coreCircuit } from './core.js';
 
 let db = null; // loaded asynchronously at startup (see bottom)
 const ui = {
@@ -2361,6 +2362,7 @@ function screenBuilder() {
         <div class="field"><span>Session length ${helpBtn()}</span><p class="help-text" hidden>How long you usually have. Shorter sessions use more supersets and fewer accessories.</p>${bChips('sessionMin', { 30: '30 min', 45: '45 min', 60: '60 min', 75: '75 min', 90: '90 min', 105: '105 min', 120: '120 min' }, p.sessionMin)}</div>
         <div class="field"><span>Variety ${helpBtn()}</span><p class="help-text" hidden>How often exercises change. Focus lifts always stay the same.</p>${bChips('variety', Object.fromEntries(Object.entries(VARIETY).map(([k, v]) => [k, v.name])), p.variety || 'low')}
           <p class="muted small">${VARIETY[p.variety || 'low'].desc} ${refChips(['kassiano2022', 'bazvalle2019', 'fonseca2014'])}</p></div>
+        <div class="field"><span>Core ${helpBtn()}</span><p class="help-text" hidden>Where core work goes. Default: one core exercise to finish each lifting day, mixing weighted and bodyweight.</p>${bChips('corePlacement', Object.fromEntries(Object.entries(CORE_PLACEMENTS).map(([k, v]) => [k, v.name])), p.corePlacement || 'end')}</div>
         <div class="field"><span>Equipment</span>${bChips('equipment', EQUIPMENT, p.equipment, true)}</div>
         <div class="field"><span>Sensitive areas ${helpBtn()}</span><p class="help-text" hidden>Skips exercises that commonly bother these joints.</p>${bChips('limits', LIMITS, p.limits, true)}</div>
       </div>`;
@@ -2483,6 +2485,7 @@ function applyBuilt() {
   };
   retargetWeights(out.plan);
   db.blocks.focus[blockInfo(db).index] = builderFocus(p, out);
+  applyCore(db, p.corePlacement || 'end');
   applyVariety(db, p.variety || 'low', db.blocks.focus[blockInfo(db).index] || []);
   persist();
   ui.b = null;
@@ -2535,6 +2538,9 @@ function screenSettings() {
         <div class="segmented small-seg grow" role="radiogroup" aria-label="Last week reps in reserve">${[0, 1, 2].map((n) => `<button class="${(s.rampEnd ?? db.profile?.rx?.rirLo ?? 1) === n ? 'on' : ''}" data-a="ramp-end" data-v="${n}" role="radio" aria-checked="${(s.rampEnd ?? db.profile?.rx?.rirLo ?? 1) === n}">${n}</button>`).join('')}</div></div></div>
       <div class="field"><span>Current week of program · week ${wi.cyclePos} of ${wi.cycleLen} in this block${wi.isDeload ? ' (deload)' : ''}</span>
         <div class="row">${stepper('set-week', wi.week, 1)}<button class="btn" data-a="set-week">Set</button></div></div>
+      <div class="field"><span>Core</span>
+        <div class="segmented small-seg wrap-seg" role="radiogroup" aria-label="Core placement">${Object.entries(CORE_PLACEMENTS).map(([k, v]) => `<button class="${(s.corePlacement || 'end') === k ? 'on' : ''}" data-a="set-core" data-v="${k}" role="radio" aria-checked="${(s.corePlacement || 'end') === k}">${v.name}</button>`).join('')}</div>
+        <p class="muted small">${CORE_PLACEMENTS[s.corePlacement || 'end'].desc} ${refChips(['mcgill2010', 'hibbs2008', 'granata2008'])}</p></div>
       <div class="field"><span>Exercise variety</span>
         <div class="segmented small-seg" role="radiogroup" aria-label="Exercise variety">${Object.entries(VARIETY).map(([k, v]) => `<button class="${(s.variety || 'low') === k ? 'on' : ''}" data-a="set-variety" data-v="${k}" role="radio" aria-checked="${(s.variety || 'low') === k}">${v.name}</button>`).join('')}</div>
         <p class="muted small">${VARIETY[s.variety || 'low'].desc} ${refChips(['kassiano2022', 'bazvalle2019'])}</p></div>
@@ -2740,6 +2746,11 @@ const actions = {
   'open-recovery': () => openSheet(`<h2>Recovery</h2>${freshnessCard().replace('<section class="card recovery">', '<section class="recovery in-sheet">').replace('<h3>Recovery</h3>', '<h3 class="sr-only">Recovery</h3>')}<button class="btn block" data-a="close-sheet">Close</button>`),
   'tip-ok': (d) => { (db.settings.tips ||= {})[d.k] = true; persist(); render(); },
   'why-workout': () => openWhyWorkout(),
+  'set-core': (d) => {
+    const r = applyCore(db, d.v);
+    persist(); render();
+    toast(d.v === 'end' ? `Core finishes each lifting day (${r.days} days).` : d.v === 'warmup' ? 'Core activation now starts each lifting day.' : d.v === 'finisher' ? 'Core moves into your finishers.' : 'Core goes into interval and conditioning sessions.');
+  },
   'set-variety': (d) => {
     const n = applyVariety(db, d.v, focusFor(db, blockInfo(db).index) || []);
     persist(); render();
@@ -2905,7 +2916,8 @@ const actions = {
     const tpl = TEMPLATES.find((t) => t.id === d.id);
     if (db.activeSession) return toast('Finish or discard the current workout first.');
     const session = startSession(ui.day, true);
-    for (const it of templateItems(tpl, 1, 'tpl')) {
+    const extra = db.settings.corePlacement === 'conditioning' && tpl.kind !== 'recovery' ? templateItems(coreCircuit(db), tpl.items.length + 1, 'core') : [];
+    for (const it of [...templateItems(tpl, 1, 'tpl'), ...extra]) {
       session.entries[it.uid] = { ...makeEntry(it, false), added: true };
       session.order.push(it.uid);
     }
@@ -2919,6 +2931,7 @@ const actions = {
     const plan = db.plan[day];
     const start = Math.max(0, ...plan.items.map((i) => parseInt(groupNum(i.group), 10) || 0)) + 1;
     plan.items.push(...templateItems(tpl, start, day));
+    if (db.settings.corePlacement === 'conditioning' && tpl.kind !== 'recovery') plan.items.push(...templateItems(coreCircuit(db), start + tpl.items.length, `${day}c`));
     if ((db.settings.dayModes[day] || 'rest') === 'rest') db.settings.dayModes[day] = plan.items.some((i) => db.exercises[i.exerciseId]?.category !== 'conditioning') ? 'both' : 'cardio';
     persist(); closeSheet(); render();
     toast(`${tpl.name} added to ${FULL_DAY[day]}s.`);
@@ -3075,7 +3088,7 @@ const actions = {
     persist(); ui.tab = 'history'; render(); toast('Workout deleted.');
   },
   'open-builder': () => openBuilder(),
-  'welcome-sample': () => { db.settings.welcomed = true; persist(); render(); },
+  'welcome-sample': () => { db.settings.welcomed = true; applyCore(db, 'end'); persist(); render(); },
   'b-exit': () => { ui.b = null; ui.tab = 'plan'; render(); },
   'b-next': () => { ui.b.step = Math.min(B_STEPS.length - 1, ui.b.step + 1); window.scrollTo(0, 0); render(); },
   'b-back': () => { ui.b.step = Math.max(0, ui.b.step - 1); window.scrollTo(0, 0); render(); },
@@ -3427,6 +3440,8 @@ actions['recovery-download'] = () => recoveryRaw && download(`lift-recovery-${to
   if (db.activeSession) keepAwake();
   dailySnapshot(db);
   cloud.onBoot();
+  // Existing plans: core placement starts at the default once.
+  if (db.settings.welcomed && !db.settings.corePlacement) { applyCore(db, 'end'); persist(); render(); }
   initSwipe();
   // Pull the sheet down to close it; pull the rest timer down to skip the rest.
   initPullDown($('#sheet-body'), closeSheet, { canStart: () => $('#sheet-body').scrollTop <= 0 });

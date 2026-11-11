@@ -64,6 +64,7 @@ export const PATTERNS = {
   'hip-flexion': 'Leg raise',
   'anti-extension': 'Anti-extension',
   'anti-rotation': 'Anti-rotation',
+  'anti-lateral': 'Anti-side-bend (carry)',
   rotation: 'Rotation',
   carry: 'Carry',
   sprint: 'Sprint',
@@ -230,6 +231,13 @@ const RAW = [
   ['leg-raise', 'Leg raise', 'A', 'bodyweight', 'hip-flexion', 'abs', 'hip-flexors'],
   ['ab-wheel', 'Ab wheel rollout', 'A', 'bodyweight', 'anti-extension', 'abs', 'lats obliques'],
   ['pallof-press', 'Pallof press', 'A', 'cable', 'anti-rotation', 'obliques', 'abs'],
+  ['dead-bug', 'Dead bug', 'A', 'bodyweight', 'anti-extension', 'abs', 'hip-flexors obliques'],
+  ['bird-dog', 'Bird dog', 'A', 'bodyweight', 'anti-rotation', 'lower-back glutes', 'abs obliques'],
+  ['mcgill-curl-up', 'McGill curl-up', 'A', 'bodyweight', 'core-flexion', 'abs', 'obliques'],
+  ['hollow-hold', 'Hollow body hold', 'A', 'bodyweight', 'anti-extension', 'abs', 'hip-flexors', 'time'],
+  ['weighted-plank', 'Weighted plank', 'A', 'bodyweight', 'anti-extension', 'abs', 'obliques front-delts', 'time'],
+  ['suitcase-carry', 'Suitcase carry', 'A', 'dumbbell', 'anti-lateral', 'obliques', 'forearms traps abs', 'distance'],
+  ['landmine-rotation', 'Landmine rotation', 'A', 'barbell-upper', 'rotation', 'obliques', 'abs front-delts'],
   ['cable-woodchop', 'Cable woodchop', 'A', 'cable', 'rotation', 'obliques', 'abs'],
 
   // ---- Full body ----

@@ -44,6 +44,21 @@ export const REFS = {
     finding: 'The Mifflin-St Jeor equation estimates resting energy use from weight, height, age and sex; it is among the most accurate common equations.',
     url: 'https://pubmed.ncbi.nlm.nih.gov/?term=A+new+predictive+equation+for+resting+energy+expenditure+in+healthy+individuals',
   },
+  mcgill2010: {
+    cite: 'McGill S (2010). Core training: evidence translating to better performance and injury prevention. Strength Cond J 32(3):33–46.',
+    finding: 'Train the trunk to resist movement (anti-extension, anti-rotation, side-bending) as well as to move it; curl-ups, side planks and bird dogs build spine-sparing endurance.',
+    url: search('Core training: evidence translating to better performance and injury prevention McGill'),
+  },
+  hibbs2008: {
+    cite: 'Hibbs AE, et al. (2008). Optimizing performance by improving core stability and core strength. Sports Med 38(12):995–1008.',
+    finding: 'Core stability (control) and core strength (force) are different qualities; a program should train both, with some loaded work.',
+    url: search('Optimizing performance by improving core stability and core strength'),
+  },
+  granata2008: {
+    cite: 'Granata KP, Gottipati P (2008). Fatigue influences the dynamic stability of the torso. Ergonomics 51(8):1258–1271.',
+    finding: 'Fatigued trunk muscles made the torso less stable, a reason to save hard core work for after heavy lifting.',
+    url: search('Fatigue influences the dynamic stability of the torso'),
+  },
   simao2012: {
     cite: 'Simão R, et al. (2012). Exercise order in resistance training. Sports Med 42(3):251–265.',
     finding: 'Exercises done first in a session are performed best and improve most, so the priority lifts should come first.',

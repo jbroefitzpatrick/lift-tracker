@@ -128,7 +128,7 @@ export const TEMPLATES = [
 // format 'rounds': work each move, rest after the round. 'emom': one move per minute, rest the remainder.
 const FIN_POOL_EXTRA = ['pushup', 'dip', 'pullup', 'chinup', 'inverted-row'];
 
-export function buildFinisher(db, { minutes = 10, mode = 'burn', format = 'rounds', muscles = [] }) {
+export function buildFinisher(db, { minutes = 10, mode = 'burn', format = 'rounds', muscles = [], core = false, coreIds = [] }) {
   const trained = new Set(muscles);
   const OUTDOOR = ['hill-sprint', 'run-sprint', 'run-interval'];
   const ok = (e) => e && !OUTDOOR.includes(e.id) && e.pattern !== 'mobility' && e.pattern !== 'run' && e.metric !== 'distance' && isAvailable(db, e) && db.exPrefs?.[e.id] !== 'never';
@@ -150,6 +150,11 @@ export function buildFinisher(db, { minutes = 10, mode = 'burn', format = 'round
   if (mode === 'burn' && !picks.some((p) => ['erg', 'sprint', 'plyo'].includes(p.pattern))) {
     const cardio = scored.find(({ e }) => ['erg', 'plyo'].includes(e.pattern) && !picks.includes(e));
     if (cardio) picks[picks.length - 1] = cardio.e;
+  }
+  // Core placement "finishers" or "cardio only": one move is always a core move.
+  if (core && !picks.some((p) => coreIds.includes(p.id))) {
+    const c = coreIds.map((id) => db.exercises[id]).find((e) => e && ok(e) && !picks.includes(e));
+    if (c) picks[Math.min(picks.length, 2)] = c;
   }
   const target = (e) => (e.metric === 'cal' ? 10 : e.metric === 'time' ? (format === 'emom' ? 40 : 30)
     : ['dip', 'pullup', 'chinup'].includes(e.id) ? 8 : e.pattern === 'plyo' ? 8 : 12);

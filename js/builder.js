@@ -509,6 +509,7 @@ export function generatePlan(db, p, rx, liftDays, cardioDays, splitId) {
     const used = new Set();
     const items = [];
     for (const [slotKey, role, prio] of t.slots) {
+      if (slotKey === 'abs' || slotKey === 'core2') continue; // core is placed by core.js
       if (prio === 'p' && !rx.includePhysique) continue;
       if (prio === 3 && p.experience === 'beginner') continue;
       const ex = pickExercise(db, p, slotKey, variant, used, role);

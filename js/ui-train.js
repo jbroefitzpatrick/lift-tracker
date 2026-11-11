@@ -9,6 +9,7 @@ import { dueChecks, record, notReady, learnSlowRecovery, RATINGS, groupSets } fr
 import { TEMPLATES, buildFinisher, condHistory, condTarget, fmtTarget } from './conditioning.js';
 import { RUN_KINDS, runKinds, scheduleRuns, goalWeek, paces, fmtClock, parseClock, weekRuns } from './running.js';
 import { liftLoads } from './fatigue.js';
+import { CORE_FINISHER } from './core.js';
 
 const MIN_CHOICES = [20, 30, 45, 60, 75, 90, 120];
 const SHORT = { mon: 'Mon', tue: 'Tue', wed: 'Wed', thu: 'Thu', fri: 'Fri', sat: 'Sat', sun: 'Sun' };
@@ -192,7 +193,7 @@ export function createTrain(ctx) {
     const db = ctx.db;
     const s = ctx.sessionFor(ctx.ui.day);
     const muscles = s ? [...new Set(s.order.map((u) => s.entries[u]).filter((e) => e.sets.some((x) => x.done)).flatMap((e) => db.exercises[e.exerciseId]?.primary || []))] : [];
-    const tpl = buildFinisher(db, { ...st.fin, muscles });
+    const tpl = buildFinisher(db, { ...st.fin, muscles, core: ['finisher', 'conditioning'].includes(db.settings.corePlacement), coreIds: CORE_FINISHER });
     st.finTpl = tpl;
     return `<p class="small">${esc(tpl.desc)}</p>
       <ol class="fin-list">${tpl.items.map(([id, , metric, target]) => `<li><b>${esc(db.exercises[id]?.name || id)}</b> · ${fmtTarget(metric, target)}</li>`).join('')}</ol>

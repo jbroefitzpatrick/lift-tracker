@@ -44,7 +44,7 @@ export function applyVariety(db, level, focus = []) {
     const taken = new Set(plan.items.map((i) => i.exerciseId));
     for (const item of plan.items) {
       if (item.autoVar) { delete item.variants; delete item.rotate; delete item.autoVar; }
-      if (item.role || item.variants) continue; // built-in or hand-made rotations stay as they are
+      if (item.role || item.variants || item.autoCore) continue; // hand-made rotations and core (which keeps its own weekly balance) stay as they are
       const ex = db.exercises[item.exerciseId];
       if (!ex || ex.category === 'conditioning' || level === 'low' || !VARIETY[level]) continue;
       let n = 0;

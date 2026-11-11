@@ -53,11 +53,12 @@ const clone = (items) => items.map((i) => ({ ...i }));
 function prio(db, it, focus) {
   const ex = db.exercises[it.exerciseId];
   if (focus.includes(it.exerciseId)) return 0;
+  if (it.autoCore) return 1; // at least one core exercise stays, even on short days
   return ex?.category === 'compound' ? 1 : 2;
 }
 
 // Renumber groups 1, 2, 3a/3b… keeping linked items together.
-function relabelGroups(items) {
+export function relabelGroups(items) {
   const keys = [];
   for (const it of items) { const k = groupNum(it.group); if (!keys.includes(k)) keys.push(k); }
   const size = (k) => items.filter((i) => groupNum(i.group) === k).length;
