@@ -50,6 +50,7 @@ import { PROGRESSIONS } from './engine.js';
 import { dayExtras, setDayExtra, warmupItems, cooldownItems } from './warmcool.js';
 import { adjustDay } from './week.js';
 import { splitTemplates, mainLiftOptions } from './builder.js';
+import { createPlanTools, keepManual, countManual } from './ui-plantools.js';
 
 let db = null; // loaded asynchronously at startup (see bottom)
 const ui = {
@@ -1333,8 +1334,8 @@ function openTemplates(day, mode) {
     </div>`).join('')}`;
   }).join('');
   openSheet(`<h2>Conditioning workouts</h2>
-    <p class="muted small">Interval, circuit and plyometric sessions based on published protocols. Everything is editable after adding — rounds, times, rest, and linking.</p>
-    ${groups}
+    <input class="search list-filter" type="search" placeholder="Search workouts" data-filter="#tpl-list" autocomplete="off" enterkeyhint="search">
+    <div id="tpl-list">${groups}</div>
     <button class="btn plain block" data-a="close-sheet">Close</button>`);
 }
 
@@ -1473,6 +1474,7 @@ function openCardioAll(day) {
   };
   openSheet(`<h2>Cardio options</h2>
     <p class="muted small">Ranked by how fresh the muscles each one uses are, and what you lift in the next two days.</p>
+    <input class="search list-filter" type="search" placeholder="Search cardio" data-filter="#pk-list" autocomplete="off" enterkeyhint="search">
     <div id="pk-list">${sect('good', 'Good fits')}${sect('ok', 'OK')}${sect('skip', 'Better another day')}</div>
     <button class="btn block" data-a="close-sheet">Close</button>`);
 }
@@ -1809,6 +1811,7 @@ function swapInPlan(day, uid, newId) {
   if (!it) return;
   delete it.role;
   it.exerciseId = newId;
+  it.manual = true; // chosen by hand: kept when the plan is rebuilt
   persist();
 }
 
@@ -1871,7 +1874,7 @@ function addPlanItem(exId) {
   const defaults = ex.category === 'compound'
     ? { sets: 3, repMin: 6, repMax: 10, restSec: 150 }
     : { sets: 3, repMin: 10, repMax: 15, restSec: 90 };
-  items.push({ uid: `${day}-${Date.now()}`, exerciseId: exId, group: String(nextGroup), note: '', ...defaults });
+  items.push({ uid: `${day}-${Date.now()}`, exerciseId: exId, group: String(nextGroup), note: '', manual: true, ...defaults });
   persist();
   render();
   openPlanEdit(items.length - 1);
@@ -2016,10 +2019,10 @@ function screenHistory() {
         ${s.prs?.length ? `<span class="pill good">${s.prs.length} PR${s.prs.length > 1 ? 's' : ''}</span>` : (() => { const up = s.results.filter((r) => r.status === 'progressed').length; return up ? `<span class="muted small">${up} up</span>` : ''; })()}${icon('right', 'chev')}
       </button>`).join('')}</div>` : ''}
     ${cardioHistory()}
-    ${seen.size ? `<div class="card"><div class="row between"><h3>By exercise</h3><button class="link-btn" data-a="browse-bank">Exercise library</button></div>${[...seen.entries()].map(([id, date]) => `
+    ${seen.size ? `<div class="card"><div class="row between"><h3>By exercise</h3><button class="link-btn" data-a="browse-bank">Exercise library</button></div>${seen.size > 6 ? '<input class="search list-filter" type="search" placeholder="Search your exercises" data-filter="#by-ex" autocomplete="off" enterkeyhint="search">' : ''}<div id="by-ex">${[...seen.entries()].map(([id, date]) => `
       <button class="list-row" data-a="history-ex" data-id="${id}">
         <span class="grow">${esc(db.exercises[id]?.name || id)}</span><span class="muted small">${fmtDate(date)}</span>${icon('right', 'chev')}
-      </button>`).join('')}</div>` : ''}`;
+      </button>`).join('')}</div></div>` : ''}`;
 }
 
 function screenExerciseHistory(exId) {
@@ -2127,14 +2130,15 @@ function screenPlan() {
       `<button class="${m === mode ? 'on' : ''}" data-a="day-mode" data-v="${m}" role="radio" aria-checked="${m === mode}">${MODE_LABELS[m]}</button>`).join('')}</div>`;
   const weekAdjusted = db.week?.start === mondayOf(todayStr());
   const weekBar = `<div class="week-bar"><button class="btn grow" data-a="wk-open">Adjust week</button>${weekAdjusted ? '<button class="btn" data-a="wk-reset">Reset</button>' : ''}</div>${weekAdjusted ? '<p class="muted small week-note">This week is adjusted. Your plan returns Monday.</p>' : ''}`;
-  if (!plan) return planViewTabs() + weekBar + train.runCard() + head + `<div class="empty small-empty"><p class="muted">No lifting on ${FULL_DAY[day]}s. Cardio days get suggestions based on your fatigue and upcoming lift days.</p></div><button class="btn block" data-a="add-lift-day">Add lifting on ${FULL_DAY[day]}s</button><button class="btn block" data-a="open-templates" data-day="${day}" data-mode="plan">Add conditioning</button>${builderEntry()}`;
+  if (!plan) return planViewTabs() + weekBar + train.runCard() + head + `<div class="empty small-empty"><p class="muted">No lifting on ${FULL_DAY[day]}s. Cardio days get suggestions based on your fatigue and upcoming lift days.</p></div><button class="btn block" data-a="pt-add" data-day="${day}">Add lifting on ${FULL_DAY[day]}s</button><button class="btn block" data-a="open-templates" data-day="${day}" data-mode="plan">Add conditioning</button>${builderEntry()}`;
   const items = plan.items;
   const est = estimateMinutes(items);
   const totalSets = items.reduce((a, i) => a + i.sets, 0);
   return `${planViewTabs()}${blockCard()}${weekBar}${train.runCard()}${head}
     ${mode === 'cardio' || mode === 'rest' ? `<p class="muted small pad">Lifting is off on ${FULL_DAY[day]}s. The exercises below are kept for when you switch back.</p>` : ''}
     <div class="card plan-day">
-      <div class="row between"><input id="plan-name" class="title-input" type="text" value="${esc(plan.name)}" data-a="plan-name" aria-label="Day name">
+      <div class="row between"><input id="plan-name" class="title-input" type="text" value="${esc(plan.name)}" data-a="plan-name" aria-label="Day name"><button class="icon-btn plain" data-a="plan-day-menu" data-day="${day}" aria-label="${FULL_DAY[day]} options: move, edit all, remove">${icon('more')}</button></div>
+      <div class="row between plan-day-meta">
         <span class="muted small nowrap">${items.length} exercises · ${totalSets} sets · ~${est} min</span></div>
       <div class="plan-list">
       ${items.map((it, i) => {
@@ -2303,7 +2307,7 @@ function savePlanEdit(i) {
     // Changing the exercise on a rotating slot turns the rotation off for that slot.
     const resolved = resolveDay(db, day).find((r) => r.uid === it.uid);
     if (it.role && resolved && resolved.exerciseId !== exId) delete it.role;
-    if (!it.role) it.exerciseId = exId;
+    if (!it.role && it.exerciseId !== exId) { it.exerciseId = exId; it.manual = true; }
     Object.assign(it, slot);
   }
   ex.type = type;
@@ -2544,7 +2548,8 @@ function reviewHtml(p, rx, out) {
       ${rows.map(([k, v]) => `<div class="rx-row"><span class="muted">${k}</span><b>${v}</b></div>`).join('')}
       <p class="muted small">Starting weights are blank: your first session sets them. Pick a weight you could do for about ${rx.rirLo + 2} more reps than the bottom of the range.</p>
     </div>
-    <div class="card"><h3>Your week</h3>${week}<p class="muted small">You can swap any exercise or edit sets and reps after applying.</p></div>
+    <div class="card"><h3>Your week</h3>${week}<p class="muted small">You can swap any exercise or edit sets and reps after applying.</p>
+      ${countManual(db.plan) ? `<label class="toggle"><input type="checkbox" data-a="b-keep" ${p.keepManual !== false ? 'checked' : ''}><span>Keep ${countManual(db.plan)} exercise${countManual(db.plan) === 1 ? '' : 's'} I chose</span></label>` : ''}</div>
     <div class="card"><h3>Focus lifts for your first block</h3>
       <p class="muted small">The compounds you want to push before the first deload. Their progress is tracked each block and reviewed at every deload.</p>
       <div class="chips wrap" role="group" aria-label="Focus lifts">${builderCompounds(out).map((ex) => {
@@ -2588,7 +2593,9 @@ function applyBuilt() {
   safetySnapshot(db, 'Before new plan');
   db.previousPlan = { plan: db.plan, dayModes: { ...db.settings.dayModes }, deloadEvery: db.settings.deloadEvery, savedAt: Date.now() };
   activeGym(db).equipment = [...p.equipment];
+  const oldPlan = db.plan;
   db.plan = out.plan;
+  if (p.keepManual !== false) keepManual(db, oldPlan, db.plan);
   db.settings.dayModes = out.dayModes;
   db.settings.deloadEvery = rx.deloadEvery;
   db.settings.welcomed = true;
@@ -2738,6 +2745,7 @@ const ctx = {
   },
   swapEntry(uid, newId) { swapInSession(uid, newId); render(); toast(`Swapped to ${db.exercises[newId].name}.`); },
   sessionFor: (day) => sessionFor(day),
+  focus: () => focusFor(db, blockInfo(db).index) || [],
   helpBtn: () => helpBtn(),
   thumb: (ex) => thumb(ex),
   muscleLine: (ex) => muscleLine(ex),
@@ -2749,7 +2757,7 @@ const ctx = {
     addToPlanDay(day, exId);
     const items = db.plan[day].items;
     const it = items.pop();
-    items.unshift({ ...it, sets: 3, repMin: 4, repMax: 8, restSec: 180 });
+    items.unshift({ ...it, sets: 3, repMin: 4, repMax: 8, restSec: 180, manual: true });
     relabel(items, (x) => `g${groupNum(x.group)}`);
   },
   reapplyVariety: () => applyVariety(db, db.settings.variety || 'low', focusFor(db, blockInfo(db).index) || []),
@@ -2776,6 +2784,7 @@ const pain = createPain(ctx);
 const train = createTrain(ctx);
 const focusUi = createFocus(ctx);
 const exEditor = createExerciseEditor(ctx);
+const planTools = createPlanTools(ctx);
 
 // ---------- Render ----------
 
@@ -3272,6 +3281,7 @@ const actions = {
     render();
   },
   'b-suggested': () => { ui.b.liftEdited = false; ui.b.cardioEdited = false; ui.b.splitEdited = false; render(); },
+  'b-keep': (d, el) => { ui.b.draft.keepManual = el.checked; },
   'b-split': (d) => { ui.b.draft.split = d.v; ui.b.draft.dayOrder = null; ui.b.draft.mainLift = {}; ui.b.splitEdited = true; render(); },
   'b-order': (d) => {
     const p = ui.b.draft;
@@ -3467,7 +3477,7 @@ const actions = {
   },
 };
 
-Object.assign(actions, food.actions, year.actions, extras.actions, cloud.actions, pain.actions, train.actions, focusUi.actions, exEditor.actions);
+Object.assign(actions, food.actions, year.actions, extras.actions, cloud.actions, pain.actions, train.actions, focusUi.actions, exEditor.actions, planTools.actions);
 
 onReorder('session', (uid, to) => {
   const { list, save } = editableList();
@@ -3545,6 +3555,17 @@ document.addEventListener('change', (e) => {
 });
 
 document.addEventListener('input', (e) => {
+  // Search boxes on lists: hide rows that don't match, and headings left with nothing under them.
+  if (e.target.matches?.('.list-filter')) {
+    const q = e.target.value.trim().toLowerCase();
+    const box = document.querySelector(e.target.dataset.filter);
+    if (box) {
+      const kids = [...box.querySelectorAll(':scope > *')];
+      for (const k of kids) if (!/^H\d$/.test(k.tagName)) k.hidden = !!q && !k.textContent.toLowerCase().includes(q);
+      kids.forEach((k, i) => { if (/^H\d$/.test(k.tagName)) { let j = i + 1; let any = false; while (j < kids.length && !/^H\d$/.test(kids[j].tagName)) { if (!kids[j].hidden) any = true; j++; } k.hidden = !!q && !any; } });
+    }
+    return;
+  }
   // Numbers typed into a set are saved as you type, so nothing is lost if the app closes.
   const ds = e.target.dataset?.set;
   if (ds && db.activeSession) {

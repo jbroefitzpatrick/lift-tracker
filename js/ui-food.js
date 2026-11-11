@@ -294,7 +294,7 @@ export function createFood(ctx) {
     st.meal = meal;
     const db = ctx.db;
     ctx.openSheet(`<h2>Saved meals</h2>
-      ${db.meals.map((m) => `<button class="pick-row" data-a="meal-log" data-id="${m.id}"><span class="grow"><b>${esc(m.name)}</b><span class="pick-sub">${esc(m.items.map((x) => x.name).join(', '))}</span></span><span class="muted small">${r0(m.items.reduce((a, x) => a + x.kcal, 0))} kcal</span></button>`).join('') || '<p class="muted small pad">No saved meals yet. Log a meal, then tap "Save meal".</p>'}
+      ${db.meals.length > 5 ? '<input class="search list-filter" type="search" placeholder="Search meals" data-filter="#saved-list" autocomplete="off" enterkeyhint="search">' : ''}<div id="saved-list">${db.meals.map((m) => `<button class="pick-row" data-a="meal-log" data-id="${m.id}"><span class="grow"><b>${esc(m.name)}</b><span class="pick-sub">${esc(m.items.map((x) => x.name).join(', '))}</span></span><span class="muted small">${r0(m.items.reduce((a, x) => a + x.kcal, 0))} kcal</span></button>`).join('') || '<p class="muted small pad">No saved meals yet. Log a meal, then tap "Save meal".</p>'}</div>
       <button class="btn block" data-a="close-sheet">Close</button>`);
   }
 

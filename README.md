@@ -22,6 +22,7 @@ Plain HTML/CSS/JS, no build step and no backend. All data stays on the phone (op
 - **Cardio:** day types, a cardio bank, muscle-freshness tracking, and suggestions that respect fatigue and upcoming lift days.
 - **Conditioning:** sprints, erg intervals, plyometrics and circuit moves log rounds by time, distance, calories or reps, and link into circuits just like lifts. Built-in templates (Tabata, sprint intervals, 10 × 1 min, 4 × 4 min, the 7-minute circuit, kettlebell and plyometric circuits and more) follow published protocols. Timed rounds have a work timer that rolls into rest.
 - **Fast logging:** each set row shows last time's result next to weight and reps (tap it to reuse the numbers), with warm-up, drop and failure set types, swipe to delete, a pinned workout bar with elapsed time, and an optional expanded list for logging every exercise from one screen.
+- **Edit the plan in place:** move or swap days, remove a day (its main lifts move to your other days), add a day by copying another, or change sets, reps and rest for a whole group of exercises at once. Exercises you chose by hand are kept when you rebuild the plan. Long lists have search.
 - **Your own exercises:** create any exercise from the exercise picker (or straight from a search with no results): name, equipment, type, tap the muscles it works on a body map, and notes. Built-in exercises can have their muscles and notes edited too.
 - **Core in every week:** one core exercise finishes each lifting day by default, rotating through flexion, anti-extension, anti-rotation, leg raises, rotation and side planks, alternating weighted and bodyweight. Or put core in the warm-up (light activation), in finishers, or in conditioning sessions only.
 - **Exercise variety:** choose consistent lifts, accessories that rotate each block, or high variety (accessories weekly, secondary compounds each block). Focus lifts never rotate; swaps keep the same movement and muscle.
@@ -67,6 +68,8 @@ Every recommendation links to its sources in the app (Plan builder → Why these
 | `js/store.js` | Storage, snapshots, schema migrations, import/export |
 | `js/crypto.js` | Encrypted backups (AES-256-GCM) |
 | `js/week.js`, `js/recovery.js`, `js/running.js`, `js/ui-train.js` | Week planner, recovery check-ins, running goal, finishers and sharing |
+| `js/ui-plantools.js` | Move, remove, add and bulk-edit plan days; keep hand-picked exercises on rebuild |
+| `js/groups.js` | Muscle groups and parts for display |
 | `js/core.js` | Core placement and weekly core rotation |
 | `js/ui-exercise.js` | Create and edit your own exercises |
 | `js/variety.js`, `js/swipe.js` | Exercise rotation levels; swipe actions on rows |

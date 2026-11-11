@@ -1117,3 +1117,8 @@ button { touch-action: manipulation; }
 .rec-member:last-child { border-bottom: 0; }
 .rec-member .ic { width: 16px; height: 16px; color: var(--faint); }
 button.target-tile { border: 0; background: none; color: inherit; font: inherit; padding: 0; }
+
+/* ---------- v17: plan tools, list search ---------- */
+.plan-day-meta { margin: -4px 0 6px; }
+.list-filter { margin: 4px 0 10px; }
+.card .list-filter { margin-top: 2px; }
