@@ -59,6 +59,16 @@ export const REFS = {
     finding: 'Fatigued trunk muscles made the torso less stable, a reason to save hard core work for after heavy lifting.',
     url: search('Fatigue influences the dynamic stability of the torso'),
   },
+  jeffreys2007: {
+    cite: 'Jeffreys I (2007). Warm-up revisited: the ramp method of optimising warm-ups. Professional Strength & Conditioning 6:12–18.',
+    finding: 'A warm-up in three phases: Raise (temperature and heart rate), Activate and Mobilize (the movements to come), Potentiate (short, specific priming).',
+    url: 'https://www.google.com/search?q=Jeffreys+2007+RAMP+warm-up+method',
+  },
+  mcgowan2015: {
+    cite: 'McGowan CJ, et al. (2015). Warm-up strategies for sport and exercise: mechanisms and applications. Sports Med 45(11):1523–1546.',
+    finding: 'Active warm-ups that raise muscle temperature and include specific, dynamic movements improve performance; keep them short enough to avoid fatigue.',
+    url: search('Warm-up strategies for sport and exercise: mechanisms and applications'),
+  },
   rippetoe2011: {
     cite: 'Rippetoe M (2011). Starting Strength: Basic Barbell Training, 3rd ed. The Aasgaard Company.',
     finding: 'Novices can add weight to the main barbell lifts every session for months (linear progression) before needing slower, planned cycles.',

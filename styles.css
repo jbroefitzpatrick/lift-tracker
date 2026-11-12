@@ -1122,3 +1122,26 @@ button.target-tile { border: 0; background: none; color: inherit; font: inherit;
 .plan-day-meta { margin: -4px 0 6px; }
 .list-filter { margin: 4px 0 10px; }
 .card .list-filter { margin-top: 2px; }
+
+/* ---------- v18: sheets fit the screen, workout view, goals ---------- */
+/* Sheets never taller than the visible screen (dvh excludes the iPhone's bars). */
+#sheet-body { max-height: calc(100vh - env(safe-area-inset-top) - 16px); max-height: calc(100dvh - env(safe-area-inset-top) - 16px); padding-top: 0; }
+.sheet-top { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; justify-content: center; min-height: 40px; margin: 0 -18px 2px; background: var(--surface); }
+.sheet-top .grabber { margin: 10px auto 8px; }
+.sheet-x { position: absolute; right: 10px; top: 6px; width: 34px; height: 34px; border: 0; border-radius: 50%; background: var(--surface-3); color: var(--muted); display: flex; align-items: center; justify-content: center; }
+.sheet-x .ic { width: 16px; height: 16px; stroke-width: 2.4; }
+.sheet-x::after { content: ""; position: absolute; inset: -6px; }
+#sheet-body > .sheet-top + h2 { margin-top: 0; padding-right: 40px; }
+
+/* Workout view: no tab bar; the workout bar on top and Finish at the bottom are all you need. */
+body.in-workout { --tabbar-h: 0px; }
+body.in-workout #tabs { display: none; }
+body.in-workout header.top [data-a="open-settings"] { display: none; }
+.back-to-workout { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(var(--tabbar-h) + 14px + env(safe-area-inset-bottom)); z-index: 18; min-height: 46px; padding: 0 22px; border: 0; border-radius: 999px; background: var(--good); color: var(--on-good); font: inherit; font-weight: 700; box-shadow: 0 8px 24px -8px var(--good); }
+
+.rec-line { display: inline-flex; align-items: center; gap: 6px; margin: 2px 0 8px; padding: 0; border: 0; background: none; color: var(--muted); font: inherit; font-size: 0.875rem; }
+.rec-line b { color: var(--text); font-weight: 600; }
+.rec-line .ic { width: 14px; height: 14px; }
+.rec-goal { margin-top: 12px; }
+.mgoal-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 0; border-top: 1px solid var(--line); }
+.mgoal-row select { min-width: 140px; }

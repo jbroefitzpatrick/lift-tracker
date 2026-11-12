@@ -303,6 +303,8 @@ const RAW = [
   ['wrist-circle', 'Wrist circles', 'X', 'bodyweight', 'prehab', 'forearms', '', 'time'],
   ['calf-raise-slow', 'Slow calf raise', 'X', 'bodyweight', 'prehab', 'calves', '', 'reps'],
   ['chin-tuck', 'Chin tuck', 'X', 'bodyweight', 'prehab', 'traps', '', 'reps'],
+  ['lateral-band-walk', 'Lateral band walk', 'X', 'bodyweight', 'prehab', 'abductors glutes', '', 'reps'],
+  ['scap-pull', 'Scapular pull-up', 'X', 'bodyweight', 'prehab', 'lats upper-back', 'traps', 'reps'],
 
   // ---- Recovery: stretching and foam rolling (timed holds, no training fatigue) ----
   ['roll-quads', 'Foam roll quads', 'X', 'bodyweight', 'mobility', 'quads', '', 'time'],
