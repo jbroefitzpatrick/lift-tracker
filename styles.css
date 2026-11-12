@@ -1145,3 +1145,15 @@ body.in-workout header.top [data-a="open-settings"] { display: none; }
 .rec-goal { margin-top: 12px; }
 .mgoal-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 0; border-top: 1px solid var(--line); }
 .mgoal-row select { min-width: 140px; }
+
+/* ---------- Whole-workout view from an exercise ---------- */
+.wb-back { display: inline-flex; align-items: center; gap: 2px; min-height: 36px; padding: 0 10px 0 4px; margin-left: -6px; border: 0; border-radius: 10px; background: var(--surface-3); color: var(--text); font: inherit; font-weight: 650; font-size: 0.9375rem; }
+.wb-back .ic { width: 18px; height: 18px; }
+.coming-up { margin: 18px 0 8px; padding-top: 6px; border-top: 1px solid var(--line); }
+.coming-up h3 { margin: 0; font-size: 1rem; }
+.coming-row { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 56px; padding: 6px 0; border: 0; border-bottom: 1px solid var(--line); background: none; color: var(--text); font: inherit; text-align: left; }
+.coming-row:last-of-type { border-bottom: 0; }
+.coming-row .ic.chev { width: 16px; height: 16px; color: var(--faint); }
+.ex-item.is-next { background: var(--accent-soft); border-radius: 14px; margin: 2px -8px; padding-left: 8px; padding-right: 8px; }
+.ex-item.is-next + .ex-item { border-top-color: transparent; }
+.eyebrow.next { color: var(--accent); }

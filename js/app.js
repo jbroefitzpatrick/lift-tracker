@@ -30,7 +30,7 @@ import { createFood } from './ui-food.js';
 import { createYear } from './ui-year.js';
 import { createExtras } from './ui-extra.js';
 import { createCloud } from './ui-cloud.js';
-import { workoutBurn, cardioBurn } from './energy.js';
+import { workoutBurn, cardioBurn, workoutMinutes } from './energy.js';
 import { createPain } from './ui-pain.js';
 import { LEVELS as PAIN_LEVELS, JOINTS, activePain, areaLabel } from './pain.js';
 import { sideOf } from './body.js';
@@ -693,6 +693,8 @@ function screenToday() {
     </div>
   </div>`;
   if (selecting) html += `<p class="muted small">Select exercises to link into a superset or circuit, or drag to reorder. ${session ? 'Changes apply to today\'s workout.' : `Changes apply to every ${FULL_DAY[day]}.`}</p>`;
+  // The exercise you're on: the last one opened if it has sets left, else the first with sets left.
+  ui.nextUid = session ? ((ui.exUid && items.find((i) => i.uid === ui.exUid && setsLeft(session, i))) || items.find((i) => setsLeft(session, i)))?.uid : null;
   html += '<div class="ex-list">';
   let lastPhase = null;
   for (const grp of groupsOf(items)) {
@@ -761,11 +763,12 @@ function exerciseRow(item, session, isDeload, selecting, sel) {
       : t.setReps ? `${t.setReps.join(' / ')}${t.wave?.amrap ? '+' : ''} reps · top set ${fmtW(target, ex)}`
         : t.scheme === 'linear' ? `${t.sets} × ${item.repMin}${weight}` : `${t.sets} sets · ${reps} reps${weight}`;
   const checked = sel.has(item.uid);
-  return `<div class="ex-item ${allDone ? 'is-done' : ''} ${checked ? 'is-selected' : ''}" data-drag-item data-drag-list="session" data-drag-id="${item.uid}" ${session && !selecting ? `data-swipe="ex-remove" data-swipe-label="Remove" data-uid="${item.uid}"` : ''}>
+  const isNext = session && item.uid === ui.nextUid;
+  return `<div class="ex-item ${allDone ? 'is-done' : ''} ${checked ? 'is-selected' : ''} ${isNext ? 'is-next' : ''}" data-drag-item data-drag-list="session" data-drag-id="${item.uid}" ${session && !selecting ? `data-swipe="ex-remove" data-swipe-label="Remove" data-uid="${item.uid}"` : ''}>
     ${selecting ? `<label class="sel"><input type="checkbox" data-a="sel-toggle" data-uid="${item.uid}" ${checked ? 'checked' : ''} aria-label="Select ${esc(ex.name)}"></label>` : ''}
     <button class="ex-item-main" data-a="ex-open" data-uid="${item.uid}" ${selecting ? 'tabindex="-1"' : ''}>
       <span class="thumb">${thumb(ex)}</span>
-      <span class="grow">${(focusFor(db, blockInfo(db).index) || []).includes(ex.id) ? '<span class="eyebrow">Focus lift</span>' : ''}<span class="ex-name2">${esc(ex.name)}</span><span class="ex-meta">${meta}</span>
+      <span class="grow">${isNext ? '<span class="eyebrow next">Up next</span>' : (focusFor(db, blockInfo(db).index) || []).includes(ex.id) ? '<span class="eyebrow">Focus lift</span>' : ''}<span class="ex-name2">${esc(ex.name)}</span><span class="ex-meta">${meta}</span>
         ${notices.length ? `<span class="row-notice ${notices[0][0]}">${esc(notices[0][1])}</span>` : ''}</span>
     </button>
     ${allDone ? `<span class="status-done" aria-label="Done">${icon('check')}</span>` : ''}
@@ -793,6 +796,28 @@ function exerciseFull(item, session, isDeload) {
   </section>`;
 }
 
+// What's left after this exercise, so the rest of the workout is always in view.
+const setsLeft = (session, i) => { const e = session.entries[i.uid]; return !e || (!e.pain && e.sets.some((s) => !s.done)); };
+function comingUp(items, idx, session) {
+  if (!session) return '';
+  const upcoming = items.slice(idx + 1).filter((i) => setsLeft(session, i));
+  const skipped = items.slice(0, idx).filter((i) => setsLeft(session, i) && session.entries[i.uid]?.sets.some((s) => s.done) === false);
+  const groups = groupsOf(items);
+  const row = (i) => {
+    const e = session.entries[i.uid];
+    const total = e ? e.sets.length : i.sets;
+    const done = e ? e.sets.filter((s) => s.done).length : 0;
+    const linked = groups.find((g) => g.items.includes(i))?.linked;
+    return `<button class="coming-row" data-a="ex-go" data-uid="${i.uid}"><span class="thumb sm">${thumb(i.ex)}</span>
+      <span class="grow"><b>${esc(i.ex.name)}</b><span class="pick-sub">${done ? `${done} of ${total} ${i.ex.category === 'conditioning' ? 'rounds' : 'sets'}` : `${total} ${i.ex.category === 'conditioning' ? 'rounds' : 'sets'}`}${linked ? ' · linked' : ''}</span></span>${icon('right', 'chev')}</button>`;
+  };
+  return `<section class="coming-up" aria-label="Coming up">
+    <div class="row between"><h3>${upcoming.length ? 'Coming up' : skipped.length ? 'Still to do' : 'Last exercise'}</h3><button class="link-btn" data-a="ex-close">Whole workout</button></div>
+    ${(upcoming.length ? upcoming.slice(0, 3) : skipped.slice(0, 3)).map(row).join('')}
+    ${upcoming.length > 3 ? `<p class="muted small">+ ${upcoming.length - 3} more</p>` : ''}
+  </section>`;
+}
+
 // ---------- Live workout bar ----------
 
 const fmtElapsed = (ms) => { const s = Math.max(0, Math.floor(ms / 1000)); const h = Math.floor(s / 3600); return `${h ? `${h}:${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}` : Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
@@ -802,7 +827,9 @@ function workoutBar(session) {
   const es = session.order.map((u) => session.entries[u]).filter(Boolean);
   const total = es.reduce((a, e) => a + (e.pain ? e.sets.filter((s) => s.done).length : e.sets.length), 0);
   const done = es.reduce((a, e) => a + e.sets.filter((s) => s.done).length, 0);
+  const onExercise = ui.tab === 'exercise';
   return `<div class="workout-bar" role="group" aria-label="Workout in progress">
+    ${onExercise ? `<button class="wb-back" data-a="ex-close" aria-label="Back to the whole workout">${icon('left')}<span>Workout</span></button>` : ''}
     <div class="wb-info"><b class="num" id="wb-time" data-start="${session.startedAt + (session.pausedMs || 0)}" ${session.pausedAt ? 'data-paused="1"' : ''}>${fmtElapsed((session.pausedAt || Date.now()) - session.startedAt - (session.pausedMs || 0))}</b><span class="muted small">${session.pausedAt ? 'Paused' : `${done} of ${total} sets`}</span></div>
     ${session.pausedAt ? '<button class="btn sm primary" data-a="resume">Resume</button>' : '<button class="btn sm primary" data-a="finish">Finish</button>'}
     <i class="wb-progress" style="width:${total ? (done / total) * 100 : 0}%" aria-hidden="true"></i>
@@ -883,9 +910,9 @@ function calendarCard() {
     const mins = x ? Math.round(x.lift.reduce((a, s) => a + workoutBurn(db, s).minutes, 0) + x.cardio) : 0;
     const cls = [x?.lift.length ? 'lift' : x?.cardio ? 'cardio' : '', date === today ? 'today' : '', date > today ? 'future' : ''].join(' ');
     const label = `${parseDate(date).toLocaleDateString(undefined, { month: 'long', day: 'numeric' })}${x ? `: ${x.lift.length ? `${x.lift.length} workout${x.lift.length > 1 ? 's' : ''}` : 'cardio'}, ${mins} minutes` : ''}`;
-    cells.push(x?.lift.length
-      ? `<button class="cal-cell ${cls}" data-a="cal-day" data-date="${date}" aria-label="${label}"><span class="cal-n">${d}</span><span class="cal-m">${mins}m</span></button>`
-      : `<span class="cal-cell ${cls}" aria-label="${label}"><span class="cal-n">${d}</span>${x?.cardio ? '<span class="cal-dot"></span>' : '<span class="cal-m"></span>'}</span>`);
+    cells.push(date > today
+      ? `<span class="cal-cell ${cls}" aria-label="${label}"><span class="cal-n">${d}</span><span class="cal-m"></span></span>`
+      : `<button class="cal-cell ${cls}" data-a="cal-day" data-date="${date}" aria-label="${label}${x?.lift.length ? '' : '. Tap to log a workout'}"><span class="cal-n">${d}</span>${x?.lift.length ? `<span class="cal-m">${mins}m</span>` : x?.cardio ? '<span class="cal-dot"></span>' : '<span class="cal-m"></span>'}</button>`);
   }
   const count = Object.values(byDate).filter((x) => x.lift.length).length;
   const prev = addDays(first, -1).slice(0, 7);
@@ -995,6 +1022,7 @@ function screenExercise() {
     ${!ended ? `<button class="text-btn" data-a="add-set" data-uid="${item.uid}">${icon('plus')} ${conditioning ? 'Add round' : 'Add set'}</button>${conditioning ? '' : `<button class="text-btn" data-a="add-drop" data-uid="${item.uid}">${icon('arrowDown')} Drop set</button>`}` : ''}
     ${ex.rules?.rehab && !ended ? `<label class="toggle"><input type="checkbox" data-a="painfree" data-uid="${item.uid}" ${entry?.painFree ? 'checked' : ''}><span>Pain-free today (needed to increase weight)</span></label>` : ''}
     ${checkin}
+    ${comingUp(items, idx, session)}
     <div class="ex-nav">
       ${back ? `<button class="btn" data-a="ex-go" data-uid="${back.uid}" aria-label="Back to ${esc(back.ex.name)}">${icon('left')}</button>` : ''}
       ${!session ? '<button class="btn primary grow" data-a="start-workout">Start workout</button>'
@@ -1742,7 +1770,7 @@ const num = (id) => {
 // ---------- Exercise bank picker ----------
 
 const picker = { mode: null, uid: null, currentId: null, scope: 'today', q: '', cat: 'all', muscle: 'all' };
-const PICKER_TITLES = { swap: 'Swap exercise', 'plan-swap': 'Swap in plan', add: 'Add exercise', browse: 'Exercise library', 'session-add': 'Add to today', 'today-add': 'Add exercise' };
+const PICKER_TITLES = { 'es-add': 'Add exercise', swap: 'Swap exercise', 'plan-swap': 'Swap in plan', add: 'Add exercise', browse: 'Exercise library', 'session-add': 'Add to today', 'today-add': 'Add exercise' };
 
 function openPicker(opts) {
   Object.assign(picker, { uid: null, currentId: null, scope: 'today', q: '', cat: 'all', muscle: 'all', showHidden: false }, opts);
@@ -1907,7 +1935,7 @@ const STATUS = {
 function screenSummary() {
   const s = db.sessions.find((x) => x.id === ui.summaryId);
   if (!s) { ui.tab = 'today'; return screenToday(); }
-  const mins = Math.round((s.finishedAt - s.startedAt - (s.pausedMs || 0)) / 60000);
+  const mins = Math.round(workoutMinutes(s));
   const sets = s.entries.reduce((a, e) => a + e.sets.filter((x) => !x.pain).length, 0);
   const vol = s.entries.reduce((a, e) => a + e.sets.reduce((b, x) => b + (x.pain ? 0 : (x.weight || 0) * (x.reps || 0)), 0), 0);
   const res = s.results.filter((r) => r.status !== 'skipped');
@@ -1973,24 +2001,45 @@ function screenEditSession() {
   const s = db.sessions.find((x) => x.id === ui.editId);
   if (!s) { ui.tab = 'history'; return screenHistory(); }
   return `<header class="top"><button class="back" data-a="summary" data-id="${s.id}" aria-label="Back">${icon('left')}</button><div><h1>Edit workout</h1><p class="muted small">${fmtDate(s.date)} · changes save when you tap Save</p></div></header>
+    <div class="card"><div class="field"><span>Duration (minutes) ${helpBtn()}</span><p class="help-text" hidden>Used for calories burned. Leave it to the app and it uses the workout clock, or about 2.5 minutes per set if the clock looks too short.</p>
+      <input id="es-dur" type="text" inputmode="numeric" value="${s.durationMin || ''}" placeholder="${Math.round(workoutMinutes({ ...s, durationMin: 0 }))} (estimated)"></div></div>
     ${s.entries.map((e, ei) => `<div class="card">
       <div class="row between"><h3>${esc(e.name)}</h3><button class="mini danger" data-a="es-del-entry" data-i="${ei}">Remove</button></div>
       ${e.sets.map((x, si) => `<div class="edit-set"><span class="set-n">${si + 1}</span>
         <input type="text" inputmode="decimal" data-es="${ei}:${si}:weight" value="${x.weight}" aria-label="Weight"><span class="muted">lb ×</span>
         <input type="text" inputmode="numeric" data-es="${ei}:${si}:reps" value="${x.reps}" aria-label="Reps">
         <button class="mini" data-a="es-del-set" data-i="${ei}" data-j="${si}" aria-label="Delete set">${icon('x')}</button></div>`).join('')}
+      <button class="text-btn small-text" data-a="es-add-set" data-i="${ei}">${icon('plus')} Add set</button>
     </div>`).join('')}
+    <button class="btn block" data-a="es-add-ex">${icon('plus')} Add exercise</button>
     <button class="btn primary block big" data-a="es-save">Save changes</button>
     <button class="btn danger block" data-a="es-delete">Delete this workout</button>
     <p class="muted small pad">If this is your most recent workout for an exercise, its next targets are recalculated. Older workouts only update history.</p>`;
 }
 
 function readEditInputs(s) {
+  const dur = parseFloat($('#es-dur')?.value);
+  if ($('#es-dur')) {
+    if (Number.isFinite(dur) && dur > 0) { s.durationMin = Math.round(dur); s.finishedAt = s.startedAt + s.durationMin * 60000 + (s.pausedMs || 0); }
+    else delete s.durationMin;
+  }
   for (const el of document.querySelectorAll('[data-es]')) {
     const [ei, si, k] = el.dataset.es.split(':');
     const v = parseFloat(el.value);
     if (Number.isFinite(v) && s.entries[ei]?.sets[si]) s.entries[ei].sets[si][k] = k === 'reps' ? Math.round(v) : v;
   }
+}
+
+// Log a workout on a past day: start from one of the plan's days, or empty.
+function openBackfill(date) {
+  const days = DAY_KEYS.filter((k) => db.plan[k]?.items?.length);
+  const same = dayKeyOf(date);
+  openSheet(`<h2>Log a workout</h2><p class="muted small">${fmtDate(date)}</p>
+    <div class="list-group menu">
+      ${[...days.filter((k) => k === same), ...days.filter((k) => k !== same)].map((k) => `<button class="list-row" data-a="backfill-go" data-date="${date}" data-tpl="${k}">${icon('copy')}<span class="grow">${esc(db.plan[k].name)}<span class="pick-sub">${DAY_NAMES[k]}'s plan · ${db.plan[k].items.length} exercises</span></span></button>`).join('')}
+      <button class="list-row" data-a="backfill-go" data-date="${date}" data-tpl="">${icon('plus')}<span class="grow">Empty workout</span></button>
+    </div>
+    <button class="btn plain block" data-a="close-sheet">Cancel</button>`);
 }
 
 // ---------- History ----------
@@ -2887,8 +2936,29 @@ const actions = {
   'cal-month': (d) => { ui.calMonth = d.v; render(); },
   'cal-day': (d) => {
     const list = db.sessions.filter((s) => s.date === d.date);
-    if (list.length === 1) return actions.summary({ id: list[0].id });
+    if (!list.length) return openBackfill(d.date);
+    if (list.length === 1 && !d.more) return actions.summary({ id: list[0].id });
     openSheet(`<h2>${fmtDate(d.date)}</h2><div class="list-group">${list.map((s) => `<button class="list-row" data-a="summary" data-id="${s.id}"><span class="grow"><b>${s.freestyle ? 'Freestyle' : esc(db.plan[s.day]?.name || 'Workout')}</b><span class="pick-sub">${Math.round(workoutBurn(db, s).minutes)} min</span></span>${icon('right', 'chev')}</button>`).join('')}</div><button class="btn block" data-a="close-sheet">Close</button>`);
+  },
+  'backfill-go': (d) => {
+    const date = d.date;
+    const tpl = d.tpl;
+    const items = tpl ? resolveDay(db, tpl, { template: true }).filter((i) => i.ex.category !== 'conditioning' && !['mobility', 'prehab'].includes(i.ex.pattern)) : [];
+    const gym = activeGym(db);
+    const start = parseDate(date).setHours(17, 0, 0, 0);
+    const entries = items.map((it) => {
+      const t = targetsFor(db, it, false);
+      const w = t.weight == null ? 0 : roundToGym(it.ex, t.weight, gym);
+      return { uid: `b${start}-${it.uid}`, exerciseId: it.exerciseId, name: it.ex.name, group: it.group, repMin: it.repMin, repMax: it.repMax, sets: Array.from({ length: it.sets }, () => ({ weight: w, reps: t.reps })) };
+    });
+    const minutes = tpl ? estimateMinutes(items) : 45;
+    // A past workout: history, volume, calories and calendar, but it doesn't move progression targets.
+    const s = { id: `s${start}`, date, day: tpl || dayKeyOf(date), freestyle: tpl ? undefined : true, startedAt: start, finishedAt: start + minutes * 60000, backfilled: true, entries, results: [], prs: [], stateBefore: {} };
+    db.sessions.push(s);
+    db.sessions.sort((a, b) => (a.finishedAt || 0) - (b.finishedAt || 0));
+    persist(); closeSheet();
+    actions['edit-session']({ id: s.id });
+    toast(tpl ? 'Filled in from your plan. Change anything that was different.' : 'Add the exercises you did.');
   },
   'rec-pick': (d) => { ui.recSel = d.g ? { group: d.g } : { area: d.m, side: null }; refreshRecovery(); },
   // A "?" next to a label shows or hides its explanation.
@@ -3047,7 +3117,8 @@ const actions = {
   'ex-open': (d) => { ui.backUid = null; ui.exUid = d.uid; ui.tab = 'exercise'; window.scrollTo(0, 0); render(); },
   'ex-go': (d) => { ui.backUid = null; ui.exUid = d.uid; window.scrollTo(0, 0); render(); },
   'set-autoadvance': (d, el) => { db.settings.autoAdvance = el.checked; persist(); },
-  'ex-close': () => { ui.tab = 'today'; render(); },
+  // Back to the whole workout, with the exercise you're on in view.
+  'ex-close': () => { ui.tab = 'today'; render(); const el = document.querySelector('.ex-item.is-next'); if (el) el.scrollIntoView({ block: 'center' }); else window.scrollTo(0, 0); },
   'check-inline': (d) => {
     const sx = ensureSession(ui.day);
     if (!sx) return;
@@ -3280,6 +3351,15 @@ const actions = {
     if (!sx.entries[+d.i].sets.length) sx.entries.splice(+d.i, 1);
     render();
   },
+  'es-add-set': (d) => {
+    const sx = db.sessions.find((x) => x.id === ui.editId);
+    readEditInputs(sx);
+    const e = sx.entries[+d.i];
+    const last = e.sets[e.sets.length - 1] || { weight: 0, reps: 8 };
+    e.sets.push({ weight: last.weight, reps: last.reps });
+    render();
+  },
+  'es-add-ex': () => { const sx = db.sessions.find((x) => x.id === ui.editId); readEditInputs(sx); openPicker({ mode: 'es-add' }); },
   'es-del-entry': (d) => { const sx = db.sessions.find((x) => x.id === ui.editId); readEditInputs(sx); sx.entries.splice(+d.i, 1); render(); },
   'es-save': () => {
     const sx = db.sessions.find((x) => x.id === ui.editId);
@@ -3471,6 +3551,14 @@ const actions = {
   'pk-hidden': () => { picker.showHidden = !picker.showHidden; renderPickerList(); },
   pick: (d) => {
     const ex = db.exercises[d.id];
+    if (picker.mode === 'es-add') {
+      const sx = db.sessions.find((x) => x.id === ui.editId);
+      const st = getState(db, d.id);
+      const w = st.last?.weight ?? st.targetWeight ?? 0;
+      sx.entries.push({ uid: `${sx.id}-${Date.now().toString(36)}`, exerciseId: d.id, name: ex.name, group: String(sx.entries.length + 1), repMin: 8, repMax: 12, sets: [1, 2, 3].map(() => ({ weight: w, reps: st.last?.reps?.[0] || 10 })) });
+      closeSheet(); render(); toast(`Added ${ex.name}. Adjust the sets below.`);
+      return;
+    }
     if (picker.mode === 'browse') { closeSheet(); ui.tab = 'history'; ui.historyEx = d.id; window.scrollTo(0, 0); render(); return; }
     if (picker.mode === 'add') { closeSheet(); setTimeout(() => addPlanItem(d.id), 200); return; }
     if (picker.mode === 'session-add' || (picker.mode === 'today-add' && sessionFor(ui.day))) { addToSession(d.id); closeSheet(); render(); toast(`Added ${ex.name}.`); return; }

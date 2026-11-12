@@ -82,10 +82,14 @@ export function workoutMet(db, entries) {
 }
 
 export function workoutMinutes(s) {
+  if (s.durationMin > 0) return s.durationMin; // set by hand when editing a workout
+  const sets = s.entries.reduce((a, e) => a + entrySets(e), 0);
   const m = ((s.finishedAt || 0) - (s.startedAt || 0) - (s.pausedMs || 0)) / 60000;
-  if (m >= 5 && m <= 240) return m;
-  // No reliable clock (edited or imported workouts): about 2.5 minutes per set including rest.
-  return Math.max(10, s.entries.reduce((a, e) => a + entrySets(e), 0) * 2.5);
+  // Trust the clock unless it's implausibly short for the work logged (sets entered after training,
+  // or Start tapped late): nobody does a set plus its rest in under about 1.2 minutes.
+  if (m >= 5 && m <= 240 && m >= sets * 1.2) return m;
+  // Otherwise about 2.5 minutes per set including rest.
+  return Math.max(10, sets * 2.5);
 }
 
 export function workoutBurn(db, s) {
