@@ -54,6 +54,7 @@ import { createPlanTools, keepManual, countManual } from './ui-plantools.js';
 import { GOALS as MGOALS, applyGoals } from './goals.js';
 import { warmupMinutes } from './warmcool.js';
 import { createHealth } from './health.js';
+import { morph } from './morph.js';
 
 let db = null; // loaded asynchronously at startup (see bottom)
 const ui = {
@@ -1733,8 +1734,13 @@ function lockPage(on) {
 function openSheet(html) {
   const sh = $('#sheet');
   const body = $('#sheet-body');
-  if (sh.hidden) sheetReturnFocus = document.activeElement;
-  body.innerHTML = `<div class="sheet-top"><div class="grabber" aria-hidden="true"></div><button class="sheet-x" data-a="close-sheet" aria-label="Close">${icon('x')}</button></div>${html}`;
+  const wasOpen = !sh.hidden;
+  if (!wasOpen) sheetReturnFocus = document.activeElement;
+  const full = `<div class="sheet-top"><div class="grabber" aria-hidden="true"></div><button class="sheet-x" data-a="close-sheet" aria-label="Close">${icon('x')}</button></div>${html}`;
+  // Re-showing the same sheet (e.g. after a change inside it): patch it so it doesn't jump.
+  const newTitle = (html.match(/<h2[^>]*>([\s\S]*?)<\/h2>/) || [])[1];
+  const sameSheet = wasOpen && newTitle != null && body.querySelector('h2')?.innerHTML === newTitle;
+  if (sameSheet) { const top = body.scrollTop; morph(body, full); body.scrollTop = top; } else body.innerHTML = full;
   const title = body.querySelector('h2');
   if (title) { title.id = 'sheet-title'; body.setAttribute('aria-labelledby', 'sheet-title'); }
   if (sh.hidden) lockPage(true);
@@ -1744,7 +1750,7 @@ function openSheet(html) {
     sh.classList.add('open');
     // Focus the title (not a text field) so the iPhone keyboard doesn't pop up uninvited.
     if (title) title.setAttribute('tabindex', '-1');
-    (title || body).focus?.({ preventScroll: true });
+    if (!wasOpen) (title || body).focus?.({ preventScroll: true });
   });
 }
 function closeSheet() {
@@ -2887,7 +2893,12 @@ function render() {
   if (!db.activeSession) ui.peek = false;
   const inWorkout = !!db.activeSession && ['today', 'exercise'].includes(ui.tab) && !ui.peek;
   document.body.classList.toggle('in-workout', inWorkout);
-  $('#main').innerHTML = (screens[ui.tab] || screenToday)();
+  // Patch the screen in place (no flash, no jump). A different screen is swapped in whole.
+  const main = $('#main');
+  const y = window.scrollY;
+  const html = (screens[ui.tab] || screenToday)();
+  if (main.dataset.screen === ui.tab) morph(main, html); else { main.innerHTML = html; main.dataset.screen = ui.tab; }
+  if (Math.abs(window.scrollY - y) > 1 && document.body.style.position !== 'fixed') window.scrollTo(0, y);
   // Elsewhere in the app mid-workout: a pill to get back.
   if (db.activeSession && !['today', 'exercise', 'summary'].includes(ui.tab)) $('#main').insertAdjacentHTML('beforeend', '<button class="back-to-workout" data-a="back-to-workout">Back to workout</button>');
   refreshRecovery();

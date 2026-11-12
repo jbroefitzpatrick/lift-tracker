@@ -1162,3 +1162,7 @@ body.in-workout header.top [data-a="open-settings"] { display: none; }
 .health-btn { margin-bottom: 8px; }
 .health-btn .ic { width: 18px; height: 18px; }
 .health-btn.sent { color: var(--good); }
+
+/* Smoothness: the app keeps the scroll position itself when it updates, so the browser's own
+   scroll anchoring (which nudges the page when content changes) is turned off. */
+html, body, #main, #sheet-body { overflow-anchor: none; }
