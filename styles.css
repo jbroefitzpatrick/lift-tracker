@@ -1157,3 +1157,8 @@ body.in-workout header.top [data-a="open-settings"] { display: none; }
 .ex-item.is-next { background: var(--accent-soft); border-radius: 14px; margin: 2px -8px; padding-left: 8px; padding-right: 8px; }
 .ex-item.is-next + .ex-item { border-top-color: transparent; }
 .eyebrow.next { color: var(--accent); }
+
+/* Apple Health */
+.health-btn { margin-bottom: 8px; }
+.health-btn .ic { width: 18px; height: 18px; }
+.health-btn.sent { color: var(--good); }

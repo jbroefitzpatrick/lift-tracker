@@ -53,6 +53,7 @@ import { splitTemplates, mainLiftOptions } from './builder.js';
 import { createPlanTools, keepManual, countManual } from './ui-plantools.js';
 import { GOALS as MGOALS, applyGoals } from './goals.js';
 import { warmupMinutes } from './warmcool.js';
+import { createHealth } from './health.js';
 
 let db = null; // loaded asynchronously at startup (see bottom)
 const ui = {
@@ -1968,6 +1969,7 @@ function screenSummary() {
     <div class="card"><h3>Next session targets</h3>${res.filter((r) => !progressed.includes(r) && !stalled.includes(r)).map(row).join('') || '<p class="muted small">See above.</p>'}</div>
     ${ui.summaryFresh ? extras.summaryBackupCard() : ''}
     <div class="card"><h3>Notes</h3><textarea id="session-note" data-sid="${s.id}" rows="3" placeholder="How did it go? Sleep, energy, anything to remember">${esc(s.note || '')}</textarea></div>
+    ${health.button(s)}
     <div class="row"><button class="btn grow" data-a="share-session" data-id="${s.id}">Share</button><button class="btn grow" data-a="edit-session" data-id="${s.id}">Edit workout</button></div>
     <button class="btn primary block" data-a="tab" data-tab="${ui.summaryFresh ? 'today' : 'history'}">Done</button>`;
 }
@@ -2764,6 +2766,9 @@ function screenSettings() {
       <p class="muted small">Text follows your iPhone's text size (Settings → Display & Brightness → Text Size).</p>
     </div>
 
+    <h2 class="group-title">Apple Health</h2>
+    <div class="list-group"><button class="list-row" data-a="health-setup"><span class="grow">Set up the Lift to Health shortcut<span class="pick-sub">Sends each workout's calories to Health</span></span>${icon('right', 'chev')}</button>${db.settings.healthSetupHidden ? '<button class="list-row" data-a="health-reset"><span class="grow">Show setup steps again</span></button>' : ''}</div>
+
     <h2 class="group-title">Share</h2>
     <div class="list-group"><button class="list-row" data-a="open-share"><span class="grow">Share app</span>${icon('right', 'chev')}</button></div>
 
@@ -2851,6 +2856,7 @@ const train = createTrain(ctx);
 const focusUi = createFocus(ctx);
 const exEditor = createExerciseEditor(ctx);
 const planTools = createPlanTools(ctx);
+const health = createHealth(ctx);
 
 // ---------- Render ----------
 
@@ -3606,7 +3612,7 @@ const actions = {
   },
 };
 
-Object.assign(actions, food.actions, year.actions, extras.actions, cloud.actions, pain.actions, train.actions, focusUi.actions, exEditor.actions, planTools.actions);
+Object.assign(actions, food.actions, year.actions, extras.actions, cloud.actions, pain.actions, train.actions, focusUi.actions, exEditor.actions, planTools.actions, health.actions);
 
 onReorder('session', (uid, to) => {
   const { list, save } = editableList();
