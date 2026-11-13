@@ -1,6 +1,7 @@
 // Plan builder: turns a person's profile and goals into a training prescription and a weekly plan.
 // Every number traces back to a reference in science.js (ids in `refs`).
 import { MUSCLES } from './bank.js';
+import { hasGear } from './gym.js';
 
 export const GOALS = {
   strength: { label: 'Strength', desc: 'Lift heavier on the big compound lifts.' },
@@ -154,10 +155,10 @@ export function prescription(p) {
 
   // Explanations for the core numbers.
   why.unshift(
-    { k: 'Reps', t: `Main lifts ${main[0]}–${main[1]}, other compounds ${comp[0]}–${comp[1]}, isolation ${iso[0]}–${iso[1]}. Heavy, low-rep work builds maximal strength best; muscle grows across a wide rep range when sets end near failure, so lighter accessories use higher reps.`, refs: ['nsca2016', 'schoenfeld2017load', 'acsm2009'] },
+    { k: 'Reps', t: `Focus lifts ${main[0]}–${main[1]}, other compounds ${comp[0]}–${comp[1]}, isolation ${iso[0]}–${iso[1]}. Heavy, low-rep work builds maximal strength best; muscle grows across a wide rep range when sets end near failure, so lighter accessories use higher reps.`, refs: ['nsca2016', 'schoenfeld2017load', 'acsm2009'] },
     { k: 'Volume', t: `${weekly[0]}–${weekly[1]} hard sets per muscle each week (a set counts ½ for muscles that only assist). More volume gives more growth, with diminishing returns.`, refs: ['schoenfeld2017vol', 'pelland2026'] },
     { k: 'Frequency', t: 'Each muscle is trained about twice a week where the schedule allows — better for growth than once, and more frequent practice helps strength.', refs: ['schoenfeld2016freq', 'grgic2018freq', 'pelland2026'] },
-    { k: 'Rest', t: `About ${fmtSec(rx.restMain)} on main lifts, ${fmtSec(rx.rest)} on other compounds, ${fmtSec(rx.restIso)} on isolation${rx.pairIso ? ' (paired into supersets to save time)' : ''}. Longer rests on big lifts keep performance — and results — higher.`, refs: ['schoenfeld2016rest', 'grgic2018rest', 'nsca2016'] },
+    { k: 'Rest', t: `About ${fmtSec(rx.restMain)} on focus lifts, ${fmtSec(rx.rest)} on other compounds, ${fmtSec(rx.restIso)} on isolation${rx.pairIso ? ' (paired into supersets to save time)' : ''}. Longer rests on big lifts keep performance — and results — higher.`, refs: ['schoenfeld2016rest', 'grgic2018rest', 'nsca2016'] },
     { k: 'Effort', t: `End most sets with ${rx.rir} reps in reserve. Going all the way to failure adds little and costs more recovery.`, refs: ['refalo2023'] },
   );
   const cardioRefs = ['who2020', 'seiler2010', 'schumann2022'];
@@ -226,7 +227,7 @@ export const WEEK_LAYOUT = {
 };
 
 const SPLIT_DESC = {
-  fb: (n) => `Every session trains the whole body, so each muscle gets ${n}× a week. Simple and efficient — the standard for beginners and 2–3 day schedules.`,
+  fb: (n) => `Every workout trains the whole body, so each muscle gets ${n}× a week. Simple and efficient — the standard for beginners and 2–3 day schedules.`,
   ul: (n) => (n === 2 ? 'One upper and one lower day — each muscle once a week. Workable, but 2× a week grows more muscle.'
     : n === 3 ? 'Upper, lower, then a full-body day — each muscle about twice a week.'
       : n === 5 ? 'Two upper/lower rotations plus a full-body day — each muscle 2–3× a week.'
@@ -312,7 +313,7 @@ function pickExercise(db, p, slotKey, variant, usedToday, role) {
   const prefs = db.exPrefs || {};
   const blocked = new Set([...(p.limits || []).flatMap((l) => JOINT_STRESS[l] || []), ...(gym?.unavailable || []), ...Object.keys(prefs).filter((k) => prefs[k] === 'never')]);
   const cands = Object.values(db.exercises).filter((e) => slot.patterns.includes(e.pattern)
-    && equip.includes(equipOf(e.type)) && !blocked.has(e.id) && !usedToday.has(e.id));
+    && equip.includes(equipOf(e.type)) && hasGear(gym, e.needs) && !blocked.has(e.id) && !usedToday.has(e.id));
   if (!cands.length) return null;
   const easier = p.experience === 'beginner' || (+p.age || 30) >= 65;
   const rank = (e) => { const i = slot.prefer.indexOf(e.id); return (i < 0 ? 100 : i) + (easier && DEMANDING.includes(e.id) ? 50 : 0) - (prefs[e.id] === 'fav' ? 30 : 0); };
@@ -502,7 +503,7 @@ export function mainLiftOptions(db, p, key) {
   const first = pickExercise(db, p, main[0], key.endsWith('2') ? 1 : 0, new Set(), 'main');
   const muscles = new Set(first ? first.primary : []);
   return Object.values(db.exercises)
-    .filter((e) => e.category === 'compound' && equip.includes(equipOf(e.type)) && !blocked.has(e.id) && (slot.patterns.includes(e.pattern) || muscles.has(e.primary[0])))
+    .filter((e) => e.category === 'compound' && equip.includes(equipOf(e.type)) && hasGear(db.gyms?.find((g) => g.id === db.settings?.activeGym), e.needs) && !blocked.has(e.id) && (slot.patterns.includes(e.pattern) || muscles.has(e.primary[0])))
     .sort((a, b) => (b.id === first?.id) - (a.id === first?.id) || slot.patterns.includes(b.pattern) - slot.patterns.includes(a.pattern) || a.name.localeCompare(b.name));
 }
 
@@ -556,7 +557,7 @@ export function generatePlan(db, p, rx, liftDays, cardioDays, splitId) {
       repMin: it.repMin,
       repMax: it.repMax,
       restSec: it.restSec,
-      note: [it.role === 'main' ? 'Main lift' : '', easier && DEMANDING.includes(it.exerciseId) ? 'Use a band or slow negatives if needed' : ''].filter(Boolean).join(' · '),
+      note: [it.role === 'main' ? 'Focus lift' : '', easier && DEMANDING.includes(it.exerciseId) ? 'Use a band or slow negatives if needed' : ''].filter(Boolean).join(' · '),
     }));
   }
   const dayModes = placeCardio(days, legDays, cardioDays);

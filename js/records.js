@@ -66,7 +66,7 @@ export function detectPRs(db, entry, beforeTs) {
   }
   const vNow = volumeOf(sets);
   const vPrev = Math.max(...prior.map((p) => volumeOf(p.sets)));
-  if (vNow > vPrev && vPrev > 0) prs.push({ type: 'volume', text: `Session volume ${Math.round(vNow).toLocaleString()} lb (was ${Math.round(vPrev).toLocaleString()})` });
+  if (vNow > vPrev && vPrev > 0) prs.push({ type: 'volume', text: `Workout volume ${Math.round(vNow).toLocaleString()} lb (was ${Math.round(vPrev).toLocaleString()})` });
   return prs;
 }
 

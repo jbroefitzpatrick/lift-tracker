@@ -84,6 +84,26 @@ export const REFS = {
     finding: 'Periodized programs (planned changes in load and reps) produced greater gains in maximal strength than non-periodized ones.',
     url: search('Comparison of periodized and non-periodized resistance training on maximal strength: a meta-analysis'),
   },
+  moesgaard2022: {
+    cite: 'Moesgaard L, et al. (2022). Effects of periodization on strength and muscle hypertrophy in volume-equated resistance training programs: a systematic review and meta-analysis. Sports Med 52(7):1647–1666.',
+    finding: 'With the same total work, periodized training gave a small extra gain in maximal strength but no difference in muscle growth.',
+    url: search('Effects of periodization on strength and muscle hypertrophy in volume-equated resistance training programs'),
+  },
+  helms2018: {
+    cite: 'Helms ER, et al. (2018). RPE vs. percentage 1RM loading in periodized programs matched for sets and repetitions. Front Physiol 9:247.',
+    finding: 'Choosing the weight by effort (reps in reserve) and by fixed percentages both built strength and muscle; effort-based loading had a small strength edge for most lifters.',
+    url: 'https://pubmed.ncbi.nlm.nih.gov/29628895/',
+  },
+  zourdos2016: {
+    cite: 'Zourdos MC, et al. (2016). Modified daily undulating periodization model produces greater performance than a traditional configuration in powerlifters. J Strength Cond Res 30(3):784–791.',
+    finding: 'Rotating volume, power and heavy days within the week, with the heavy day last, raised squat and bench press maxes more than the reverse order.',
+    url: search('Modified daily undulating periodization model produces greater performance than a traditional configuration in powerlifters'),
+  },
+  lefever2016: {
+    cite: 'LeFever C (2016). GZCLP: a linear progression based on the GZCL method. Program write-up, not a peer-reviewed study.',
+    finding: 'Main lifts add weight every session at 5 × 3; a missed session keeps the weight and moves to 6 × 2, then 10 × 1, before resetting lighter.',
+    url: 'https://www.boostcamp.app/coaches/cody-lefever/gzcl-program-gzclp',
+  },
   fradkin2010: {
     cite: 'Fradkin AJ, et al. (2010). Effects of warming-up on physical performance: a systematic review with meta-analysis. J Strength Cond Res 24(1):140–148.',
     finding: 'Warming up improved performance in 79% of the criteria examined.',

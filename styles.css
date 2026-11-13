@@ -1166,3 +1166,30 @@ body.in-workout header.top [data-a="open-settings"] { display: none; }
 /* Smoothness: the app keeps the scroll position itself when it updates, so the browser's own
    scroll anchoring (which nudges the page when content changes) is turned off. */
 html, body, #main, #sheet-body { overflow-anchor: none; }
+
+/* Radio list with a title and a one-line description per option (progression picker). */
+.choice-list { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: var(--radius-sm); overflow: hidden; margin: 6px 0 8px; }
+.choice { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 54px; padding: 10px 14px; background: none; border: 0; border-top: 1px solid var(--line); color: inherit; text-align: left; font: inherit; cursor: pointer; transition: background-color .18s ease; }
+.choice:first-child { border-top: 0; }
+.choice b { font-weight: 600; }
+.choice.on { background: var(--accent-soft); }
+.choice .tag { display: inline-flex; height: 20px; min-width: 0; padding: 0 7px; margin-left: 6px; font-size: 0.6875rem; vertical-align: 2px; background: var(--accent-soft); color: var(--accent); }
+.radio-dot { flex: none; width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--line-strong); transition: border-color .18s ease, box-shadow .18s ease; }
+.choice.on .radio-dot { border-color: var(--accent-strong); box-shadow: inset 0 0 0 4px var(--surface), inset 0 0 0 10px var(--accent-strong); }
+
+/* Gym editor: specific equipment, one collapsible group per kind. */
+.gear-groups { border: 1px solid var(--line); border-radius: var(--radius-sm); overflow: hidden; margin-top: 6px; }
+.gear-group + .gear-group { border-top: 1px solid var(--line); }
+.gear-group summary { display: flex; align-items: center; gap: 8px; min-height: 48px; padding: 0 14px; cursor: pointer; list-style: none; font-weight: 600; }
+.gear-group summary::-webkit-details-marker { display: none; }
+.gear-group summary::after { content: ''; width: 8px; height: 8px; margin-left: 4px; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(45deg) translateY(-2px); transition: transform .2s ease; }
+.gear-group[open] summary::after { transform: rotate(-135deg) translateY(-2px); }
+.gear-group .chips { padding: 0 14px 6px; }
+.gear-all { gap: 16px; padding: 0 14px 12px; }
+
+/* Motion: sheets rise with an iOS-like ease and drop away quicker; opened sections ease in. */
+#sheet { transition: background 0.28s ease; }
+#sheet-body { transition: transform 0.24s cubic-bezier(0.4, 0, 1, 1); }
+#sheet.open #sheet-body { transition: transform 0.4s cubic-bezier(0.32, 0.72, 0, 1); }
+details[open] > :not(summary) { animation: reveal 0.22s ease-out; }
+@keyframes reveal { from { opacity: 0; transform: translateY(-4px); } }

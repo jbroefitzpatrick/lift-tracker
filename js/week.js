@@ -191,7 +191,7 @@ export function composeWeek(db, avail, fromDay = todayKey()) {
       days[d] = { name: db.plan[d]?.name || 'Conditioning', mode: avail[d]?.on ? 'cardio' : 'rest', items: cond, minutes: avail[d]?.minutes || null };
       continue;
     }
-    days[d] = { name: a.merged ? `${a.name} + ${a.merged} main lift${a.merged > 1 ? 's' : ''}` : a.name, mode: cond.length ? 'both' : 'lift', from: a.from, base: a.base.map(({ ex, ...rest }) => rest), cond, minutes: avail[d].minutes, gymId: avail[d].gymId || null };
+    days[d] = { name: a.merged ? `${a.name} + ${a.merged} focus lift${a.merged > 1 ? 's' : ''}` : a.name, mode: cond.length ? 'both' : 'lift', from: a.from, base: a.base.map(({ ex, ...rest }) => rest), cond, minutes: avail[d].minutes, gymId: avail[d].gymId || null };
   }
   const extra = lagging(db, Object.fromEntries(Object.entries(days).map(([d, v]) => [d, { items: v.base || [] }])));
   for (const d of DAY_KEYS) {
@@ -204,7 +204,7 @@ export function composeWeek(db, avail, fromDay = todayKey()) {
     if (g.notes.length || fit.notes.length) summary.push(`${label}: ${[...g.notes, ...fit.notes].join('; ')}`);
   }
   const week = { start, avail, days };
-  if (todo.length > open.length && open.length) summary.unshift(`${todo.length} sessions in ${open.length} day${open.length > 1 ? 's' : ''}: every main lift still gets done once.`);
+  if (todo.length > open.length && open.length) summary.unshift(`${todo.length} sessions in ${open.length} day${open.length > 1 ? 's' : ''}: every focus lift still gets done once.`);
   if (!open.length) summary.unshift('No training days this week — the plan picks up again next Monday.');
   return { week, summary };
 }

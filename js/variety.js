@@ -19,7 +19,7 @@ import { isAvailable } from './gym.js';
 
 export const VARIETY = {
   low: { name: 'Consistent', desc: 'Same lifts every week. Best for strength and for learning the movements.' },
-  medium: { name: 'Some variety', desc: 'Main lifts stay; accessories change each training block.' },
+  medium: { name: 'Some variety', desc: 'Focus lifts stay; accessories change each training block.' },
   high: { name: 'High variety', desc: 'Accessories change every week and secondary compounds each block. Focus lifts stay.' },
 };
 

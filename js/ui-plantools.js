@@ -128,7 +128,7 @@ export function createPlanTools(ctx) {
       <button class="btn plain block" data-a="close-sheet">Cancel</button>`);
   }
 
-  const KINDS = { main: 'Main lifts', compound: 'Compounds', accessory: 'Accessories', all: 'All' };
+  const KINDS = { main: 'Focus lifts', compound: 'Compounds', accessory: 'Accessories', all: 'All' };
   function bulkBody() {
     const b = st.bulk;
     const seg = (key, opts) => `<div class="segmented small-seg wrap-seg" role="radiogroup">${(Array.isArray(opts) ? opts : Object.entries(opts)).map(([k, v]) => `<button class="${String(b[key]) === k ? 'on' : ''}" data-a="pt-bulk-set" data-k="${key}" data-v="${k}" role="radio">${v}</button>`).join('')}</div>`;
@@ -174,7 +174,7 @@ export function createPlanTools(ctx) {
     },
     'pt-remove': (d) => {
       const name = ctx.db.plan[d.day].name;
-      if (!confirm(`Remove ${name} from ${FULL[d.day]}s? Its main lifts move into your other days. You can undo this from the Plan tab.`)) return;
+      if (!confirm(`Remove ${name} from ${FULL[d.day]}s? Its focus lifts move into your other days. You can undo this from the Plan tab.`)) return;
       const moved = removeDay(d.day);
       ctx.persist(); ctx.closeSheet(); ctx.render();
       ctx.toast(moved.length ? `Removed. Moved ${moved.join(', ')}.` : `${FULL[d.day]} is now a rest day.`);

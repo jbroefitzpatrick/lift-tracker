@@ -69,7 +69,7 @@ export function createTrain(ctx) {
     st.avail = defaultAvail(n);
     const left = DAY_KEYS.length - dayIndex(todayKey());
     ctx.openSheet(`<h2>Adjust week</h2>
-      <p class="muted small">Choose your days and time. Main lifts always stay.</p>
+      <p class="muted small">Choose your days and time. Focus lifts always stay.</p>
       <div class="chips" role="group" aria-label="Number of days">${Array.from({ length: Math.min(6, left) }, (_, i) => `<button class="chip ${n === i + 1 ? 'on' : ''}" data-a="wk-n" data-v="${i + 1}">${i + 1} day${i ? 's' : ''}</button>`).join('')}</div>
       <div id="wk-body">${plannerBody()}</div>
       <button class="btn primary block big" data-a="wk-apply">Apply</button>
@@ -108,12 +108,12 @@ export function createTrain(ctx) {
     const lifts = resolveDay(db, day).filter((i) => i.ex.category !== 'conditioning');
     const est = estimateMinutes(lifts);
     ctx.openSheet(`<h2>Adjust ${day === todayKey() ? 'today' : FULL[day]}</h2>
-      <p class="muted small">Planned: about ${est} min. Pick the time you have; supersets and accessories adjust to fit, and main lifts stay.</p>
+      <p class="muted small">Planned: about ${est} min. Pick the time you have; supersets and accessories adjust to fit, and focus lifts stay.</p>
       <div class="field"><span>Time available</span><div class="chips">${MIN_CHOICES.map((m) => `<button class="chip ${st.adjust.minutes === m ? 'on' : ''}" data-a="adj-min" data-v="${m}">${m} min</button>`).join('')}</div></div>
       ${db.gyms.length > 1 ? `<div class="field"><span>Where you're training</span><select id="adj-gym"><option value="">Usual gym</option>${db.gyms.map((g) => `<option value="${g.id}" ${st.adjust.gymId === g.id ? 'selected' : ''}>${esc(g.name)}</option>`).join('')}</select></div>` : '<p class="muted small">Training somewhere with less equipment? Add it under Settings → Gym & equipment, then pick it here.</p>'}
       <button class="btn primary block big" data-a="adj-apply">Apply</button>
       <div class="list-group">
-        <button class="list-row" data-a="adj-split"><span class="grow">Split into two sessions</span>${icon('right', 'chev')}</button>
+        <button class="list-row" data-a="adj-split"><span class="grow">Split into two workouts</span>${icon('right', 'chev')}</button>
         ${o ? `<button class="list-row" data-a="adj-reset"><span class="grow">Reset to plan</span>${icon('right', 'chev')}</button>` : ''}
       </div>
       <button class="btn plain block" data-a="close-sheet">Cancel</button>`);
@@ -148,11 +148,11 @@ export function createTrain(ctx) {
           <p class="small">You said ${esc(g.name.toLowerCase())} ${g.rating === 2 ? 'are very sore' : 'are still sore'}. Some options:</p>
           <div class="list-group flush-inner">
             ${alt ? `<button class="list-row" data-a="rec-swap" data-g="${g.group}" data-t="${alt.day}"><span class="grow">Swap to ${esc(alt.name)}</span>${icon('right', 'chev')}</button>` : ''}
-            <button class="list-row" data-a="rec-routine" data-g="${g.group}"><span class="grow">Recovery session<span class="pick-sub">${esc(recoveryTemplateFor([g.group]).name)}, ${recoveryTemplateFor([g.group]).minutes} min</span></span>${icon('right', 'chev')}</button>
+            <button class="list-row" data-a="rec-routine" data-g="${g.group}"><span class="grow">Recovery routine<span class="pick-sub">${esc(recoveryTemplateFor([g.group]).name)}, ${recoveryTemplateFor([g.group]).minutes} min</span></span>${icon('right', 'chev')}</button>
             <button class="list-row" data-a="rec-cardio" data-g="${g.group}"><span class="grow">Easy cardio</span>${icon('right', 'chev')}</button>
             <button class="list-row" data-a="rec-lighter" data-g="${g.group}"><span class="grow">Train lighter<span class="pick-sub">One set fewer</span></span>${icon('right', 'chev')}</button>
           </div>
-          <p class="muted small">Next week's ${esc(g.name.toLowerCase())} sessions will be a set lighter so you recover faster.</p></section>`;
+          <p class="muted small">Next week's ${esc(g.name.toLowerCase())} workouts will be a set lighter so you recover faster.</p></section>`;
       }
     }
     return html;
@@ -374,7 +374,7 @@ export function createTrain(ctx) {
       }
       learnSlowRecovery(db, d.g, 'needed a swap');
       ctx.persist(); ctx.render();
-      ctx.toast(later ? `Swapped: ${t.name} today, the other session on ${FULL[later]}.` : `${t.name} today.`);
+      ctx.toast(later ? `Swapped: ${t.name} today, the other workout on ${FULL[later]}.` : `${t.name} today.`);
     },
     'rec-routine': (d) => { learnSlowRecovery(ctx.db, d.g, 'took a recovery day'); ctx.persist(); ctx.startTemplate(recoveryTemplateFor([d.g]).id); },
     'rec-cardio': (d) => { learnSlowRecovery(ctx.db, d.g, 'swapped for cardio'); ctx.persist(); ctx.openCardioOptions(ctx.ui.day); },

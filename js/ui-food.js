@@ -148,7 +148,7 @@ export function createFood(ctx) {
       <div class="rx-row"><span class="muted">Daily activity</span><b>× ${pal}</b></div>
       <p class="muted small">Everyday movement and digestion outside workouts, from your activity setting in Nutrition settings.</p>
       <div class="rx-row"><span class="muted">Workouts</span><b>3.5–5.8 METs</b></div>
-      <p class="muted small">Lifting intensity comes from the session: more compound lifts and more supersets or circuits burn more. Conditioning uses the matching activity. One MET is set to your own resting rate rather than the textbook value, which overestimates for many people. ${ctx.refChips(['herrmann2024', 'byrne2005', 'kozey2010'])}</p>
+      <p class="muted small">Lifting intensity comes from the workout: more compound lifts and more supersets or circuits burn more. Conditioning uses the matching activity. One MET is set to your own resting rate rather than the textbook value, which overestimates for many people. ${ctx.refChips(['herrmann2024', 'byrne2005', 'kozey2010'])}</p>
       <div class="rx-row"><span class="muted">Cardio</span><b>Heart rate, pace or activity</b></div>
       <p class="muted small">With an average heart rate it uses Keytel's equations; with a distance for runs and walks, the ACSM pace equations; otherwise the activity's MET value. ${ctx.refChips(['keytel2005', 'acsm2021', 'ainsworth2011'])}</p>
       <div class="rx-row"><span class="muted">Tuning</span><b>${c.ready ? `${c.factor >= 1 ? '+' : '−'}${Math.abs(Math.round((c.factor - 1) * 100))}% outside workouts` : 'After 2–4 weeks of logs'}</b></div>

@@ -56,6 +56,7 @@ export const PATTERNS = {
   'hip-extension': 'Hip extension',
   'back-extension': 'Back extension',
   'knee-flexion': 'Leg curl',
+  wrist: 'Wrist curl',
   'knee-extension': 'Leg extension',
   'hip-adduction': 'Hip adduction',
   'hip-abduction': 'Hip abduction',
@@ -93,11 +94,17 @@ const RAW = [
   ['weighted-pushup', 'Weighted pushup', 'C', 'bodyweight', 'horizontal-push', 'chest', 'front-delts triceps abs'],
   ['dip', 'Dip', 'C', 'bodyweight', 'dip', 'chest triceps', 'front-delts'],
   ['weighted-dip', 'Weighted dip', 'C', 'bodyweight', 'dip', 'chest triceps', 'front-delts'],
-  ['machine-fly', 'Machine fly', 'A', 'machine', 'chest-fly', 'chest', 'front-delts'],
+  ['machine-fly', 'Pec deck (machine fly)', 'A', 'machine', 'chest-fly', 'chest', 'front-delts'],
   ['cable-fly', 'Cable fly', 'A', 'cable', 'chest-fly', 'chest', 'front-delts'],
   ['low-high-cable-fly', 'Low-to-high cable fly', 'A', 'cable', 'chest-fly', 'chest', 'front-delts'],
   ['db-fly', 'DB fly', 'A', 'dumbbell', 'chest-fly', 'chest', 'front-delts'],
   ['db-incline-fly', 'DB incline fly', 'A', 'dumbbell', 'chest-fly', 'chest', 'front-delts'],
+  ['smith-bench', 'Smith machine bench press', 'C', 'machine', 'horizontal-push', 'chest', 'front-delts triceps'],
+  ['plate-chest-press', 'Plate-loaded chest press', 'C', 'machine', 'horizontal-push', 'chest', 'front-delts triceps'],
+  ['floor-press', 'Barbell floor press', 'C', 'barbell-upper', 'horizontal-push', 'chest triceps', 'front-delts'],
+  ['db-decline-bench', 'DB decline bench press', 'C', 'dumbbell', 'horizontal-push', 'chest', 'triceps front-delts'],
+  ['assisted-dip', 'Assisted dip machine', 'C', 'machine', 'dip', 'chest triceps', 'front-delts'],
+  ['high-low-cable-fly', 'High-to-low cable fly', 'A', 'cable', 'chest-fly', 'chest', 'front-delts'],
 
   // ---- Shoulders ----
   ['ohp', 'Standing overhead press', 'C', 'barbell-upper', 'vertical-push', 'front-delts', 'triceps side-delts abs'],
@@ -111,10 +118,16 @@ const RAW = [
   ['machine-lat-raise', 'Machine lateral raise', 'A', 'machine', 'lateral-raise', 'side-delts', 'traps'],
   ['upright-row', 'Cable upright row', 'A', 'cable', 'lateral-raise', 'side-delts traps', 'biceps'],
   ['db-front-raise', 'DB front raise', 'A', 'dumbbell', 'front-raise', 'front-delts', 'chest side-delts'],
-  ['rear-delt-fly', 'Machine rear delt fly', 'A', 'machine', 'rear-delt', 'rear-delts', 'upper-back'],
+  ['rear-delt-fly', 'Reverse pec deck (rear delt fly)', 'A', 'machine', 'rear-delt', 'rear-delts', 'upper-back'],
   ['db-rear-delt-fly', 'Bent-over DB rear delt fly', 'A', 'dumbbell', 'rear-delt', 'rear-delts', 'upper-back'],
   ['cable-rear-delt-fly', 'Cable rear delt fly', 'A', 'cable', 'rear-delt', 'rear-delts', 'upper-back'],
   ['face-pull', 'Cable face pull', 'A', 'cable', 'rear-delt', 'rear-delts upper-back', 'traps'],
+  ['seated-ohp', 'Seated barbell overhead press', 'C', 'barbell-upper', 'vertical-push', 'front-delts', 'triceps side-delts'],
+  ['smith-ohp', 'Smith machine shoulder press', 'C', 'machine', 'vertical-push', 'front-delts', 'triceps side-delts'],
+  ['push-press', 'Push press', 'C', 'barbell-upper', 'vertical-push', 'front-delts triceps', 'side-delts quads glutes'],
+  ['cable-y-raise', 'Cable Y-raise', 'A', 'cable', 'lateral-raise', 'side-delts', 'traps rear-delts'],
+  ['cable-front-raise', 'Cable front raise', 'A', 'cable', 'front-raise', 'front-delts', 'side-delts'],
+  ['db-upright-row', 'DB upright row', 'A', 'dumbbell', 'lateral-raise', 'side-delts traps', 'biceps'],
 
   // ---- Back: vertical pulls ----
   ['pullup', 'Pullup', 'C', 'bodyweight', 'vertical-pull', 'lats', 'biceps upper-back'],
@@ -123,11 +136,13 @@ const RAW = [
   ['weighted-neutral-pullup', 'Weighted neutral-grip pullup', 'C', 'bodyweight', 'vertical-pull', 'lats', 'biceps upper-back forearms'],
   ['neutral-pullup', 'Neutral-grip pullup', 'C', 'bodyweight', 'vertical-pull', 'lats', 'biceps upper-back forearms'],
   ['chinup', 'Chin-up', 'C', 'bodyweight', 'vertical-pull', 'lats biceps', 'upper-back'],
-  ['assisted-pullup', 'Assisted pullup machine', 'C', 'machine', 'vertical-pull', 'lats', 'biceps upper-back'],
+  ['assisted-pullup', 'Assisted pull-up machine', 'C', 'machine', 'vertical-pull', 'lats', 'biceps upper-back'],
   ['lat-pulldown', 'Lat pulldown', 'C', 'cable', 'vertical-pull', 'lats', 'biceps upper-back'],
   ['close-grip-pulldown', 'Close-grip (V-bar) pulldown', 'C', 'cable', 'vertical-pull', 'lats', 'biceps upper-back'],
   ['single-arm-pulldown', 'Single-arm cable pulldown', 'C', 'cable', 'vertical-pull', 'lats', 'biceps'],
-  ['machine-pulldown', 'Machine pulldown (Hammer Strength)', 'C', 'machine', 'vertical-pull', 'lats', 'biceps upper-back'],
+  ['machine-pulldown', 'Iso-lateral pulldown (plate-loaded)', 'C', 'machine', 'vertical-pull', 'lats', 'biceps upper-back'],
+  ['underhand-pulldown', 'Underhand-grip pulldown', 'C', 'cable', 'vertical-pull', 'lats biceps', 'upper-back'],
+  ['wide-grip-pulldown', 'Wide-grip lat pulldown', 'C', 'cable', 'vertical-pull', 'lats', 'upper-back biceps'],
 
   // ---- Back: rows ----
   ['bb-row', 'Bent-over barbell row', 'C', 'barbell-upper', 'horizontal-pull', 'lats upper-back', 'rear-delts biceps lower-back'],
@@ -137,15 +152,23 @@ const RAW = [
   ['db-row', 'One-arm DB row', 'C', 'dumbbell', 'horizontal-pull', 'lats upper-back', 'rear-delts biceps'],
   ['chest-supported-db-row', 'Chest-supported DB row', 'C', 'dumbbell', 'horizontal-pull', 'upper-back lats', 'rear-delts biceps'],
   ['cable-row', 'Seated cable row', 'C', 'cable', 'horizontal-pull', 'lats upper-back', 'biceps rear-delts'],
-  ['iso-row', 'Hammer Strength iso row', 'C', 'machine', 'horizontal-pull', 'lats upper-back', 'biceps rear-delts'],
+  ['iso-row', 'Iso-lateral row (plate-loaded)', 'C', 'machine', 'horizontal-pull', 'lats upper-back', 'biceps rear-delts'],
   ['machine-row', 'Chest-supported machine row', 'C', 'machine', 'horizontal-pull', 'upper-back lats', 'rear-delts biceps'],
   ['inverted-row', 'Inverted row', 'C', 'bodyweight', 'horizontal-pull', 'upper-back lats', 'biceps rear-delts'],
+  ['single-arm-cable-row', 'Single-arm cable row', 'C', 'cable', 'horizontal-pull', 'lats upper-back', 'biceps rear-delts'],
+  ['seal-row', 'Seal row', 'C', 'barbell-upper', 'horizontal-pull', 'upper-back lats', 'rear-delts biceps'],
+  ['chest-supported-tbar', 'Chest-supported T-bar row', 'C', 'machine', 'horizontal-pull', 'upper-back lats', 'rear-delts biceps'],
+  ['smith-row', 'Smith machine row', 'C', 'machine', 'horizontal-pull', 'lats upper-back', 'rear-delts biceps lower-back'],
 
   // ---- Back: accessories ----
   ['straight-arm-pulldown', 'Straight-arm cable pulldown', 'A', 'cable', 'pullover', 'lats', 'triceps'],
   ['db-pullover', 'DB pullover', 'A', 'dumbbell', 'pullover', 'lats chest', 'triceps'],
   ['bb-shrug', 'Barbell shrug', 'A', 'barbell-upper', 'shrug', 'traps', 'forearms'],
   ['db-shrug', 'DB shrug', 'A', 'dumbbell', 'shrug', 'traps', 'forearms'],
+  ['smith-shrug', 'Smith machine shrug', 'A', 'machine', 'shrug', 'traps', 'forearms'],
+  ['trap-bar-shrug', 'Trap bar shrug', 'A', 'barbell-lower', 'shrug', 'traps', 'forearms'],
+  ['machine-pullover', 'Pullover machine', 'A', 'machine', 'pullover', 'lats', 'chest triceps'],
+  ['reverse-hyper', 'Reverse hyperextension', 'A', 'machine', 'back-extension', 'glutes lower-back', 'hamstrings'],
   ['back-extension', '45° back extension', 'A', 'bodyweight', 'back-extension', 'lower-back glutes', 'hamstrings'],
 
   // ---- Biceps & forearms ----
@@ -154,11 +177,20 @@ const RAW = [
   ['db-curl', 'DB curl', 'A', 'dumbbell', 'elbow-flexion', 'biceps', 'forearms'],
   ['incline-db-curl', 'Incline DB curl', 'A', 'dumbbell', 'elbow-flexion', 'biceps', 'forearms'],
   ['spider-curl', 'Spider curl', 'A', 'dumbbell', 'elbow-flexion', 'biceps', 'forearms'],
-  ['hammer-curl', 'Hammer curl / cross-body hammer curl', 'A', 'dumbbell', 'elbow-flexion', 'biceps forearms', ''],
-  ['preacher-curl', 'Preacher curl', 'A', 'machine', 'elbow-flexion', 'biceps', 'forearms'],
+  ['hammer-curl', 'Hammer curl', 'A', 'dumbbell', 'elbow-flexion', 'biceps forearms', ''],
+  ['preacher-curl', 'Machine preacher curl', 'A', 'machine', 'elbow-flexion', 'biceps', 'forearms'],
   ['cable-curl', 'Cable curl', 'A', 'cable', 'elbow-flexion', 'biceps', 'forearms'],
   ['btb-cable-curl', 'Behind-the-back cable curl', 'A', 'cable', 'elbow-flexion', 'biceps', 'forearms'],
   ['reverse-curl', 'Reverse-grip EZ curl', 'A', 'barbell-upper', 'elbow-flexion', 'forearms biceps', ''],
+  ['cross-body-hammer-curl', 'Cross-body hammer curl', 'A', 'dumbbell', 'elbow-flexion', 'biceps forearms', ''],
+  ['ez-preacher-curl', 'EZ-bar preacher curl', 'A', 'barbell-upper', 'elbow-flexion', 'biceps', 'forearms'],
+  ['db-preacher-curl', 'DB preacher curl', 'A', 'dumbbell', 'elbow-flexion', 'biceps', 'forearms'],
+  ['machine-curl', 'Biceps curl machine', 'A', 'machine', 'elbow-flexion', 'biceps', 'forearms'],
+  ['concentration-curl', 'Concentration curl', 'A', 'dumbbell', 'elbow-flexion', 'biceps', 'forearms'],
+  ['bayesian-curl', 'Bayesian cable curl', 'A', 'cable', 'elbow-flexion', 'biceps', 'forearms'],
+  ['rope-hammer-curl', 'Cable rope hammer curl', 'A', 'cable', 'elbow-flexion', 'biceps forearms', ''],
+  ['wrist-curl', 'Wrist curl', 'A', 'dumbbell', 'wrist', 'forearms', ''],
+  ['reverse-wrist-curl', 'Reverse wrist curl', 'A', 'dumbbell', 'wrist', 'forearms', ''],
 
   // ---- Triceps ----
   ['skullcrusher', 'Skullcrusher', 'A', 'barbell-upper', 'elbow-extension', 'triceps', ''],
@@ -168,6 +200,10 @@ const RAW = [
   ['db-overhead-ext', 'DB overhead tricep extension', 'A', 'dumbbell', 'elbow-extension', 'triceps', ''],
   ['db-kickback', 'DB tricep kickback', 'A', 'dumbbell', 'elbow-extension', 'triceps', ''],
   ['machine-dip', 'Machine tricep dip', 'A', 'machine', 'dip', 'triceps', 'chest front-delts'],
+  ['rope-pushdown', 'Rope tricep pushdown', 'A', 'cable', 'elbow-extension', 'triceps', ''],
+  ['machine-tri-ext', 'Triceps extension machine', 'A', 'machine', 'elbow-extension', 'triceps', ''],
+  ['db-skullcrusher', 'DB skullcrusher', 'A', 'dumbbell', 'elbow-extension', 'triceps', ''],
+  ['jm-press', 'JM press', 'A', 'barbell-upper', 'elbow-extension', 'triceps', 'chest'],
 
   // ---- Quads: squats & presses ----
   ['back-squat', 'Back squat', 'C', 'barbell-lower', 'squat', 'quads glutes', 'adductors lower-back'],
@@ -179,12 +215,18 @@ const RAW = [
   ['leg-press', 'Leg press', 'C', 'machine', 'squat', 'quads glutes', 'adductors'],
   ['belt-squat', 'Belt squat', 'C', 'machine', 'squat', 'quads glutes', 'adductors'],
   ['goblet-squat', 'Goblet squat', 'C', 'dumbbell', 'squat', 'quads glutes', 'abs upper-back'],
+  ['single-leg-press', 'Single-leg leg press', 'C', 'machine', 'squat', 'quads glutes', 'adductors'],
+  ['landmine-squat', 'Landmine squat', 'C', 'barbell-lower', 'squat', 'quads glutes', 'abs upper-back'],
+  ['box-squat', 'Box squat', 'C', 'barbell-lower', 'squat', 'glutes quads', 'hamstrings adductors lower-back'],
+  ['sissy-squat', 'Sissy squat', 'A', 'bodyweight', 'knee-extension', 'quads', ''],
 
   // ---- Lunges ----
   ['bulgarian-split-squat', 'Bulgarian split squat', 'C', 'dumbbell', 'lunge', 'quads glutes', 'adductors'],
   ['walking-lunge', 'Walking lunge', 'C', 'dumbbell', 'lunge', 'quads glutes', 'adductors hamstrings'],
   ['reverse-lunge', 'Reverse lunge', 'C', 'dumbbell', 'lunge', 'glutes quads', 'adductors hamstrings'],
   ['step-up', 'DB step-up', 'C', 'dumbbell', 'lunge', 'quads glutes', 'hamstrings'],
+  ['smith-split-squat', 'Smith machine split squat', 'C', 'machine', 'lunge', 'quads glutes', 'adductors'],
+  ['bb-lunge', 'Barbell reverse lunge', 'C', 'barbell-lower', 'lunge', 'glutes quads', 'adductors hamstrings'],
 
   // ---- Hinges ----
   ['deadlift', 'Deadlift', 'C', 'barbell-lower', 'hinge', 'glutes hamstrings lower-back', 'quads traps forearms lats'],
@@ -194,19 +236,29 @@ const RAW = [
   ['db-rdl', 'DB Romanian deadlift', 'C', 'dumbbell', 'hinge', 'hamstrings glutes', 'lower-back forearms'],
   ['single-leg-rdl', 'Single-leg DB RDL', 'C', 'dumbbell', 'hinge', 'hamstrings glutes', 'abductors lower-back'],
   ['good-morning', 'Good morning', 'C', 'barbell-lower', 'hinge', 'hamstrings lower-back', 'glutes'],
+  ['rack-pull', 'Rack pull', 'C', 'barbell-lower', 'hinge', 'glutes lower-back', 'hamstrings traps forearms upper-back'],
+  ['smith-rdl', 'Smith machine RDL', 'C', 'machine', 'hinge', 'hamstrings glutes', 'lower-back'],
+  ['kb-rdl', 'Kettlebell RDL', 'C', 'dumbbell', 'hinge', 'hamstrings glutes', 'lower-back forearms'],
+  ['power-clean', 'Power clean', 'C', 'barbell-lower', 'hinge', 'glutes quads traps', 'hamstrings upper-back calves'],
 
   // ---- Glutes ----
-  ['hip-thrust', 'Barbell hip thrust (Smith bar + bench)', 'A', 'barbell-lower', 'hip-extension', 'glutes', 'hamstrings'],
+  ['hip-thrust', 'Barbell hip thrust', 'A', 'barbell-lower', 'hip-extension', 'glutes', 'hamstrings'],
   ['machine-hip-thrust', 'Hip thrust machine', 'A', 'machine', 'hip-extension', 'glutes', 'hamstrings'],
   ['glute-bridge', 'Barbell glute bridge', 'A', 'barbell-lower', 'hip-extension', 'glutes', 'hamstrings'],
   ['cable-pull-through', 'Cable pull-through', 'A', 'cable', 'hinge', 'glutes hamstrings', 'lower-back'],
   ['cable-kickback', 'Cable glute kickback', 'A', 'cable', 'hip-extension', 'glutes', 'hamstrings'],
+  ['smith-hip-thrust', 'Smith machine hip thrust', 'A', 'machine', 'hip-extension', 'glutes', 'hamstrings'],
+  ['db-hip-thrust', 'DB hip thrust', 'A', 'dumbbell', 'hip-extension', 'glutes', 'hamstrings'],
+  ['single-leg-hip-thrust', 'Single-leg hip thrust', 'A', 'bodyweight', 'hip-extension', 'glutes', 'hamstrings'],
+  ['glute-kickback-machine', 'Glute kickback machine', 'A', 'machine', 'hip-extension', 'glutes', 'hamstrings'],
 
   // ---- Hamstrings ----
   ['lying-ham-curl', 'Lying hamstring curl', 'A', 'machine', 'knee-flexion', 'hamstrings', 'calves'],
   ['seated-ham-curl', 'Seated hamstring curl', 'A', 'machine', 'knee-flexion', 'hamstrings', 'calves'],
   ['ghr', 'Glute ham raise', 'A', 'bodyweight', 'knee-flexion', 'hamstrings', 'glutes calves'],
   ['nordic-curl', 'Nordic curl', 'A', 'bodyweight', 'knee-flexion', 'hamstrings', 'calves'],
+  ['standing-ham-curl', 'Standing leg curl', 'A', 'machine', 'knee-flexion', 'hamstrings', 'calves'],
+  ['ball-ham-curl', 'Stability ball leg curl', 'A', 'bodyweight', 'knee-flexion', 'hamstrings', 'glutes calves'],
 
   // ---- Quads, adductors, abductors ----
   ['leg-extension', 'Leg extension', 'A', 'machine', 'knee-extension', 'quads', ''],
@@ -217,10 +269,11 @@ const RAW = [
 
   // ---- Calves ----
   ['standing-calf', 'Standing calf raise', 'A', 'machine', 'calf-raise', 'calves', ''],
-  ['calf-press', 'Calf press', 'A', 'machine', 'calf-raise', 'calves', ''],
+  ['calf-press', 'Leg press calf raise', 'A', 'machine', 'calf-raise', 'calves', ''],
   ['seated-calf', 'Seated calf raise', 'A', 'machine', 'calf-raise', 'calves', ''],
   ['smith-calf', 'Smith machine calf raise', 'A', 'machine', 'calf-raise', 'calves', ''],
   ['single-leg-calf', 'Single-leg DB calf raise', 'A', 'dumbbell', 'calf-raise', 'calves', ''],
+  ['hack-calf', 'Hack squat calf raise', 'A', 'machine', 'calf-raise', 'calves', ''],
 
   // ---- Core ----
   ['cable-crunch', 'Weighted cable crunch', 'A', 'cable', 'core-flexion', 'abs', 'obliques'],
@@ -228,7 +281,7 @@ const RAW = [
   ['ball-crunch', 'Exercise ball crunch (weighted)', 'A', 'dumbbell', 'core-flexion', 'abs', 'obliques'],
   ['decline-situp', 'Weighted decline sit-up', 'A', 'bodyweight', 'core-flexion', 'abs', 'hip-flexors obliques'],
   ['hanging-leg-raise', 'Hanging leg raise', 'A', 'bodyweight', 'hip-flexion', 'abs hip-flexors', 'obliques forearms'],
-  ['vertical-leg-raise', 'Vertical leg raise', 'A', 'bodyweight', 'hip-flexion', 'abs hip-flexors', 'obliques'],
+  ['vertical-leg-raise', "Captain's chair leg raise", 'A', 'bodyweight', 'hip-flexion', 'abs hip-flexors', 'obliques'],
   ['leg-raise', 'Leg raise', 'A', 'bodyweight', 'hip-flexion', 'abs', 'hip-flexors'],
   ['ab-wheel', 'Ab wheel rollout', 'A', 'bodyweight', 'anti-extension', 'abs', 'lats obliques'],
   ['pallof-press', 'Pallof press', 'A', 'cable', 'anti-rotation', 'obliques', 'abs'],
@@ -240,6 +293,11 @@ const RAW = [
   ['suitcase-carry', 'Suitcase carry', 'A', 'dumbbell', 'anti-lateral', 'obliques', 'forearms traps abs', 'distance'],
   ['landmine-rotation', 'Landmine rotation', 'A', 'barbell-upper', 'rotation', 'obliques', 'abs front-delts'],
   ['cable-woodchop', 'Cable woodchop', 'A', 'cable', 'rotation', 'obliques', 'abs'],
+  ['hanging-knee-raise', 'Hanging knee raise', 'A', 'bodyweight', 'hip-flexion', 'abs hip-flexors', 'obliques forearms'],
+  ['situp', 'Sit-up', 'A', 'bodyweight', 'core-flexion', 'abs', 'hip-flexors obliques'],
+  ['russian-twist', 'Russian twist', 'A', 'bodyweight', 'rotation', 'obliques', 'abs'],
+  ['db-side-bend', 'DB side bend', 'A', 'dumbbell', 'anti-lateral', 'obliques', 'abs'],
+  ['cable-oblique-crunch', 'Cable oblique crunch', 'A', 'cable', 'rotation', 'obliques', 'abs'],
 
   // ---- Full body ----
   ['farmers-carry', "Farmer's carry", 'C', 'dumbbell', 'carry', 'forearms traps', 'abs glutes', 'distance'],
@@ -326,10 +384,56 @@ const RAW = [
   ['dead-hang', 'Dead hang', 'X', 'bodyweight', 'mobility', 'lats forearms', 'upper-back', 'time'],
 ];
 
+// What each exercise needs beyond its broad type (keys from GEAR in gym.js). Missing gear hides it.
+const NEEDS = {
+  'bench-press': 'rack bench', 'incline-bench': 'rack incline-bench', 'decline-bench': 'incline-bench', 'close-grip-bench': 'rack bench',
+  'db-bench': 'bench', 'db-incline-bench': 'incline-bench', 'db-decline-bench': 'incline-bench', 'smith-incline': 'smith incline-bench', 'smith-bench': 'smith bench',
+  'machine-chest-press': 'chest-press', 'incline-machine-press': 'chest-press', 'plate-chest-press': 'chest-press',
+  dip: 'dip-station', 'weighted-dip': 'dip-station dip-belt', 'assisted-dip': 'assisted-pullup',
+  'machine-fly': 'pec-deck', 'cable-fly': 'cable-tower', 'low-high-cable-fly': 'cable-tower', 'high-low-cable-fly': 'cable-tower', 'db-fly': 'bench', 'db-incline-fly': 'incline-bench',
+  ohp: 'rack', 'seated-ohp': 'rack incline-bench', 'push-press': 'rack', 'smith-ohp': 'smith incline-bench', 'db-shoulder-press': 'incline-bench', 'arnold-press': 'incline-bench',
+  'machine-shoulder-press': 'shoulder-press', 'landmine-press': 'landmine', 'cable-lat-raise': 'cable-tower', 'machine-lat-raise': 'lat-raise-machine',
+  'upright-row': 'cable-tower', 'cable-y-raise': 'cable-tower', 'cable-front-raise': 'cable-tower', 'rear-delt-fly': 'pec-deck', 'cable-rear-delt-fly': 'cable-tower', 'face-pull': 'cable-tower',
+  pullup: 'pullup-bar', chinup: 'pullup-bar', 'neutral-pullup': 'pullup-bar', 'weighted-pullup': 'pullup-bar dip-belt', 'weighted-chinup': 'pullup-bar dip-belt', 'weighted-neutral-pullup': 'pullup-bar dip-belt',
+  'assisted-pullup': 'assisted-pullup', 'lat-pulldown': 'lat-pulldown', 'close-grip-pulldown': 'lat-pulldown', 'underhand-pulldown': 'lat-pulldown', 'wide-grip-pulldown': 'lat-pulldown',
+  'single-arm-pulldown': 'cable-tower', 'machine-pulldown': 'plate-pulldown',
+  't-bar-row': 'landmine', 'meadows-row': 'landmine', 'db-row': 'bench', 'chest-supported-db-row': 'incline-bench', 'seal-row': 'bench', 'cable-row': 'cable-row', 'single-arm-cable-row': 'cable-tower',
+  'iso-row': 'plate-row', 'machine-row': 'machine-row', 'chest-supported-tbar': 'tbar', 'smith-row': 'smith', 'inverted-row': 'rack',
+  'straight-arm-pulldown': 'cable-tower', 'db-pullover': 'bench', 'machine-pullover': 'pullover-machine', 'smith-shrug': 'smith', 'trap-bar-shrug': 'trap-bar',
+  'back-extension': 'back-ext', 'reverse-hyper': 'reverse-hyper',
+  'ez-curl': 'ez-bar', 'reverse-curl': 'ez-bar', 'ez-preacher-curl': 'ez-bar preacher-bench', 'db-preacher-curl': 'preacher-bench', 'preacher-curl': 'preacher-bench',
+  'incline-db-curl': 'incline-bench', 'spider-curl': 'incline-bench', 'machine-curl': 'curl-machine', 'cable-curl': 'cable-tower', 'btb-cable-curl': 'cable-tower', 'bayesian-curl': 'cable-tower', 'rope-hammer-curl': 'cable-tower',
+  skullcrusher: 'bench', 'db-skullcrusher': 'bench', 'jm-press': 'bench', 'cable-pushdown': 'cable-tower', 'rope-pushdown': 'cable-tower', 'cable-tri-ext': 'cable-tower', 'overhead-cable-ext': 'cable-tower',
+  'machine-dip': 'tri-machine', 'machine-tri-ext': 'tri-machine',
+  'back-squat': 'rack', 'front-squat': 'rack', 'box-squat': 'rack box', 'safety-bar-squat': 'rack safety-bar', 'landmine-squat': 'landmine',
+  'hack-squat': 'hack-squat', 'pendulum-squat': 'pendulum', 'smith-squat': 'smith', 'leg-press': 'leg-press', 'single-leg-press': 'leg-press', 'belt-squat': 'belt-squat',
+  'bulgarian-split-squat': 'bench', 'step-up': 'box', 'smith-split-squat': 'smith', 'bb-lunge': 'rack',
+  'trap-bar-deadlift': 'trap-bar', 'good-morning': 'rack', 'rack-pull': 'rack', 'smith-rdl': 'smith', 'kb-rdl': 'kettlebell',
+  'hip-thrust': 'bench', 'smith-hip-thrust': 'smith bench', 'db-hip-thrust': 'bench', 'single-leg-hip-thrust': 'bench', 'machine-hip-thrust': 'hip-thrust-machine', 'glute-kickback-machine': 'glute-kick',
+  'cable-pull-through': 'cable-tower', 'cable-kickback': 'cable-tower',
+  'lying-ham-curl': 'lying-curl', 'seated-ham-curl': 'seated-curl', 'standing-ham-curl': 'standing-curl', ghr: 'back-ext', 'ball-ham-curl': 'stability-ball',
+  'leg-extension': 'leg-ext', 'hip-adductor': 'hip-machine', 'hip-abductor': 'hip-machine', 'cable-hip-abduction': 'cable-tower',
+  'standing-calf': 'standing-calf', 'calf-press': 'leg-press', 'hack-calf': 'hack-squat', 'seated-calf': 'seated-calf', 'smith-calf': 'smith',
+  'cable-crunch': 'cable-tower', 'ab-crunch-machine': 'ab-machine', 'ball-crunch': 'stability-ball', 'decline-situp': 'incline-bench',
+  'hanging-leg-raise': 'pullup-bar', 'hanging-knee-raise': 'pullup-bar', 'vertical-leg-raise': 'dip-station', 'ab-wheel': 'ab-wheel',
+  'pallof-press': 'cable-tower', 'landmine-rotation': 'landmine', 'cable-woodchop': 'cable-tower', 'cable-oblique-crunch': 'cable-tower',
+  'bike-sprint': 'bike', 'bike-interval': 'bike', 'row-interval': 'rower', 'ski-interval': 'ski-erg', 'assault-bike-cal': 'air-bike', 'sled-push': 'sled',
+  'jump-rope': 'jump-rope', 'box-jump': 'box', 'kb-swing': 'kettlebell', 'wall-ball': 'med-ball', 'med-ball-slam': 'med-ball', 'battle-ropes': 'battle-ropes',
+  'band-pull-apart': 'bands', 'band-external-rotation': 'bands', tke: 'bands', 'lateral-band-walk': 'bands',
+  'roll-quads': 'foam-roller', 'roll-hamstrings': 'foam-roller', 'roll-glutes': 'foam-roller', 'roll-upper-back': 'foam-roller', 'roll-lats': 'foam-roller',
+  'dead-hang': 'pullup-bar', 'scap-pull': 'pullup-bar',
+};
+// Old names, so exercises keep up with renames unless the user renamed them.
+const RENAMED = {
+  'hip-thrust': ['Barbell hip thrust (Smith bar + bench)'], 'iso-row': ['Hammer Strength iso row'], 'machine-pulldown': ['Machine pulldown (Hammer Strength)'],
+  'hammer-curl': ['Hammer curl / cross-body hammer curl'], 'machine-fly': ['Machine fly'], 'rear-delt-fly': ['Machine rear delt fly'], 'calf-press': ['Calf press'],
+  'preacher-curl': ['Preacher curl'], 'vertical-leg-raise': ['Vertical leg raise'], 'assisted-pullup': ['Assisted pullup machine'],
+};
+
 const split = (s) => (s ? s.split(' ') : []);
 
 export const BANK = Object.fromEntries(RAW.map(([id, name, cat, type, pattern, primary, secondary, metric]) => [id, {
-  id, name, type, pattern, metric: metric || 'reps',
+  id, name, type, pattern, metric: metric || 'reps', needs: split(NEEDS[id]),
   category: cat === 'C' ? 'compound' : cat === 'X' ? 'conditioning' : 'accessory',
   primary: split(primary),
   secondary: split(secondary),
@@ -344,11 +448,13 @@ export function syncBank(exercises, defaultIncrements) {
       exercises[b.id] = {
         id: b.id, name: b.name, type: b.type, increment: defaultIncrements[b.type] || 5,
         substitute: '', notes: '', minRir: 0, rules: {}, startWeight: null,
-        category: b.category, pattern: b.pattern, metric: b.metric, primary: [...b.primary], secondary: [...b.secondary],
+        category: b.category, pattern: b.pattern, metric: b.metric, primary: [...b.primary], secondary: [...b.secondary], needs: [...b.needs],
       };
     } else if (!ex.customMeta) {
+      if (RENAMED[b.id]?.includes(ex.name)) ex.name = b.name;
       Object.assign(ex, { category: b.category, pattern: b.pattern, metric: b.metric, primary: [...b.primary], secondary: [...b.secondary] });
     }
+    if (ex) ex.needs = [...b.needs]; // equipment needs always follow the bank
   }
   for (const ex of Object.values(exercises)) {
     ex.category ||= 'accessory';

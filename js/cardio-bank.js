@@ -67,6 +67,13 @@ const RAW = [
   ['conditioning', 'Intervals and circuits', 'recovery', 'hard', 20, 'high', L.none, 'Logged from a workout.', true],
 ];
 
+// Gym equipment each option needs (keys from GEAR in gym.js); the rest can be done anywhere.
+export const CARDIO_GEAR = {
+  'zone2-bike': 'bike', 'bike-intervals': 'bike', 'recovery-spin': 'bike', 'airbike-sprints': 'air-bike', 'zone2-row': 'rower', 'row-intervals': 'rower',
+  'ski-intervals': 'ski-erg', 'zone2-ski': 'ski-erg', 'zone2-elliptical': 'elliptical', 'incline-walk': 'treadmill', stairmaster: 'stairs', 'sled-push': 'sled',
+  'jump-rope': 'jump-rope', 'arm-bike': 'arm-bike',
+};
+
 export const CARDIO = Object.fromEntries(RAW.map(([id, name, modality, intensity, minutes, impact, loads, how, hidden]) =>
   [id, { id, name, modality, intensity, minutes, impact, loads, how, hidden: !!hidden }]));
 

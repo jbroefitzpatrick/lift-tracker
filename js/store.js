@@ -61,6 +61,7 @@ export function defaultGym(id = 'gym-1', name = 'My gym') {
     dbMax: 150,
     machineStep: 5, // stack / plate-loaded step
     unavailable: [], // exercise ids this gym doesn't have
+    missing: [], // specific equipment it doesn't have (keys from GEAR in gym.js)
   };
 }
 

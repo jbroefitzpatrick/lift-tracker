@@ -2,7 +2,7 @@
 import { icon } from './icons.js';
 import { EX_INFO } from './exercise-info.js';
 import { bestRecords } from './records.js';
-import { activeGym } from './gym.js';
+import { activeGym, GEAR } from './gym.js';
 import { MUSCLES } from './bank.js';
 import { VOLUME_MUSCLES, volumeTarget } from './builder.js';
 import {
@@ -15,7 +15,7 @@ import { encryptText, decryptText, isEncrypted, cryptoAvailable } from './crypto
 const MEASURES = { waist: 'Waist', chest: 'Chest', arms: 'Arms', thighs: 'Thighs', hips: 'Hips', neck: 'Neck' };
 const BAR_OPTIONS = [45, 35, 33, 25, 20, 15];
 const PLATE_OPTIONS = [55, 45, 35, 25, 15, 10, 5, 2.5, 1.25];
-const EQUIP = { barbell: 'Barbell', dumbbell: 'Dumbbells', machine: 'Machines', cable: 'Cables', bodyweight: 'Pull-up bar / bodyweight' };
+const EQUIP = { barbell: 'Barbells', dumbbell: 'Dumbbells', machine: 'Machines', cable: 'Cables', bodyweight: 'Bodyweight' };
 
 export function createExtras(ctx) {
   const { esc, $ } = ctx;
@@ -50,7 +50,7 @@ export function createExtras(ctx) {
       ${rec.e1.v ? `<div class="rx-row"><span class="muted">Best est. 1RM</span><b>${Math.round(rec.e1.v)} lb <span class="muted small">(${rec.e1.w}×${rec.e1.r}, ${ctx.fmtDate(rec.e1.date)})</span></b></div>` : ''}
       <div class="rx-row"><span class="muted">Heaviest set</span><b>${rec.heavy.v} lb × ${rec.heavy.r}</b></div>
       <div class="rx-row"><span class="muted">Most reps</span><b>${rec.reps.v}${rec.reps.w ? ` @ ${rec.reps.w} lb` : ''}</b></div>
-      ${rec.vol.v ? `<div class="rx-row"><span class="muted">Best session volume</span><b>${Math.round(rec.vol.v).toLocaleString()} lb</b></div>` : ''}
+      ${rec.vol.v ? `<div class="rx-row"><span class="muted">Best workout volume</span><b>${Math.round(rec.vol.v).toLocaleString()} lb</b></div>` : ''}
     </div>` : ''}`;
   }
 
@@ -160,6 +160,10 @@ export function createExtras(ctx) {
     ctx.openSheet(`<h2>Edit gym</h2>
       <div class="field"><span>Name</span><input id="gym-name" type="text" value="${esc(g.name)}"></div>
       <div class="field"><span>Equipment</span>${chips('equipment', Object.keys(EQUIP), g.equipment, true)}</div>
+      <div class="field"><span>What this gym has ${ctx.helpBtn ? ctx.helpBtn() : ''}</span><p class="help-text" hidden>Tap anything this gym doesn't have. Exercises that need it stop being suggested, and your plan swaps them for the closest thing you can do.</p>
+        <div class="gear-groups">${Object.entries(GEAR).map(([gk, grp]) => { const keys = Object.keys(grp.items); const have = keys.filter((k) => !(g.missing || []).includes(k)).length; return `<details class="gear-group" data-id="gear-${gk}"><summary><span class="grow">${grp.name}</span><span class="muted small">${have === keys.length ? 'All' : `${have} of ${keys.length}`}</span></summary>
+          <div class="chips wrap">${keys.map((k) => { const on = !(g.missing || []).includes(k); return `<button class="chip ${on ? 'on' : ''}" data-a="gym-gear" data-k="${k}" aria-pressed="${on}">${grp.items[k]}</button>`; }).join('')}</div>
+          <div class="row gear-all"><button class="text-btn" data-a="gym-gear-all" data-g="${gk}" data-v="1">Select all</button><button class="text-btn" data-a="gym-gear-all" data-g="${gk}" data-v="0">Select none</button></div></details>`; }).join('')}</div></div>
       <div class="field"><span>Barbell weight (lb)</span>${chips('barWeight', BAR_OPTIONS, g.barWeight)}</div>
       <div class="field"><span>Plates available (lb)</span>${chips('plates', PLATE_OPTIONS, g.plates, true)}</div>
       <div class="grid2">
@@ -363,6 +367,19 @@ export function createExtras(ctx) {
       ctx.db.gyms.push(g); ctx.db.settings.activeGym = g.id; ctx.persist(); ctx.render(); openGym(g.id);
     },
     'gym-edit': (d) => openGym(d.id),
+    'gym-gear': (d) => {
+      const g = ctx.db.gyms.find((x) => x.id === ui.gymEdit);
+      const miss = new Set(g.missing || []);
+      if (miss.has(d.k)) miss.delete(d.k); else miss.add(d.k);
+      g.missing = [...miss]; ctx.persist(); ctx.haptic?.(); openGym(g.id);
+    },
+    'gym-gear-all': (d) => {
+      const g = ctx.db.gyms.find((x) => x.id === ui.gymEdit);
+      const keys = Object.keys(GEAR[d.g].items);
+      const miss = new Set(g.missing || []);
+      keys.forEach((k) => (d.v === '1' ? miss.delete(k) : miss.add(k)));
+      g.missing = [...miss]; ctx.persist(); openGym(g.id);
+    },
     'gym-set': (d, el) => {
       const g = ctx.db.gyms.find((x) => x.id === ui.gymEdit);
       const v = Number.isNaN(+d.v) ? d.v : +d.v;

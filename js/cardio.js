@@ -1,7 +1,8 @@
 // Cardio suggestions: score every option in the cardio bank against
 //  1) how fatigued the muscles it uses are right now (hard work on tired muscles costs the most), and
 //  2) what the next two lifting days train (long or high-volume work on those muscles costs the most).
-import { CARDIO, INTENSITY } from './cardio-bank.js';
+import { CARDIO, INTENSITY, CARDIO_GEAR } from './cardio-bank.js';
+import { activeGym, hasGear } from './gym.js';
 import { currentFatigue, remainingPlannedLoads, plannedLoads, dayMode, freshness, addLoads } from './fatigue.js';
 import { DAY_KEYS, DAY_NAMES } from './engine.js';
 import { MUSCLES } from './bank.js';
@@ -113,7 +114,8 @@ export function scoreCardio(db, c, ctx) {
 
 export function suggestCardio(db, day, isToday, now = Date.now()) {
   const ctx = cardioContext(db, day, isToday, now);
-  const list = Object.values(CARDIO).filter((c) => !c.hidden).map((c) => scoreCardio(db, c, ctx))
+  const gym = activeGym(db);
+  const list = Object.values(CARDIO).filter((c) => !c.hidden && hasGear(gym, CARDIO_GEAR[c.id])).map((c) => scoreCardio(db, c, ctx))
     .sort((a, b) => b.score - a.score || a.c.name.localeCompare(b.c.name));
   return { ctx, list };
 }

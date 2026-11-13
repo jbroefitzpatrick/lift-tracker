@@ -26,7 +26,7 @@ export function planCompounds(db) {
   return [...seen.values()];
 }
 
-// Default focus: the first compound of each lifting day (the "main lifts").
+// Default focus: the first compound of each lifting day.
 function defaultFocus(db) {
   const out = [];
   for (const day of Object.keys(db.plan)) {

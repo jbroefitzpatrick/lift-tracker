@@ -103,7 +103,7 @@ export function createFocus(ctx) {
     const ex = ctx.db.exercises[x.id];
     if (!ex) return '';
     const where = x.place
-      ? (x.place.replaceUid ? `Replaces ${x.place.replaces} on ${FULL[x.place.day]}` : `Added first on ${FULL[x.place.day]}`)
+      ? (x.place.replaceUid ? `In place of ${x.place.replaces} on ${FULL[x.place.day]}` : `Added first on ${FULL[x.place.day]}`)
       : (day ? 'In this day' : slotsOf(x.id).map((s) => FULL[s.day]).join(', '));
     return `<div class="list-row focus-row"><span class="thumb sm">${ctx.thumb(ex)}</span><span class="grow"><b>${esc(ex.name)}</b><span class="pick-sub ${x.place ? 'accent-text' : ''}">${esc(where)}</span></span>
       <button class="icon-btn subtle" data-a="fx-remove" data-id="${x.id}" data-day="${day || ''}" aria-label="Remove ${esc(ex.name)}">${icon('x')}</button></div>`;
