@@ -430,6 +430,20 @@ const RENAMED = {
   'preacher-curl': ['Preacher curl'], 'vertical-leg-raise': ['Vertical leg raise'], 'assisted-pullup': ['Assisted pullup machine'],
 };
 
+// One limb or one side at a time: what the logged weight, reps or time refer to.
+const SIDED = {
+  arm: 'db-row single-arm-pulldown single-arm-cable-row cable-tri-ext concentration-curl db-preacher-curl meadows-row wrist-ext-eccentric band-external-rotation forearm-stretch',
+  leg: 'bulgarian-split-squat single-leg-rdl step-up reverse-lunge walking-lunge single-leg-press single-leg-calf single-leg-hip-thrust smith-split-squat bb-lunge cable-kickback cable-hip-abduction glute-kickback-machine step-up-bw bodyweight-lunge lateral-bound leg-swing tke calf-raise-slow',
+  side: 'side-plank copenhagen-plank pallof-press cable-woodchop landmine-rotation suitcase-carry db-side-bend cable-oblique-crunch clamshell stretch-couch stretch-hamstring stretch-pigeon stretch-calf stretch-chest stretch-thread stretch-wgs stretch-crossbody stretch-9090 roll-lats',
+};
+const SIDE_OF = Object.fromEntries(Object.entries(SIDED).flatMap(([k, ids]) => ids.split(' ').map((id) => [id, k])));
+// Short note under each set's numbers, e.g. 'per arm'.
+export function sideNote(ex) {
+  const k = ex?.sided || SIDE_OF[ex?.id];
+  if (!k) return '';
+  return `per ${k}`;
+}
+
 const split = (s) => (s ? s.split(' ') : []);
 
 export const BANK = Object.fromEntries(RAW.map(([id, name, cat, type, pattern, primary, secondary, metric]) => [id, {

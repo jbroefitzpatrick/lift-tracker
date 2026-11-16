@@ -4,7 +4,7 @@ import { icon } from './icons.js';
 import { EX_INFO } from './exercise-info.js';
 import { blockInfo, focusFor, liftProgress, checkinDue, planCompounds, adherence } from './blocks.js';
 import { TEMPLATES, TEMPLATE_KINDS, templateItems, fmtTarget, METRIC_FIELDS } from './conditioning.js';
-import { METRICS } from './bank.js';
+import { METRICS, sideNote } from './bank.js';
 import { TYPES, ROW_ROTATION, defaultPlan } from './plan.js';
 import {
   DAY_KEYS, DAY_NAMES, dayKeyOf, weekInfo, needsRotationPrompt, nextRowCompound, resolveDay,
@@ -100,12 +100,18 @@ function fmtDate(s) {
   return parseDate(s).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
-function toast(msg) {
+function toast(msg, act = null) {
   const t = $('#toast');
   t.textContent = msg;
+  if (act) {
+    const b = document.createElement('button');
+    b.className = 'toast-act'; b.dataset.a = act.a; b.textContent = act.label;
+    t.append(' ', b);
+  }
+  t.classList.toggle('has-act', !!act);
   t.hidden = false;
   clearTimeout(toast._t);
-  toast._t = setTimeout(() => { t.hidden = true; }, 3200);
+  toast._t = setTimeout(() => { t.hidden = true; }, act ? 5000 : 3200);
 }
 
 // ---------- Theme ----------
@@ -364,6 +370,8 @@ function maybeRest(session, uid, setIndex) {
   const members = session.order.map((u) => session.entries[u]).filter((e) => groupNum(e.group) === g);
   const roundDone = members.every((m) => m.pain || setIndex >= m.sets.length || m.sets[setIndex].done);
   if (!roundDone) return;
+  // Exercise (or the whole superset/circuit) finished: no rest, straight on to the next thing.
+  if (members.every((m) => m.pain || m.sets.every((x) => x.done))) { stopRest(); return; }
   const allDone = session.order.every((u) => {
     const e = session.entries[u];
     return e.pain || e.sets.every((s) => s.done);
@@ -414,18 +422,24 @@ function logSet(uid, idx, vals) {
   persist();
   haptic();
   maybeRest(session, uid, idx);
-  // On the exercise screen, move through the superset/circuit automatically.
+  render();
+  // On the exercise screen, move through the superset/circuit automatically, after a short beat
+  // so the logged set registers before the next exercise slides in.
   if (ui.tab === 'exercise' && ui.exUid === uid && db.settings.autoAdvance !== false) {
     const nx = nextInCircuit(session, uid, idx);
     if (nx?.uid) {
-      ui.backUid = uid;
-      ui.exUid = nx.uid;
-      window.scrollTo(0, 0);
-      const name = db.exercises[session.entries[nx.uid].exerciseId]?.name || 'next exercise';
-      toast(nx.groupDone ? `${linkLabel(nextGroupSize(session, uid))} done. Next: ${name}` : `${nx.sameRound ? 'Next' : 'After the rest'}: ${name}, set ${nx.round + 1}`);
+      clearTimeout(logSet.adv);
+      logSet.adv = setTimeout(() => {
+        if (ui.tab !== 'exercise' || ui.exUid !== uid || db.activeSession !== session) return;
+        ui.backUid = uid;
+        ui.exUid = nx.uid;
+        window.scrollTo(0, 0);
+        const name = db.exercises[session.entries[nx.uid]?.exerciseId]?.name || 'next exercise';
+        toast(nx.groupDone ? `${linkLabel(nextGroupSize(session, uid))} done. Next: ${name}` : `${nx.sameRound ? 'Next' : 'After the rest'}: ${name}, set ${nx.round + 1}`);
+        render();
+      }, 550);
     }
   }
-  render();
 }
 
 function saveEntrySets(e) {
@@ -447,11 +461,20 @@ function weeklyCapReached(exId) {
   return db.exercises[exId].primary.some((m) => (ws[m] || 0) >= volumeTarget({ weekly: rx.weekly, includePhysique: rx.includePhysique }, m)[1]);
 }
 
+// A workout finished today can be reopened (until midnight), unless another one is under way.
+function canReopen(id) {
+  const lf = db.lastFinish;
+  return !!lf && lf.date === todayStr() && !db.activeSession && (!id || lf.id === id) && db.sessions.some((x) => x.id === lf.id);
+}
+
 function finishWorkout() {
   const s = db.activeSession;
   if (!s) return;
   resumeSession(s);
   const finishedAt = Date.now();
+  // Everything finishing changes, so "Resume workout" can put it all back (same day only).
+  const clone = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));
+  const reopen = { active: clone(s), state: clone(db.state), plan: clone(db.plan), week: clone(db.week), runGoal: clone(db.runGoal), recoveryAdjust: clone(db.recoveryAdjust) };
   const results = [];
   const entries = [];
   const stateBefore = {}; // lets a later edit of this workout redo the progression math
@@ -517,6 +540,7 @@ function finishWorkout() {
     db.cardio.push({ id: `c${finishedAt}`, date: s.date, ts: finishedAt, cardioId, minutes, note: 'From workout', fromWorkout: true });
   }
   db.sessions.push(saved);
+  db.lastFinish = { id: saved.id, date: s.date, finishedAt, reopen };
   db.activeSession = null;
   persist();
   stopRest();
@@ -560,11 +584,15 @@ function plannedFor(day) {
   const lifts = items.filter((i) => i.ex.category !== 'conditioning');
   if (lifts.length && dayMode(db, day) !== 'cardio') {
     const x = dayExtras(db, day);
-    return [...(x.warm ? warmupItems(db, day, lifts) : []), ...items, ...(x.cool ? cooldownItems(db, day, lifts) : [])];
+    const order = db.plan[day]?.extraOrder || {};
+    const sorted = (list, k) => (order[k] ? [...list].sort((a, b) => rank(order[k], a.uid) - rank(order[k], b.uid)) : list);
+    return [...(x.warm ? sorted(warmupItems(db, day, lifts), 'warmup') : []), ...items, ...(x.cool ? sorted(cooldownItems(db, day, lifts), 'cooldown') : [])];
   }
   if (dayMode(db, day) !== 'cardio') return items;
   return items.filter((i) => db.exercises[i.exerciseId]?.category === 'conditioning');
 }
+
+const rank = (order, uid) => { const i = order.indexOf(uid); return i < 0 ? 999 : i; };
 
 // The day's exercises in display order: the session once started, otherwise the plan.
 function todayItems(day = ui.day) {
@@ -704,7 +732,7 @@ function screenToday() {
       <button class="icon-btn accent" data-a="today-add" aria-label="Add exercise">${icon('plus')}</button>
     </div>
   </div>`;
-  if (selecting) html += `<p class="muted small">Select exercises to link into a superset or circuit, or drag to reorder. ${session ? 'Changes apply to today\'s workout.' : `Changes apply to every ${FULL_DAY[day]}.`}</p>`;
+  if (selecting) html += `<p class="muted small">Select exercises to link into a superset or circuit, or drag to reorder. Anywhere, you can also hold an exercise to move it, or drop it onto another to link them. ${session ? 'Changes apply to today\'s workout.' : `Changes apply to every ${FULL_DAY[day]}.`}</p>`;
   // The exercise you're on: the last one opened if it has sets left, else the first with sets left.
   ui.nextUid = session ? ((ui.exUid && items.find((i) => i.uid === ui.exUid && setsLeft(session, i))) || items.find((i) => setsLeft(session, i)))?.uid : null;
   html += '<div class="ex-list">';
@@ -725,6 +753,7 @@ function screenToday() {
   if (selecting) {
     html += `<div class="select-bar" role="toolbar" aria-label="Selection actions">
       <span class="muted small">${sel.size} selected</span>
+      <button class="btn sm" data-a="list-undo" ${ui.undo?.length ? '' : 'disabled'}>Undo</button>
       <button class="btn sm" data-a="unlink-selected" ${sel.size ? '' : 'disabled'}>Unlink</button>
       <button class="btn sm primary" data-a="link-selected" ${sel.size < 2 ? 'disabled' : ''}>Link ${sel.size > 2 ? 'as circuit' : 'as superset'}</button>
     </div>`;
@@ -776,7 +805,7 @@ function exerciseRow(item, session, isDeload, selecting, sel) {
         : t.scheme === 'linear' || t.scheme === 'stages' ? `${t.sets} × ${t.reps}${weight}` : `${t.sets} sets · ${reps} reps${weight}`;
   const checked = sel.has(item.uid);
   const isNext = session && item.uid === ui.nextUid;
-  return `<div class="ex-item ${allDone ? 'is-done' : ''} ${checked ? 'is-selected' : ''} ${isNext ? 'is-next' : ''}" data-drag-item data-drag-list="session" data-drag-id="${item.uid}" ${session && !selecting ? `data-swipe="ex-remove" data-swipe-label="Remove" data-uid="${item.uid}"` : ''}>
+  return `<div class="ex-item ${allDone ? 'is-done' : ''} ${checked ? 'is-selected' : ''} ${isNext ? 'is-next' : ''}" data-drag-item data-drag-press ${session || (item.phase || 'main') === 'main' ? 'data-drag-join' : ''} data-drag-list="session" data-drag-id="${item.uid}" ${session && !selecting ? `data-swipe="ex-remove" data-swipe-label="Remove" data-uid="${item.uid}"` : ''}>
     ${selecting ? `<label class="sel"><input type="checkbox" data-a="sel-toggle" data-uid="${item.uid}" ${checked ? 'checked' : ''} aria-label="Select ${esc(ex.name)}"></label>` : ''}
     <button class="ex-item-main" data-a="ex-open" data-uid="${item.uid}" ${selecting ? 'tabindex="-1"' : ''}>
       <span class="thumb">${thumb(ex)}</span>
@@ -1026,6 +1055,7 @@ function screenExercise() {
     ${notices.filter((n) => n[2] !== 'pain').map(([c, m]) => `<p class="notice ${c}">${esc(m)}</p>`).join('')}
     ${pain.exerciseCard(ex, item, entry, t, (e) => isAvailable(db, e))}
     ${warmBlock(item, entry, warm, ex, gym, barbell)}
+    ${!warm.length && !conditioning && !ended && session ? `<button class="text-btn warm-make" data-a="warm-make" data-uid="${item.uid}">${icon('plus')} Warm-up sets</button>` : ''}
     <div class="set-table" role="group" aria-label="Sets">
       ${setHead(conditioning, fields, ex)}
       ${rows}
@@ -1038,7 +1068,7 @@ function screenExercise() {
     <div class="ex-nav">
       ${back ? `<button class="btn" data-a="ex-go" data-uid="${back.uid}" aria-label="Back to ${esc(back.ex.name)}">${icon('left')}</button>` : ''}
       ${!session ? '<button class="btn primary grow" data-a="start-workout">Start workout</button>'
-        : next ? `<button class="btn primary grow" data-a="ex-go" data-uid="${next.uid}">Next: ${esc(next.ex.name)}</button>`
+        : next ? `<button class="btn primary grow" data-a="ex-go" data-uid="${next.uid}"><span class="ell">Next: ${esc(next.ex.name)}</span></button>`
           : '<button class="btn primary grow" data-a="finish">Finish workout</button>'}
     </div>
   </div>`;
@@ -1055,7 +1085,7 @@ function warmBlock(item, entry, warm, ex, gym, barbell) {
     <div class="set-head warm" aria-hidden="true"><span></span><span>${ex.type === 'dumbbell' ? 'lb each' : 'lb'}</span><span>Reps</span><span></span></div>
     ${warm.map((w, i) => `<div class="set-row warm ${w.done ? 'done' : ''}" data-swipe="warm-del" data-swipe-label="Delete" data-uid="${item.uid}" data-i="${i}">
       <span class="set-badge ty-w">W</span>
-      <input class="cell" type="text" inputmode="decimal" data-warm="${item.uid}:${i}:weight" value="${w.weight}" aria-label="Warm-up ${i + 1} weight">
+      <input class="cell" type="text" inputmode="decimal" data-warm="${item.uid}:${i}:weight" value="${w.weight ?? ''}" aria-label="Warm-up ${i + 1} weight">
       <input class="cell" type="text" inputmode="numeric" data-warm="${item.uid}:${i}:reps" value="${w.reps}" aria-label="Warm-up ${i + 1} reps">
       <button class="check" data-a="warm-check" data-uid="${item.uid}" data-i="${i}" aria-pressed="${!!w.done}" aria-label="${w.done ? 'Undo' : 'Complete'} warm-up ${i + 1}">${icon('check')}</button>
       ${barbell ? `<span class="wu-plates">${plateText(w.weight, gym)}</span>` : ''}
@@ -1073,15 +1103,24 @@ function warmFor(uid) {
     const item = todayItems(ui.day).find((i) => i.uid === uid);
     const t = targetsFor(db, item, sx.isDeload);
     const gym = activeGym(db);
-    e.warm = warmupSets(item.ex, roundToGym(item.ex, t.weight, gym), gym).map((w) => ({ ...w, done: false }));
+    e.warm = defaultWarm(item.ex, roundToGym(item.ex, t.weight, gym), gym).map((w) => ({ ...w, done: false }));
   }
   return e.warm;
+}
+
+// Warm-up sets for any lift: the usual ramp for compounds (40/60/80%), one light set for an
+// isolation exercise, and a light practice set when there's no working weight yet.
+function defaultWarm(ex, weight, gym) {
+  if (weight && ex.category === 'accessory') return [{ weight: roundToGym(ex, weight * 0.5, gym), reps: 10 }];
+  const ramp = warmupSets(ex, weight, gym);
+  if (ramp.length) return ramp;
+  return [{ weight: ex.type === 'bodyweight' ? 0 : weight ? roundToGym(ex, weight * 0.5, gym) : null, reps: 8 }];
 }
 
 const SET_TYPES = { w: ['W', 'Warm-up'], d: ['D', 'Drop set'], f: ['F', 'To failure'] };
 
 function setHead(conditioning, fields, ex) {
-  if (conditioning) return `<div class="set-head" aria-hidden="true"><span>Round</span><span>${fields[0][1]}</span><span>${fields[1][1]}</span><span></span></div>`;
+  if (conditioning) return `<div class="set-head" aria-hidden="true"><span>Round</span><span>${fields[0][1]}${sideNote(ex) ? ` ${sideNote(ex)}` : ''}</span><span>${fields[1][1]}</span><span></span></div>`;
   return `<div class="set-head lift" aria-hidden="true"><span>Set</span><span>Previous</span><span>${ex.type === 'bodyweight' ? '+ lb' : ex.type === 'dumbbell' ? 'lb each' : 'lb'}</span><span>Reps</span><span></span></div>`;
 }
 
@@ -1089,6 +1128,7 @@ function setHead(conditioning, fields, ex) {
 // weight, reps and the check. Weight comes before reps, the way lifters say it: "135 for 8".
 function liftRows(item, sets, ended, t, ex) {
   const last = t.st?.last;
+  const per = sideNote(ex) ? `<small class="per">${sideNote(ex)}</small>` : '';
   return sets.map((s, i) => {
     const disabled = ended && !s.done && !s.pain;
     const pw = last?.weights?.[i];
@@ -1097,7 +1137,7 @@ function liftRows(item, sets, ended, t, ex) {
     const ty = SET_TYPES[s.type];
     return `<div class="set-row lift ${s.done ? 'done' : ''} ${s.pain ? 'pain' : ''} ${disabled ? 'disabled' : ''}" data-swipe="del-set" data-uid="${item.uid}" data-i="${i}" data-swipe-label="Delete">
       <button class="set-badge ${ty ? `ty-${s.type}` : ''}" data-a="open-set" data-uid="${item.uid}" data-i="${i}" aria-label="Set ${i + 1}${ty ? `, ${ty[1]}` : ''}. Options: type, effort, pain">${ty ? ty[0] : i + 1}</button>
-      ${prev ? `<button class="prev" data-a="copy-prev" data-uid="${item.uid}" data-i="${i}" data-w="${pw ?? 0}" data-r="${pr}" ${s.done || disabled ? 'disabled' : ''} aria-label="Last time ${prev}. Tap to use these numbers">${prev}</button>` : '<span class="prev none" aria-label="No previous set">—</span>'}
+      ${prev ? `<button class="prev" data-a="copy-prev" data-uid="${item.uid}" data-i="${i}" data-w="${pw ?? 0}" data-r="${pr}" ${s.done || disabled ? 'disabled' : ''} aria-label="Last time ${prev}${per ? ` ${sideNote(ex)}` : ''}. Tap to use these numbers">${prev}${per}</button>` : `<span class="prev none" aria-label="No previous set">—${per}</span>`}
       <input class="cell" type="text" inputmode="decimal" data-set="${item.uid}:${i}:weight" value="${s.weight ?? ''}" placeholder="—" aria-label="Set ${i + 1} weight in pounds" ${disabled ? 'disabled' : ''}>
       <input class="cell" type="text" inputmode="numeric" data-set="${item.uid}:${i}:reps" value="${s.reps ?? ''}" aria-label="Set ${i + 1} reps" ${disabled ? 'disabled' : ''}>
       <button class="check" data-a="check-inline" data-uid="${item.uid}" data-i="${i}" ${disabled || s.pain ? 'disabled' : ''} aria-pressed="${s.done}" aria-label="${s.done ? 'Undo' : 'Complete'} set ${i + 1}">${icon('check')}</button>
@@ -1138,10 +1178,37 @@ function relabel(list, keyOf) {
     // Linked exercises rest after the round: only the last one carries the rest.
     if (run.length > 1) {
       const rest = Math.max(...run.map((x) => x.restSec || 0)) || 90;
-      run.forEach((x, r) => { x.restSec = r === run.length - 1 ? rest : 0; });
-    }
+      run.forEach((x, r) => { if (x.restSec) x.soloRest = x.restSec; x.restSec = r === run.length - 1 ? rest : 0; });
+    } else if (!run[0].restSec && run[0].soloRest) run[0].restSec = run[0].soloRest; // back on its own: its own rest again
     i = j;
   }
+}
+
+// ---------- Undo for list edits (move, link, unlink, remove) ----------
+function listSnapshot() {
+  const s = sessionFor(ui.day);
+  const clone = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));
+  if (s) return { day: ui.day, session: s.id, order: [...s.order], entries: clone(s.entries), removed: [...(s.removed || [])] };
+  return { day: ui.day, plan: clone(db.plan[ui.day]), week: clone(db.week) };
+}
+function pushUndo() { (ui.undo ||= []).push(listSnapshot()); if (ui.undo.length > 30) ui.undo.shift(); }
+function undoList() {
+  const snap = ui.undo?.pop();
+  if (!snap) return toast('Nothing to undo.');
+  if (snap.session) {
+    const s = sessionFor(snap.day);
+    if (!s || s.id !== snap.session) return toast('That workout has ended, so it can\'t be undone.');
+    // Order and links go back; sets logged since stay logged. Removed exercises come back.
+    for (const [u, e] of Object.entries(snap.entries)) {
+      if (s.entries[u]) { s.entries[u].group = e.group; s.entries[u].restSec = e.restSec; } else s.entries[u] = e;
+    }
+    s.order = [...snap.order, ...s.order.filter((u) => !snap.order.includes(u))];
+    s.removed = snap.removed;
+  } else {
+    db.plan[snap.day] = snap.plan;
+    if (snap.week === undefined) delete db.week; else db.week = snap.week;
+  }
+  persist(); render(); toast('Undone.');
 }
 
 // Where today's list lives: the workout once started, otherwise the plan for this weekday.
@@ -1192,6 +1259,7 @@ function openDayOptions() {
       <p class="muted small">Applies to every ${FULL_DAY[day]}. Change it for the whole week in Plan.</p></div>
     <div class="list-group">
       ${db.plan[day] && !session?.freestyle ? `<label class="list-row toggle"><span class="grow">Deload workout<span class="pick-sub">Half the sets, same or slightly lighter weights</span></span><input type="checkbox" data-a="deload-toggle" ${isDeload ? 'checked' : ''} ${session ? 'disabled' : ''}></label>` : ''}
+      ${canReopen() && db.lastFinish.reopen.active.day === day ? `<button class="list-row" data-a="resume-finished"><span class="grow">Resume finished workout</span>${icon('right', 'chev')}</button>` : ''}
       ${!db.activeSession ? `<button class="list-row" data-a="start-empty"><span class="grow">Empty workout</span>${icon('right', 'chev')}</button>` : ''}
       ${session ? `<button class="list-row" data-a="leave-workout-view"><span class="grow">Plan, food and progress</span>${icon('right', 'chev')}</button>` : ''}
       <button class="list-row" data-a="wk-open"><span class="grow">Adjust week</span>${icon('right', 'chev')}</button>
@@ -1293,7 +1361,7 @@ function openExMenu(uid) {
   const row = (a, ic, label, extra = '', cls = '') => `<button class="list-row ${cls}" data-a="${a}" data-uid="${uid}" ${extra}>${icon(ic)}<span class="grow">${label}</span></button>`;
   openSheet(`<h2>${esc(item.ex.name)}</h2>
     <div class="list-group menu">
-      ${row('ex-open-close', 'check', 'Log sets')}
+      ${row('log-all', 'check', 'Log all sets')}
       ${row('swap', 'swap', 'Swap exercise')}
       ${grp?.linked ? row('unlink-one', 'x', 'Unlink') : i < items.length - 1 ? row('link-next', 'plus', 'Link with next') : ''}
       ${planIt && item.ex.category !== 'conditioning' ? row('ex-lock', 'bookmark', planIt.lock ? 'Allow variety' : 'Keep every week') : ''}
@@ -1993,6 +2061,7 @@ function screenSummary() {
     <div class="card"><h3>Notes</h3><textarea id="session-note" data-sid="${s.id}" rows="3" placeholder="How did it go? Sleep, energy, anything to remember">${esc(s.note || '')}</textarea></div>
     ${health.button(s)}
     <div class="row"><button class="btn grow" data-a="share-session" data-id="${s.id}">Share</button><button class="btn grow" data-a="edit-session" data-id="${s.id}">Edit workout</button></div>
+    ${canReopen(s.id) ? '<button class="btn block" data-a="resume-finished">Resume workout</button><p class="muted small center">Finished too soon? Reopen it and keep logging. Available until midnight.</p>' : ''}
     <button class="btn primary block" data-a="tab" data-tab="${ui.summaryFresh ? 'today' : 'history'}">Done</button>`;
 }
 
@@ -2925,7 +2994,7 @@ function animateIn(main, dir) {
   if (reduceMotion.matches || !main.animate) return;
   const x = dir === 'forward' ? 32 : dir === 'back' ? -32 : 0;
   const from = { opacity: 0, transform: x ? `translateX(${x}px)` : 'translateY(10px)' };
-  const opts = { duration: x ? 320 : 260, easing: 'cubic-bezier(0.22, 0.8, 0.24, 1)' };
+  const opts = { duration: x ? 440 : 360, delay: 60, easing: 'cubic-bezier(0.25, 0.8, 0.25, 1)', fill: 'backwards' };
   for (const el of main.children) {
     // The live workout bar stays put; pinned buttons only fade (moving them would detach them).
     if (el.matches('.workout-bar, .back-to-workout')) continue;
@@ -2973,7 +3042,7 @@ function render() {
 // ---------- Events ----------
 
 const actions = {
-  tab: (d) => { if (d.tab === 'today') ui.peek = false; if (!$('#sheet').hidden) closeSheet(); ui.summaryFresh = false; ui.selecting = false; ui.tab = d.tab === 'progress' ? ui.progressTab || 'history' : d.tab; if (d.tab === 'today') ui.summaryId = null; if (d.tab === 'history') ui.historyEx = null; window.scrollTo(0, 0); render(); },
+  tab: (d) => { ui.infoFrom = null; if (d.tab === 'today') ui.peek = false; if (!$('#sheet').hidden) closeSheet(); ui.summaryFresh = false; ui.selecting = false; ui.tab = d.tab === 'progress' ? ui.progressTab || 'history' : d.tab; if (d.tab === 'today') ui.summaryId = null; if (d.tab === 'history') ui.historyEx = null; window.scrollTo(0, 0); render(); },
   day: (d) => { ui.day = d.day; ui.tab = 'today'; ui.showCardio = false; ui.selecting = false; render(); },
   'open-set': (d) => openSetSheet(d.uid, +d.i),
   'leave-workout-view': () => { closeSheet(); ui.peek = true; render(); toast('Your workout keeps running. Tap "Back to workout" to return.'); },
@@ -3162,7 +3231,7 @@ const actions = {
   finish: () => {
     const s = db.activeSession;
     const open = s.order.reduce((a, u) => a + (s.entries[u].pain ? 0 : s.entries[u].sets.filter((x) => !x.done).length), 0);
-    if (open && !confirm(`${open} set${open > 1 ? 's' : ''} not logged. Finish anyway?`)) return;
+    if (!confirm(open ? `${open} set${open > 1 ? 's' : ''} not logged. Finish the workout anyway?` : 'Finish this workout?')) return;
     finishWorkout();
   },
   discard: () => {
@@ -3259,23 +3328,76 @@ const actions = {
     if (el.checked) ui.selected.add(d.uid); else ui.selected.delete(d.uid);
     render();
   },
+  'list-undo': () => { if (!$('#sheet').hidden) closeSheet(); undoList(); },
+  'log-all': (d) => {
+    closeSheet();
+    const sx = ensureSession(ui.day);
+    const e = sx?.entries[d.uid];
+    if (!e) return;
+    const ex = db.exercises[e.exerciseId];
+    const cond = (e.metric && e.metric !== 'reps') || ex?.category === 'conditioning';
+    const key = cond ? METRIC_FIELDS[e.metric || 'reps'][0][0] : 'reps';
+    const logged = [];
+    e.sets.forEach((x, i) => {
+      if (x.done || x.pain) return;
+      if (!cond && x.weight == null && ex?.type === 'bodyweight') x.weight = 0;
+      if (cond ? !(x[key] > 0) : !(x.reps > 0 && Number.isFinite(x.weight))) return;
+      x.done = true; logged.push(i);
+    });
+    if (!logged.length) return toast('Fill in weight and reps first, then log them all.');
+    resumeSession(sx); persist(); haptic(); render();
+    ui.logAllUndo = { uid: d.uid, idx: logged };
+    toast(`Logged ${logged.length} set${logged.length === 1 ? '' : 's'} of ${ex.name}.`, { label: 'Undo', a: 'log-all-undo' });
+  },
+  'log-all-undo': () => {
+    const u = ui.logAllUndo; ui.logAllUndo = null;
+    const e = u && sessionFor(ui.day)?.entries[u.uid];
+    if (!e) return;
+    u.idx.forEach((i) => { if (e.sets[i]) e.sets[i].done = false; });
+    persist(); render(); toast('Undone.');
+  },
+  'warm-make': (d) => {
+    const sx = ensureSession(ui.day);
+    if (!sx?.entries[d.uid]) return;
+    delete sx.entries[d.uid].warm;
+    warmFor(d.uid);
+    (ui.warmOpen ||= {})[d.uid] = true;
+    persist(); render();
+  },
+  'resume-finished': () => {
+    if (!canReopen()) return toast('Only a workout finished today can be reopened.');
+    if (!confirm('Reopen this workout? It comes back exactly as you left it, and your targets update again when you finish.')) return;
+    const { id, finishedAt, reopen } = db.lastFinish;
+    for (const k of ['state', 'plan', 'week', 'runGoal', 'recoveryAdjust']) { if (reopen[k] === undefined) delete db[k]; else db[k] = reopen[k]; }
+    db.sessions = db.sessions.filter((x) => x.id !== id);
+    db.cardio = (db.cardio || []).filter((c) => c.id !== `c${finishedAt}`);
+    const a = reopen.active;
+    a.pausedMs = (a.pausedMs || 0) + (Date.now() - finishedAt); // time away doesn't count as workout time
+    db.activeSession = a;
+    delete db.lastFinish;
+    closeSheet();
+    ui.day = a.day; ui.tab = 'today'; ui.summaryFresh = false;
+    persist(); keepAwake(); render();
+    toast('Workout reopened.');
+  },
   'select-mode': () => { ui.selecting = !ui.selecting; ui.selected = new Set(); render(); },
   'link-selected': () => {
+    pushUndo();
     linkUids([...ui.selected]);
     const n = ui.selected.size;
     ui.selecting = false; ui.selected = new Set();
     persist(); render(); toast(`Linked as a ${n > 2 ? 'circuit' : 'superset'}.`);
   },
-  'unlink-selected': () => { unlinkUids([...ui.selected]); ui.selecting = false; ui.selected = new Set(); persist(); render(); toast('Unlinked.'); },
+  'unlink-selected': () => { pushUndo(); unlinkUids([...ui.selected]); ui.selecting = false; ui.selected = new Set(); persist(); render(); toast('Unlinked.'); },
   'link-next': (d) => {
     const items = todayItems();
     const i = items.findIndex((x) => x.uid === d.uid);
     const grp = groupsOf(items).find((g) => g.items.some((x) => x.uid === items[i + 1]?.uid));
     const uids = [d.uid, ...(grp ? grp.items.map((x) => x.uid) : [items[i + 1].uid])];
     if (!$('#sheet').hidden) closeSheet();
-    linkUids(uids); persist(); render(); toast('Linked with the next exercise.');
+    pushUndo(); linkUids(uids); persist(); render(); toast('Linked with the next exercise.', { label: 'Undo', a: 'list-undo' });
   },
-  'unlink-one': (d) => { if (!$('#sheet').hidden) closeSheet(); unlinkUids([d.uid]); persist(); render(); toast('Unlinked.'); },
+  'unlink-one': (d) => { if (!$('#sheet').hidden) closeSheet(); pushUndo(); unlinkUids([d.uid]); persist(); render(); toast('Unlinked.', { label: 'Undo', a: 'list-undo' }); },
   'ex-rest': (d) => {
     const opts = [0, 30, 45, 60, 75, 90, 120, 150, 180, 240, 300];
     openSheet(`<h2>Rest timer</h2><p class="muted small">Rest after this exercise${groupsOf(todayItems()).find((g) => g.items.some((x) => x.uid === d.uid))?.linked ? ' (after each round of the group)' : ''}.</p>
@@ -3370,7 +3492,7 @@ const actions = {
   'ex-move': (d) => {
     // Move past a whole neighbouring group so supersets stay together.
     const sx = ensureSession(ui.day);
-    if (!sx) return; const o = sx.order; const i = o.indexOf(d.uid);
+    if (!sx) return; pushUndo(); const o = sx.order; const i = o.indexOf(d.uid);
     const g = (u) => groupNum(sx.entries[u].group);
     o.splice(i, 1);
     if (+d.v > 0) {
@@ -3387,21 +3509,28 @@ const actions = {
   'ex-remove': (d) => {
     if (!sessionFor(ui.day)) {
       if (d.uid.startsWith('warmup-') || d.uid.startsWith('cooldown-')) return toast('Turn the warm-up or cool-down off with its button above the list.');
+      pushUndo();
       adjustDay(db, ui.day, { minutes: weekOverride(db, ui.day)?.minutes || null, gymId: weekOverride(db, ui.day)?.gymId || null });
       const o = db.week.days[ui.day];
       o.items = o.items.filter((i) => i.uid !== d.uid);
       if (o.base) o.base = o.base.filter((i) => i.uid !== d.uid);
       persist(); closeSheet(); render();
-      return toast('Removed for this week. Your plan is unchanged.');
+      return toast('Removed for this week. Your plan is unchanged.', { label: 'Undo', a: 'list-undo' });
     }
     const sx = ensureSession(ui.day);
     if (!sx) return; const e = sx.entries[d.uid];
     if (e.sets.some((x) => x.done) && !confirm('Remove this exercise and its logged sets from today?')) return;
+    pushUndo();
     sx.order = sx.order.filter((u) => u !== d.uid); delete sx.entries[d.uid];
     if (!sx.freestyle) (sx.removed ||= []).push(d.uid);
     persist(); closeSheet(); render();
+    toast(`Removed ${db.exercises[e.exerciseId]?.name || 'exercise'}.`, { label: 'Undo', a: 'list-undo' });
   },
-  'ex-info': (d) => { closeSheet(); ui.historyEx = d.id; ui.tab = 'history'; window.scrollTo(0, 0); render(); },
+  'ex-info': (d) => {
+    closeSheet();
+    if (ui.tab !== 'history') ui.infoFrom = { tab: ui.tab, exUid: ui.exUid, y: window.scrollY };
+    ui.historyEx = d.id; ui.tab = 'history'; window.scrollTo(0, 0); render();
+  },
   fb: (d) => { const e = sessionFor(ui.day).entries[d.uid]; e.feedback = e.feedback === d.v ? undefined : d.v; persist(); render(); },
   'fb-joint': (d) => { const e = sessionFor(ui.day).entries[d.uid]; e.joint = !e.joint; persist(); render(); },
   'plan-view': (d) => { ui.planView = d.v; render(); },
@@ -3559,7 +3688,12 @@ const actions = {
   },
   summary: (d) => { ui.summaryId = d.id; ui.summaryFresh = false; ui.tab = 'summary'; window.scrollTo(0, 0); render(); },
   'history-ex': (d) => { ui.historyEx = d.id; window.scrollTo(0, 0); render(); },
-  'history-back': () => { ui.historyEx = null; render(); },
+  'history-back': () => {
+    ui.historyEx = null;
+    const from = ui.infoFrom; ui.infoFrom = null;
+    if (from) { ui.tab = from.tab; ui.exUid = from.exUid; render(); window.scrollTo(0, from.y || 0); return; }
+    render();
+  },
   'bw-save': () => {
     const w = num('bw-input');
     if (!w || w < 50 || w > 700) return toast('Enter your weight in lb.');
@@ -3681,14 +3815,48 @@ const actions = {
 
 Object.assign(actions, food.actions, year.actions, extras.actions, cloud.actions, pain.actions, train.actions, focusUi.actions, exEditor.actions, planTools.actions, health.actions);
 
-onReorder('session', (uid, to) => {
-  const { list, save } = editableList();
-  const it = list.find((x) => x.uid === uid);
-  if (!it) return;
-  const rest = list.filter((x) => x !== it);
-  rest.splice(to, 0, it);
-  save(rest);
+onReorder('session', (uid, to, opt = {}) => {
+  const shown = todayItems(ui.day);
+  const moving = shown.find((x) => x.uid === uid);
+  if (!moving) return;
+  pushUndo();
+  const phaseOf = (x) => x.phase || 'main';
+  const list = shown.filter((x) => x !== moving);
+  let at = Math.max(0, Math.min(list.length, to));
+  const target = opt.join ? list.find((x) => x.uid === opt.join && phaseOf(x) === phaseOf(moving)) : null;
+  if (target) { // go to the end of the target's group
+    const g = groupNum(target.group);
+    at = list.indexOf(target);
+    while (at + 1 < list.length && groupNum(list[at + 1].group) === g) at++;
+    at += 1;
+  }
+  // Warm-up, workout and cool-down stay in their own sections.
+  const same = list.map((x, i) => (phaseOf(x) === phaseOf(moving) ? i : -1)).filter((i) => i >= 0);
+  if (same.length) at = Math.max(same[0], Math.min(same[same.length - 1] + 1, at));
+  list.splice(at, 0, moving);
+  // Dropped onto an exercise, or between two exercises of one group: it joins that group.
+  // Anywhere else it stands alone. Other groups keep their links.
+  const prev = list[at - 1]; const after = list[at + 1];
+  const inside = prev && after && groupNum(prev.group) === groupNum(after.group) && phaseOf(prev) === phaseOf(after);
+  const joinKey = target ? groupNum(target.group) : inside ? groupNum(prev.group) : null;
+  const keyOf = (x) => (x.uid === uid ? (joinKey != null ? `g${joinKey}` : `solo:${uid}`) : `g${groupNum(x.group)}`);
+  const keys = new Map(list.map((x) => [x.uid, keyOf(x)]));
+  const session = sessionFor(ui.day);
+  if (session) {
+    session.order = list.map((x) => x.uid);
+    relabel(session.order.map((u) => session.entries[u]), (e) => keys.get(e.uid));
+  } else {
+    const ref = weekOverride(db, ui.day)?.items?.length ? weekOverride(db, ui.day) : db.plan[ui.day];
+    const stored = new Map(ref.items.map((x) => [x.uid, x]));
+    const main = list.filter((x) => stored.has(x.uid)).map((x) => stored.get(x.uid));
+    const missing = ref.items.filter((x) => !main.includes(x));
+    relabel(main, (x) => keys.get(x.uid) || `g${groupNum(x.group)}`);
+    ref.items = [...main, ...missing];
+    const ex = (db.plan[ui.day].extraOrder ||= {});
+    for (const k of ['warmup', 'cooldown']) { const u = list.filter((x) => x.phase === k).map((x) => x.uid); if (u.length) ex[k] = u; }
+  }
   persist(); render();
+  if (!ui.selecting) toast(target ? `Linked with ${target.ex.name}.` : 'Moved.', { label: 'Undo', a: 'list-undo' });
 });
 onReorder('plan', (uid, to) => {
   const items = db.plan[ui.planDay].items;
@@ -3800,6 +3968,9 @@ document.addEventListener('error', (e) => {
 }, true);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) renderRest(); });
 matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', applyTheme);
+// Typing on a phone: the keyboard would lift the pinned rest timer over the fields, so it steps aside.
+document.addEventListener('focusin', (e) => { if (e.target.matches?.('input, textarea')) document.body.classList.add('typing'); });
+document.addEventListener('focusout', () => setTimeout(() => { if (!document.activeElement?.matches?.('input, textarea')) document.body.classList.remove('typing'); }, 50));
 
 // Ask iOS to keep our storage (helps avoid eviction where supported).
 document.addEventListener('visibilitychange', () => { if (!document.hidden) keepAwake(); });

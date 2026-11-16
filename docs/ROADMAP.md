@@ -19,4 +19,4 @@ A short note at the top of each day's workout ("Squat is your focus today. Last 
 - A celebration animation when a PR is set or a ring closes.
 
 ## Native iPhone app
-See [NATIVE-APP.md](NATIVE-APP.md): lock-screen rest timer (Live Activity), widgets, Apple Health, haptics, iCloud sync, barcode scanning for food.
+See [NATIVE-APP.md](NATIVE-APP.md): lock-screen and Dynamic Island rest timer (Live Activity), portrait lock, widgets, Apple Health, haptics, iCloud sync, barcode scanning for food.

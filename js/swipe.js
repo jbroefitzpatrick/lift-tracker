@@ -86,6 +86,7 @@ export function initSwipe() {
 
   document.addEventListener('touchmove', (e) => {
     if (!active) return;
+    if (document.body.classList.contains('is-dragging')) { active = null; return; } // a held item is being moved
     const t = e.touches[0];
     const dx = t.clientX - active.x0;
     const dy = t.clientY - active.y0;
