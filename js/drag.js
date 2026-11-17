@@ -5,7 +5,8 @@
 //          data-drag-press on the item: press and hold anywhere on it to pick it up
 //          data-drag-join on the item: dropping onto its middle joins it (superset/circuit)
 // Register a handler with onReorder(list, (id, toIndex, { join }) => {...}).
-// join is the id of the item it was dropped onto, when it was dropped onto one.
+// join is the id of the item it was dropped onto, when it was dropped onto one; before is true
+// when it was dropped on that item's top half.
 //
 // Accessibility: the handle is a real button. Arrow Up/Down moves the item one place and the
 // new position is announced, so dragging is never the only way to reorder (WCAG 2.2, 2.5.7).
@@ -47,7 +48,7 @@ function begin(item, clientY, pointerId, captureEl) {
 
 function finish(commit) {
   if (!st) return;
-  const { item, indicator, list, id, to, from, join, items } = st;
+  const { item, indicator, list, id, to, from, join, before, items } = st;
   item.classList.remove('dragging');
   item.style.transform = '';
   indicator.remove();
@@ -57,7 +58,7 @@ function finish(commit) {
   swallowClick = true; // the release shouldn't also open the item
   setTimeout(() => { swallowClick = false; }, 350);
   if (!commit || !handlers[list]) return;
-  if (join && join !== id) { handlers[list](id, to, { join }); announce('Linked'); return; }
+  if (join && join !== id) { handlers[list](id, to, { join, before }); announce('Linked'); return; }
   if (to !== from) { handlers[list](id, to, {}); announce(`Moved to position ${to + 1}`); }
 }
 
@@ -98,6 +99,7 @@ document.addEventListener('pointermove', (e) => {
   const joinEl = over && st.items[over.i].hasAttribute('data-drag-join') && st.item.hasAttribute('data-drag-join') ? st.items[over.i] : null;
   st.items.forEach((el) => el.classList.toggle('drop-join', el === joinEl));
   st.join = joinEl ? joinEl.dataset.dragId : null;
+  st.before = !!over && y < (over.top + over.bottom) / 2; // top half: go before it
   let to = others.filter((m) => (m.top + m.bottom) / 2 < y).length;
   to = Math.max(0, Math.min(others.length, to));
   st.to = to;

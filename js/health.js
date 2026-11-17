@@ -26,7 +26,10 @@ export function createHealth(ctx) {
       <li>In the action, tap the type and choose <b>Active Energy</b>.</li>
       <li>Tap the value field, then choose <b>Shortcut Input</b> from the bar above the keyboard (or <b>Select Variable</b> → <b>Shortcut Input</b>). If it asks for a unit, choose <b>kcal</b> (Cal).</li>
       <li>Tap <b>Done</b>. The first time it runs, iPhone asks to let it write to Health: tap <b>Allow</b>.</li>
+      <li>Once it has run once, open the <b>Health</b> app: <b>Browse</b> → <b>Activity</b> → <b>Active Energy</b> → <b>Data Sources &amp; Access</b> → <b>Edit</b>, and drag <b>Shortcuts</b> to the top of the list. Tap <b>Done</b>.</li>
     </ol>
+    <p class="muted small">Why the last step: when two sources (say your iPhone and Shortcuts) both record calories for the same minutes, Health counts only the one highest in that list. Your iPhone keeps logging calories from your steps, so without this the workout's calories can show up at first and then drop out of your total once the iPhone's own numbers sync. They're never deleted: Active Energy → <b>Show All Data</b> still lists them.</p>
+    <p class="muted small">Wearing an Apple Watch that tracked the workout? Skip sending: the Watch already counted it, and sending adds it twice.</p>
     <p class="muted small">After that, tapping "Send to Apple Health" opens Shortcuts for a second, saves the calories, and you can swipe back to Lift. If nothing is saved, check the shortcut's name matches exactly.</p>`;
   }
 

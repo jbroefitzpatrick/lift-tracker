@@ -263,7 +263,7 @@ const RAW = [
   // ---- Quads, adductors, abductors ----
   ['leg-extension', 'Leg extension', 'A', 'machine', 'knee-extension', 'quads', ''],
   ['hip-adductor', 'Machine hip adductor', 'A', 'machine', 'hip-adduction', 'adductors', ''],
-  ['copenhagen-plank', 'Copenhagen plank', 'A', 'bodyweight', 'hip-adduction', 'adductors', 'obliques'],
+  ['copenhagen-plank', 'Copenhagen plank', 'A', 'bodyweight', 'hip-adduction', 'adductors', 'obliques', 'time'],
   ['hip-abductor', 'Machine hip abductor', 'A', 'machine', 'hip-abduction', 'abductors', 'glutes'],
   ['cable-hip-abduction', 'Cable hip abduction', 'A', 'cable', 'hip-abduction', 'abductors', 'glutes'],
 
@@ -298,6 +298,61 @@ const RAW = [
   ['russian-twist', 'Russian twist', 'A', 'bodyweight', 'rotation', 'obliques', 'abs'],
   ['db-side-bend', 'DB side bend', 'A', 'dumbbell', 'anti-lateral', 'obliques', 'abs'],
   ['cable-oblique-crunch', 'Cable oblique crunch', 'A', 'cable', 'rotation', 'obliques', 'abs'],
+
+  // ---- More lifts ----
+  ['incline-cable-fly', 'Incline cable fly', 'A', 'cable', 'chest-fly', 'chest front-delts', ''],
+  ['db-squeeze-press', 'DB squeeze press', 'C', 'dumbbell', 'horizontal-push', 'chest triceps', 'front-delts'],
+  ['incline-pushup', 'Incline pushup', 'C', 'bodyweight', 'horizontal-push', 'chest', 'front-delts triceps'],
+  ['decline-pushup', 'Decline pushup', 'C', 'bodyweight', 'incline-push', 'chest front-delts', 'triceps'],
+  ['deficit-pushup', 'Deficit pushup', 'C', 'bodyweight', 'horizontal-push', 'chest', 'front-delts triceps'],
+  ['diamond-pushup', 'Diamond pushup', 'C', 'bodyweight', 'horizontal-push', 'triceps chest', 'front-delts'],
+  ['z-press', 'Z press', 'C', 'barbell-upper', 'vertical-push', 'front-delts', 'triceps side-delts abs'],
+  ['seated-db-lat-raise', 'Seated DB lateral raise', 'A', 'dumbbell', 'lateral-raise', 'side-delts', 'traps'],
+  ['incline-y-raise', 'Incline DB Y-raise', 'A', 'dumbbell', 'lateral-raise', 'side-delts traps', 'rear-delts'],
+  ['plate-front-raise', 'Plate front raise', 'A', 'barbell-upper', 'front-raise', 'front-delts', 'side-delts'],
+  ['band-face-pull', 'Band face pull', 'A', 'bodyweight', 'rear-delt', 'rear-delts upper-back', 'traps'],
+  ['cable-shrug', 'Cable shrug', 'A', 'cable', 'shrug', 'traps', 'forearms'],
+  ['yates-row', 'Underhand barbell row', 'C', 'barbell-upper', 'horizontal-pull', 'lats upper-back', 'biceps rear-delts lower-back'],
+  ['low-row-machine', 'Low row (plate-loaded)', 'C', 'machine', 'horizontal-pull', 'lats upper-back', 'biceps rear-delts'],
+  ['renegade-row', 'Renegade row', 'C', 'dumbbell', 'horizontal-pull', 'upper-back lats', 'abs obliques biceps'],
+  ['band-assisted-pullup', 'Band-assisted pullup', 'C', 'bodyweight', 'vertical-pull', 'lats', 'biceps upper-back'],
+  ['negative-pullup', 'Negative pullup', 'C', 'bodyweight', 'vertical-pull', 'lats', 'biceps upper-back'],
+  ['weighted-back-ext', 'Weighted back extension', 'A', 'bodyweight', 'back-extension', 'lower-back glutes', 'hamstrings'],
+  ['superman', 'Superman hold', 'A', 'bodyweight', 'back-extension', 'lower-back', 'glutes upper-back', 'time'],
+  ['zottman-curl', 'Zottman curl', 'A', 'dumbbell', 'elbow-flexion', 'biceps forearms', ''],
+  ['drag-curl', 'Drag curl', 'A', 'barbell-upper', 'elbow-flexion', 'biceps', 'forearms'],
+  ['cable-preacher-curl', 'Cable preacher curl', 'A', 'cable', 'elbow-flexion', 'biceps', 'forearms'],
+  ['cable-kickback-tri', 'Cable tricep kickback', 'A', 'cable', 'elbow-extension', 'triceps', ''],
+  ['reverse-pushdown', 'Reverse-grip pushdown', 'A', 'cable', 'elbow-extension', 'triceps', 'forearms'],
+  ['tate-press', 'Tate press', 'A', 'dumbbell', 'elbow-extension', 'triceps', 'chest'],
+  ['plate-pinch', 'Plate pinch hold', 'A', 'barbell-upper', 'isometric', 'forearms', '', 'time'],
+  ['ffe-split-squat', 'Front-foot elevated split squat', 'C', 'dumbbell', 'lunge', 'quads glutes', 'adductors'],
+  ['lateral-lunge', 'Lateral lunge', 'C', 'dumbbell', 'lunge', 'adductors glutes quads', ''],
+  ['curtsy-lunge', 'Curtsy lunge', 'C', 'dumbbell', 'lunge', 'glutes quads', 'abductors adductors'],
+  ['cossack-squat', 'Cossack squat', 'C', 'bodyweight', 'lunge', 'adductors quads glutes', ''],
+  ['zercher-squat', 'Zercher squat', 'C', 'barbell-lower', 'squat', 'quads glutes', 'upper-back abs adductors'],
+  ['pause-squat', 'Pause back squat', 'C', 'barbell-lower', 'squat', 'quads glutes', 'adductors lower-back'],
+  ['deficit-deadlift', 'Deficit deadlift', 'C', 'barbell-lower', 'hinge', 'glutes hamstrings lower-back', 'quads traps forearms'],
+  ['stiff-leg-deadlift', 'Stiff-leg deadlift', 'C', 'barbell-lower', 'hinge', 'hamstrings glutes', 'lower-back'],
+  ['b-stance-rdl', 'B-stance DB RDL', 'C', 'dumbbell', 'hinge', 'hamstrings glutes', 'lower-back'],
+  ['frog-pump', 'Frog pump', 'A', 'bodyweight', 'hip-extension', 'glutes', ''],
+  ['side-lying-abduction', 'Side-lying hip abduction', 'A', 'bodyweight', 'hip-abduction', 'abductors', 'glutes'],
+  ['band-seated-abduction', 'Banded seated hip abduction', 'A', 'bodyweight', 'hip-abduction', 'abductors', 'glutes'],
+  ['reverse-nordic', 'Reverse Nordic', 'A', 'bodyweight', 'knee-extension', 'quads', 'hip-flexors'],
+  ['tibialis-raise', 'Tibialis raise', 'A', 'bodyweight', 'calf-raise', 'calves', ''],
+  ['seated-db-calf', 'Seated DB calf raise', 'A', 'dumbbell', 'calf-raise', 'calves', ''],
+  ['bicycle-crunch', 'Bicycle crunch', 'A', 'bodyweight', 'rotation', 'abs obliques', 'hip-flexors'],
+  ['reverse-crunch', 'Reverse crunch', 'A', 'bodyweight', 'hip-flexion', 'abs', 'hip-flexors'],
+  ['v-up', 'V-up', 'A', 'bodyweight', 'core-flexion', 'abs hip-flexors', ''],
+  ['toes-to-bar', 'Toes to bar', 'A', 'bodyweight', 'hip-flexion', 'abs hip-flexors', 'lats forearms obliques'],
+  ['stir-the-pot', 'Stir the pot', 'A', 'bodyweight', 'anti-extension', 'abs', 'obliques'],
+  ['plank-shoulder-tap', 'Plank shoulder taps', 'A', 'bodyweight', 'anti-rotation', 'abs obliques', 'front-delts'],
+  ['decline-crunch', 'Decline crunch', 'A', 'bodyweight', 'core-flexion', 'abs', 'obliques'],
+  ['barbell-rollout', 'Barbell rollout', 'A', 'barbell-upper', 'anti-extension', 'abs', 'lats obliques'],
+  ['overhead-carry', 'Overhead carry', 'A', 'dumbbell', 'carry', 'front-delts abs', 'traps obliques', 'distance'],
+  ['body-saw', 'Body saw', 'A', 'bodyweight', 'anti-extension', 'abs', 'front-delts'],
+  ['side-plank-dip', 'Side plank hip dip', 'A', 'bodyweight', 'anti-lateral', 'obliques', 'abs'],
+  ['hanging-oblique-raise', 'Hanging oblique knee raise', 'A', 'bodyweight', 'hip-flexion', 'obliques abs', 'hip-flexors'],
 
   // ---- Full body ----
   ['farmers-carry', "Farmer's carry", 'C', 'dumbbell', 'carry', 'forearms traps', 'abs glutes', 'distance'],
@@ -337,6 +392,16 @@ const RAW = [
   ['wall-ball', 'Wall ball', 'X', 'dumbbell', 'circuit-move', 'quads front-delts', 'glutes triceps', 'reps'],
   ['med-ball-slam', 'Medicine ball slam', 'X', 'dumbbell', 'circuit-move', 'lats abs', 'front-delts triceps', 'reps'],
   ['battle-ropes', 'Battle ropes', 'X', 'bodyweight', 'circuit-move', 'front-delts', 'forearms abs', 'time'],
+  ['kb-clean', 'Kettlebell clean', 'X', 'dumbbell', 'hinge', 'glutes hamstrings', 'forearms upper-back traps', 'reps'],
+  ['kb-snatch', 'Kettlebell snatch', 'X', 'dumbbell', 'hinge', 'glutes front-delts', 'hamstrings traps', 'reps'],
+  ['tuck-jump', 'Tuck jump', 'X', 'bodyweight', 'plyo', 'quads glutes', 'calves abs', 'reps'],
+  ['skater-jump', 'Skater jump', 'X', 'bodyweight', 'plyo', 'glutes abductors', 'quads calves', 'reps'],
+  ['shuttle-run', 'Shuttle run', 'X', 'bodyweight', 'sprint', 'quads hamstrings', 'calves glutes', 'distance'],
+  ['bear-crawl', 'Bear crawl', 'X', 'bodyweight', 'circuit-move', 'abs front-delts quads', '', 'distance'],
+  ['stair-climber', 'Stair climber', 'X', 'machine', 'erg', 'glutes quads', 'calves', 'time'],
+  ['elliptical-interval', 'Elliptical interval', 'X', 'machine', 'erg', 'quads glutes', 'calves', 'time'],
+  ['incline-walk', 'Incline treadmill walk', 'X', 'machine', 'erg', 'calves glutes', 'hamstrings', 'time'],
+  ['sled-drag', 'Sled drag', 'X', 'machine', 'carry', 'quads hamstrings', 'glutes', 'distance'],
 
   // ---- Running-goal workouts ----
   ['run-repeat', 'Run repeats', 'X', 'bodyweight', 'run', 'quads calves hamstrings', 'glutes hip-flexors', 'distance'],
@@ -363,6 +428,15 @@ const RAW = [
   ['chin-tuck', 'Chin tuck', 'X', 'bodyweight', 'prehab', 'traps', '', 'reps'],
   ['lateral-band-walk', 'Lateral band walk', 'X', 'bodyweight', 'prehab', 'abductors glutes', '', 'reps'],
   ['scap-pull', 'Scapular pull-up', 'X', 'bodyweight', 'prehab', 'lats upper-back', 'traps', 'reps'],
+  ['hip-circle', 'Hip circles', 'X', 'bodyweight', 'prehab', 'glutes hip-flexors', '', 'reps'],
+  ['ankle-rock', 'Ankle rocks', 'X', 'bodyweight', 'prehab', 'calves', '', 'reps'],
+  ['open-book', 'Open book rotation', 'X', 'bodyweight', 'prehab', 'upper-back', 'chest', 'reps'],
+  ['inchworm', 'Inchworm', 'X', 'bodyweight', 'prehab', 'hamstrings abs', 'front-delts', 'reps'],
+  ['knee-hug-walk', 'Walking knee hug', 'X', 'bodyweight', 'prehab', 'glutes hip-flexors', '', 'reps'],
+  ['band-dislocate', 'Band pass-through', 'X', 'bodyweight', 'prehab', 'front-delts rear-delts', 'chest', 'reps'],
+  ['wall-slide', 'Wall slides', 'X', 'bodyweight', 'prehab', 'upper-back traps', 'side-delts', 'reps'],
+  ['prone-ytw', 'Prone Y-T-W', 'X', 'bodyweight', 'prehab', 'rear-delts upper-back traps', '', 'reps'],
+  ['glute-bridge-march', 'Glute bridge march', 'X', 'bodyweight', 'prehab', 'glutes', 'hamstrings abs', 'reps'],
 
   // ---- Recovery: stretching and foam rolling (timed holds, no training fatigue) ----
   ['roll-quads', 'Foam roll quads', 'X', 'bodyweight', 'mobility', 'quads', '', 'time'],
@@ -382,6 +456,16 @@ const RAW = [
   ['stretch-wgs', "World's greatest stretch", 'X', 'bodyweight', 'mobility', 'hip-flexors glutes', 'upper-back hamstrings', 'time'],
   ['stretch-crossbody', 'Cross-body shoulder stretch', 'X', 'bodyweight', 'mobility', 'rear-delts', 'side-delts', 'time'],
   ['dead-hang', 'Dead hang', 'X', 'bodyweight', 'mobility', 'lats forearms', 'upper-back', 'time'],
+  ['stretch-butterfly', 'Butterfly stretch', 'X', 'bodyweight', 'mobility', 'adductors', '', 'time'],
+  ['stretch-frog', 'Frog stretch', 'X', 'bodyweight', 'mobility', 'adductors', 'hip-flexors', 'time'],
+  ['stretch-lat', 'Bench lat stretch', 'X', 'bodyweight', 'mobility', 'lats', 'triceps', 'time'],
+  ['stretch-triceps', 'Overhead triceps stretch', 'X', 'bodyweight', 'mobility', 'triceps', 'lats', 'time'],
+  ['stretch-quad', 'Standing quad stretch', 'X', 'bodyweight', 'mobility', 'quads', 'hip-flexors', 'time'],
+  ['stretch-figure4', 'Figure-four stretch', 'X', 'bodyweight', 'mobility', 'glutes', '', 'time'],
+  ['stretch-spinal-twist', 'Seated spinal twist', 'X', 'bodyweight', 'mobility', 'lower-back obliques', 'glutes', 'time'],
+  ['stretch-cobra', 'Cobra stretch', 'X', 'bodyweight', 'mobility', 'abs', 'hip-flexors', 'time'],
+  ['stretch-down-dog', 'Downward dog', 'X', 'bodyweight', 'mobility', 'hamstrings calves', 'lats', 'time'],
+  ['roll-adductors', 'Foam roll inner thighs', 'X', 'bodyweight', 'mobility', 'adductors', '', 'time'],
 ];
 
 // What each exercise needs beyond its broad type (keys from GEAR in gym.js). Missing gear hides it.
@@ -422,6 +506,13 @@ const NEEDS = {
   'band-pull-apart': 'bands', 'band-external-rotation': 'bands', tke: 'bands', 'lateral-band-walk': 'bands',
   'roll-quads': 'foam-roller', 'roll-hamstrings': 'foam-roller', 'roll-glutes': 'foam-roller', 'roll-upper-back': 'foam-roller', 'roll-lats': 'foam-roller',
   'dead-hang': 'pullup-bar', 'scap-pull': 'pullup-bar',
+  'incline-cable-fly': 'cable-tower incline-bench', 'db-squeeze-press': 'bench', 'z-press': 'rack', 'incline-y-raise': 'incline-bench', 'band-face-pull': 'bands', 'cable-shrug': 'cable-tower',
+  'low-row-machine': 'plate-row', 'band-assisted-pullup': 'pullup-bar bands', 'negative-pullup': 'pullup-bar', 'weighted-back-ext': 'back-ext',
+  'cable-preacher-curl': 'cable-tower preacher-bench', 'cable-kickback-tri': 'cable-tower', 'reverse-pushdown': 'cable-tower', 'tate-press': 'bench',
+  'ffe-split-squat': 'box', 'zercher-squat': 'rack', 'pause-squat': 'rack', 'band-seated-abduction': 'bands', 'seated-db-calf': 'bench',
+  'toes-to-bar': 'pullup-bar', 'stir-the-pot': 'stability-ball', 'decline-crunch': 'incline-bench', 'hanging-oblique-raise': 'pullup-bar',
+  'kb-clean': 'kettlebell', 'kb-snatch': 'kettlebell', 'stair-climber': 'stairs', 'elliptical-interval': 'elliptical', 'incline-walk': 'treadmill', 'sled-drag': 'sled',
+  'band-dislocate': 'bands', 'stretch-lat': 'bench', 'roll-adductors': 'foam-roller',
 };
 // Old names, so exercises keep up with renames unless the user renamed them.
 const RENAMED = {
@@ -432,10 +523,28 @@ const RENAMED = {
 
 // One limb or one side at a time: what the logged weight, reps or time refer to.
 const SIDED = {
-  arm: 'db-row single-arm-pulldown single-arm-cable-row cable-tri-ext concentration-curl db-preacher-curl meadows-row wrist-ext-eccentric band-external-rotation forearm-stretch',
-  leg: 'bulgarian-split-squat single-leg-rdl step-up reverse-lunge walking-lunge single-leg-press single-leg-calf single-leg-hip-thrust smith-split-squat bb-lunge cable-kickback cable-hip-abduction glute-kickback-machine step-up-bw bodyweight-lunge lateral-bound leg-swing tke calf-raise-slow',
-  side: 'side-plank copenhagen-plank pallof-press cable-woodchop landmine-rotation suitcase-carry db-side-bend cable-oblique-crunch clamshell stretch-couch stretch-hamstring stretch-pigeon stretch-calf stretch-chest stretch-thread stretch-wgs stretch-crossbody stretch-9090 roll-lats',
+  arm: 'cable-kickback-tri kb-clean kb-snatch stretch-triceps db-row single-arm-pulldown single-arm-cable-row cable-tri-ext concentration-curl db-preacher-curl meadows-row wrist-ext-eccentric band-external-rotation forearm-stretch',
+  leg: 'ffe-split-squat lateral-lunge curtsy-lunge cossack-squat b-stance-rdl side-lying-abduction ankle-rock stretch-quad bulgarian-split-squat single-leg-rdl step-up reverse-lunge walking-lunge single-leg-press single-leg-calf single-leg-hip-thrust smith-split-squat bb-lunge cable-kickback cable-hip-abduction glute-kickback-machine step-up-bw bodyweight-lunge lateral-bound leg-swing tke calf-raise-slow',
+  side: 'side-plank-dip open-book stretch-figure4 stretch-spinal-twist side-plank copenhagen-plank pallof-press cable-woodchop landmine-rotation suitcase-carry db-side-bend cable-oblique-crunch clamshell stretch-couch stretch-hamstring stretch-pigeon stretch-calf stretch-chest stretch-thread stretch-wgs stretch-crossbody stretch-9090 roll-lats',
 };
+// Moves that can be logged more than one way (the first is the default). Anything measured by
+// distance can also be timed. Everything else has just its own measure.
+const MODES = {
+  'mountain-climber': 'time reps', 'high-knees': 'time reps', 'jumping-jack': 'time reps', 'jump-rope': 'time reps', 'pogo-hop': 'time reps',
+  burpee: 'reps time', 'air-squat': 'reps time', 'bodyweight-lunge': 'reps time', 'squat-jump': 'reps time', 'kb-swing': 'reps time',
+  'wall-ball': 'reps time', 'med-ball-slam': 'reps time', 'plank-shoulder-tap': 'reps time', 'lateral-band-walk': 'reps time',
+  'arm-circle': 'time reps', 'leg-swing': 'reps time', 'stretch-catcow': 'time reps', 'stretch-wgs': 'time reps', 'stretch-thread': 'time reps',
+  'stretch-9090': 'time reps', 'open-book': 'reps time', superman: 'time reps', 'dead-bug': 'reps time', 'bird-dog': 'reps time',
+  'hip-circle': 'reps time', inchworm: 'reps time', pushup: 'reps time', crunch: 'reps time', 'step-up-bw': 'reps time', 'bench-dip': 'reps time', 'pushup-rotation': 'reps time', 'tuck-jump': 'reps time', 'skater-jump': 'reps time',
+  'assault-bike-cal': 'cal time', 'bike-sprint': 'time cal', 'bike-interval': 'time cal distance', 'row-interval': 'distance time cal',
+  'ski-interval': 'time cal distance', 'elliptical-interval': 'time distance', 'stair-climber': 'time', 'incline-walk': 'time distance',
+};
+const modesOf = (id, metric) => {
+  const m = MODES[id] ? MODES[id].split(' ') : [metric || 'reps'];
+  if (m.includes('distance') && !m.includes('time')) m.push('time');
+  return m;
+};
+
 const SIDE_OF = Object.fromEntries(Object.entries(SIDED).flatMap(([k, ids]) => ids.split(' ').map((id) => [id, k])));
 // Short note under each set's numbers, e.g. 'per arm'.
 export function sideNote(ex) {
@@ -447,7 +556,7 @@ export function sideNote(ex) {
 const split = (s) => (s ? s.split(' ') : []);
 
 export const BANK = Object.fromEntries(RAW.map(([id, name, cat, type, pattern, primary, secondary, metric]) => [id, {
-  id, name, type, pattern, metric: metric || 'reps', needs: split(NEEDS[id]),
+  id, name, type, pattern, metric: metric || 'reps', needs: split(NEEDS[id]), modes: modesOf(id, metric),
   category: cat === 'C' ? 'compound' : cat === 'X' ? 'conditioning' : 'accessory',
   primary: split(primary),
   secondary: split(secondary),
@@ -462,13 +571,13 @@ export function syncBank(exercises, defaultIncrements) {
       exercises[b.id] = {
         id: b.id, name: b.name, type: b.type, increment: defaultIncrements[b.type] || 5,
         substitute: '', notes: '', minRir: 0, rules: {}, startWeight: null,
-        category: b.category, pattern: b.pattern, metric: b.metric, primary: [...b.primary], secondary: [...b.secondary], needs: [...b.needs],
+        category: b.category, pattern: b.pattern, metric: b.metric, primary: [...b.primary], secondary: [...b.secondary], needs: [...b.needs], modes: [...b.modes],
       };
     } else if (!ex.customMeta) {
       if (RENAMED[b.id]?.includes(ex.name)) ex.name = b.name;
       Object.assign(ex, { category: b.category, pattern: b.pattern, metric: b.metric, primary: [...b.primary], secondary: [...b.secondary] });
     }
-    if (ex) ex.needs = [...b.needs]; // equipment needs always follow the bank
+    if (ex) { ex.needs = [...b.needs]; ex.modes = [...b.modes]; } // equipment and measures always follow the bank
   }
   for (const ex of Object.values(exercises)) {
     ex.category ||= 'accessory';

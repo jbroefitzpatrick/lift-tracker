@@ -257,9 +257,18 @@ function newSet(weight, reps) {
   return { weight: weight ?? null, reps, rir: null, done: false, pain: false };
 }
 
+// How a move is measured: your Reps/Time choice for it, then the plan's, as long as the
+// exercise allows it (a swapped-in stretch is timed even if the drill it replaced counted reps).
 function metricOf(item) {
-  return item.metric || db.exercises[item.exerciseId]?.metric || 'reps';
+  const ex = db.exercises[item.exerciseId];
+  const allowed = ex?.modes?.length ? ex.modes : [ex?.metric || 'reps'];
+  if (ex?.metricPref && allowed.includes(ex.metricPref)) return ex.metricPref;
+  if (item.metric && allowed.includes(item.metric)) return item.metric;
+  return allowed[0];
 }
+const DEFAULT_TARGET = { time: 30, reps: 10, distance: 200, cal: 10 };
+// The planned target, unless it was set for a different measure.
+const targetOf = (item, metric) => (item.metric === metric || (!item.metric && metric === (db.exercises[item.exerciseId]?.metric || 'reps')) ? item.target : null) ?? DEFAULT_TARGET[metric];
 
 function makeEntry(item, isDeload) {
   const metric = metricOf(item);
@@ -267,10 +276,11 @@ function makeEntry(item, isDeload) {
     // Conditioning: sets are rounds measured in time, distance, calories or reps.
     const n = isDeload ? Math.ceil(item.sets / 2) : item.sets;
     const key = METRIC_FIELDS[metric][0][0];
+    const target = targetOf(item, metric);
     return {
       uid: item.uid, exerciseId: item.exerciseId, group: item.group, repMin: item.repMin, repMax: item.repMax,
-      restSec: item.restSec, metric, target: item.target, phase: item.phase, dropSet: false, pain: false, painFree: false,
-      sets: Array.from({ length: n }, () => ({ [key]: item.target ?? null, rir: null, done: false, pain: false })),
+      restSec: item.restSec, metric, target, phase: item.phase, dropSet: false, pain: false, painFree: false,
+      sets: Array.from({ length: n }, () => ({ [key]: target ?? null, rir: null, done: false, pain: false })),
     };
   }
   const t = targetsFor(db, item, isDeload);
@@ -303,7 +313,12 @@ function syncSession(session, items) {
   for (const item of items) {
     if (session.entries[item.uid] || session.removed?.includes(item.uid)) continue;
     session.entries[item.uid] = makeEntry(item, session.isDeload);
-    session.order.push(item.uid);
+    // A warm-up added mid-workout goes first (after any warm-up already there); the rest go last.
+    if (item.phase === 'warmup') {
+      let at = 0;
+      while (at < session.order.length && session.entries[session.order[at]]?.phase === 'warmup') at++;
+      session.order.splice(at, 0, item.uid);
+    } else session.order.push(item.uid);
     changed = true;
   }
   if (changed) persist();
@@ -580,6 +595,15 @@ function rirTarget(wi) {
 
 // On cardio days only the plan's conditioning work is on; lifting stays parked for when the day switches back.
 function plannedFor(day) {
+  return plannedRaw(day).map((it) => {
+    const ex = db.exercises[it.exerciseId];
+    if (!ex) return it;
+    const metric = metricOf(it);
+    if (metric === 'reps' && ex.category !== 'conditioning') return it.metric && it.metric !== 'reps' ? { ...it, metric: undefined } : it;
+    return metric === it.metric && it.target != null ? it : { ...it, metric, target: targetOf(it, metric) };
+  });
+}
+function plannedRaw(day) {
   const items = resolveDay(db, day);
   const lifts = items.filter((i) => i.ex.category !== 'conditioning');
   if (lifts.length && dayMode(db, day) !== 'cardio') {
@@ -760,12 +784,18 @@ function screenToday() {
   }
   if (session?.freestyle && !items.length) html += '<p class="muted small center pad">Add exercises from the library to build this workout.</p>';
 
-  if (session && mode !== 'both') { /* cardio stays out of the way during a workout */ } else if (mode === 'both') html += cardioSection(day, 'Cardio after lifting', true);
+  if (session && mode !== 'both' && ui.workoutCardio !== day) { /* cardio stays out of the way during a workout */ } else if (session || mode === 'both') html += cardioSection(day, session ? 'Cardio' : 'Cardio after lifting', true);
   else html += cardioSection(day, 'Cardio', !!ui.showCardio);
 
   if (session) {
+    const has = (ph) => session.order.some((u) => session.entries[u]?.phase === ph);
     html += `<div class="finish-bar">
-      <button class="btn block" data-a="fin-open">${icon('plus')} Add finisher</button>
+      <div class="add-row" role="group" aria-label="Add to this workout">
+        ${!session.freestyle && !has('warmup') ? `<button class="chip" data-a="add-routine" data-k="warm">${icon('plus')} Warm-up</button>` : ''}
+        <button class="chip" data-a="fin-open">${icon('plus')} Finisher</button>
+        ${ui.workoutCardio !== day && mode !== 'both' ? `<button class="chip" data-a="add-cardio">${icon('plus')} Cardio</button>` : ''}
+        ${!session.freestyle && !has('cooldown') ? `<button class="chip" data-a="add-routine" data-k="cool">${icon('plus')} Cool-down</button>` : ''}
+      </div>
       ${session.pausedAt ? '<button class="btn primary block big" data-a="resume">Resume workout</button>' : '<button class="btn primary block big" data-a="finish">Finish workout</button>'}
       <div class="row">${session.pausedAt ? '<button class="btn grow" data-a="finish">Finish</button>' : '<button class="btn grow" data-a="pause">Pause</button>'}<button class="btn plain grow" data-a="discard">Discard</button></div>
     </div>`;
@@ -1036,7 +1066,7 @@ function screenExercise() {
   const img = info.images?.[0];
   return `${session ? workoutBar(session) : ''}<div class="ex-screen">
     <div class="ex-hero">${img ? `<img src="${img}" alt="${esc(ex.name)}" referrerpolicy="no-referrer">` : `<div class="hero-body">${bodyPair(Object.fromEntries(ex.primary.map((m) => [m, 1])))}</div>`}
-      <button class="icon-btn hero-btn" data-a="ex-close" aria-label="Back to workout">${icon('left')}</button>
+      ${session ? '' : `<button class="icon-btn hero-btn" data-a="ex-close" aria-label="Back to the day">${icon('left')}</button>`}
       <button class="icon-btn hero-btn right" data-a="ex-sheet" data-uid="${item.uid}" aria-label="More options">${icon('more')}</button>
     </div>
     <div class="ex-title-row"><h1>${esc(ex.name)}</h1><button class="btn sm" data-a="ex-info" data-id="${ex.id}">${icon('play')}How-to</button></div>
@@ -1050,6 +1080,7 @@ function screenExercise() {
     </div>
     ${grp.linked ? `<div class="group-note"><b>${linkLabel(grp.items.length)}</b>${entry ? (() => { const n = Math.max(...grp.items.map((i) => session.entries[i.uid]?.sets.length || i.sets)); const r = entry.sets.findIndex((x) => !x.done); return ` · round ${r < 0 ? entry.sets.length : r + 1} of ${n}`; })() : ''} · ${grp.items.map((i) => (i === item ? `<span class="cur">${esc(i.ex.name)}</span>` : esc(i.ex.name))).join(' → ')}</div>` : ''}
     <p class="aim-line">${aim}${conditioning || t.aim ? '' : t.rir ? ` · ${t.rir} RIR` : rir ? ` · about ${rir} in reserve` : ''}</p>
+    ${ex.modes?.length > 1 ? `<div class="segmented small-seg metric-seg" role="radiogroup" aria-label="Measure by">${ex.modes.map((m) => `<button class="${m === metric ? 'on' : ''}" data-a="set-metric" data-uid="${item.uid}" data-v="${m}" role="radio" aria-checked="${m === metric}">${METRICS[m]}</button>`).join('')}</div>` : ''}
     ${conditioning ? train.condInfo(item, entry, ex, metric) : ''}
     ${item.note && conditioning ? `<p class="small">${esc(item.note)}</p>` : ''}
     ${notices.filter((n) => n[2] !== 'pain').map(([c, m]) => `<p class="notice ${c}">${esc(m)}</p>`).join('')}
@@ -1066,7 +1097,7 @@ function screenExercise() {
     ${checkin}
     ${comingUp(items, idx, session)}
     <div class="ex-nav">
-      ${back ? `<button class="btn" data-a="ex-go" data-uid="${back.uid}" aria-label="Back to ${esc(back.ex.name)}">${icon('left')}</button>` : ''}
+      ${back ? `<button class="btn prev-ex" data-a="ex-go" data-uid="${back.uid}" aria-label="Previous exercise: ${esc(back.ex.name)}">${icon('left')}<span>Prev</span></button>` : ''}
       ${!session ? '<button class="btn primary grow" data-a="start-workout">Start workout</button>'
         : next ? `<button class="btn primary grow" data-a="ex-go" data-uid="${next.uid}"><span class="ell">Next: ${esc(next.ex.name)}</span></button>`
           : '<button class="btn primary grow" data-a="finish">Finish workout</button>'}
@@ -1960,7 +1991,7 @@ function swapInSession(uid, newId) {
   const logged = entry.sets.some((x) => x.done || x.pain);
   if (!logged) {
     const fresh = makeEntry(item, session.isDeload);
-    Object.assign(entry, { exerciseId: newId, sets: fresh.sets, dropSet: false, painFree: false });
+    Object.assign(entry, { exerciseId: newId, sets: fresh.sets, metric: fresh.metric, target: fresh.target, dropSet: false, painFree: false });
   } else {
     entry.sets = entry.sets.filter((x) => x.done || x.pain);
     const newUid = `${baseUid}-x${Date.now()}`;
@@ -3328,6 +3359,33 @@ const actions = {
     if (el.checked) ui.selected.add(d.uid); else ui.selected.delete(d.uid);
     render();
   },
+  'set-metric': (d) => {
+    const items = todayItems(ui.day);
+    const item = items.find((x) => x.uid === d.uid);
+    const ex = item && db.exercises[item.exerciseId];
+    if (!ex?.modes?.includes(d.v)) return;
+    ex.metricPref = d.v; // remembered for next time
+    const e = sessionFor(ui.day)?.entries[d.uid];
+    if (e) {
+      // Undone rounds switch over to the new measure; logged ones keep what was logged.
+      const key = METRIC_FIELDS[d.v][0][0];
+      const target = DEFAULT_TARGET[d.v];
+      e.metric = d.v; e.target = target;
+      for (const x of e.sets) if (!x.done) { for (const k of ['reps', 'time', 'dist', 'cal', 'weight']) delete x[k]; x[key] = target; }
+    }
+    persist(); render();
+    toast(`${ex.name}: by ${METRICS[d.v].toLowerCase()}.`);
+  },
+  'add-routine': (d) => {
+    const sx = sessionFor(ui.day);
+    if (!sx) return;
+    setDayExtra(db, ui.day, d.k, true);
+    const ph = d.k === 'warm' ? 'warmup' : 'cooldown';
+    sx.removed = (sx.removed || []).filter((u) => !u.startsWith(`${ph}-`));
+    persist(); render();
+    toast(d.k === 'warm' ? 'Warm-up added at the top.' : 'Cool-down added at the end.');
+  },
+  'add-cardio': () => { ui.workoutCardio = ui.day; (ui.cardioOpen ||= {})[ui.day] = true; render(); requestAnimationFrame(() => document.querySelector('.card.cardio')?.scrollIntoView({ behavior: 'smooth', block: 'start' })); },
   'list-undo': () => { if (!$('#sheet').hidden) closeSheet(); undoList(); },
   'log-all': (d) => {
     closeSheet();
@@ -3824,12 +3882,7 @@ onReorder('session', (uid, to, opt = {}) => {
   const list = shown.filter((x) => x !== moving);
   let at = Math.max(0, Math.min(list.length, to));
   const target = opt.join ? list.find((x) => x.uid === opt.join && phaseOf(x) === phaseOf(moving)) : null;
-  if (target) { // go to the end of the target's group
-    const g = groupNum(target.group);
-    at = list.indexOf(target);
-    while (at + 1 < list.length && groupNum(list[at + 1].group) === g) at++;
-    at += 1;
-  }
+  if (target) at = list.indexOf(target) + (opt.before ? 0 : 1); // right before or after the exercise it was dropped on
   // Warm-up, workout and cool-down stay in their own sections.
   const same = list.map((x, i) => (phaseOf(x) === phaseOf(moving) ? i : -1)).filter((i) => i >= 0);
   if (same.length) at = Math.max(same[0], Math.min(same[same.length - 1] + 1, at));
@@ -3838,7 +3891,11 @@ onReorder('session', (uid, to, opt = {}) => {
   // Anywhere else it stands alone. Other groups keep their links.
   const prev = list[at - 1]; const after = list[at + 1];
   const inside = prev && after && groupNum(prev.group) === groupNum(after.group) && phaseOf(prev) === phaseOf(after);
-  const joinKey = target ? groupNum(target.group) : inside ? groupNum(prev.group) : null;
+  // Moved within its own superset/circuit (e.g. to the first spot): it stays in it.
+  const own = groupNum(moving.group);
+  const ownSize = shown.filter((x) => groupNum(x.group) === own).length;
+  const besideOwn = ownSize > 1 && [prev, after].some((x) => x && groupNum(x.group) === own);
+  const joinKey = target ? groupNum(target.group) : inside ? groupNum(prev.group) : besideOwn ? own : null;
   const keyOf = (x) => (x.uid === uid ? (joinKey != null ? `g${joinKey}` : `solo:${uid}`) : `g${groupNum(x.group)}`);
   const keys = new Map(list.map((x) => [x.uid, keyOf(x)]));
   const session = sessionFor(ui.day);

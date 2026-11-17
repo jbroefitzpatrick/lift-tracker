@@ -1214,3 +1214,11 @@ details[open] > :not(summary) { animation: reveal 0.22s ease-out; }
 /* "per arm / leg / side" under the previous-set numbers */
 .prev:has(.per) { display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.15; }
 .prev .per { display: block; font-size: 0.6875rem; font-weight: 500; color: var(--faint); }
+
+/* Add a warm-up, finisher, cardio or cool-down once the workout is going. */
+.finish-bar .add-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.finish-bar .add-row .chip { display: inline-flex; align-items: center; gap: 4px; }
+/* Reps / Time switch on moves that can be logged either way. */
+.metric-seg { margin: 4px 0 10px; max-width: 280px; }
+/* Previous exercise: arrow plus a short label, so it reads differently from "Workout". */
+.ex-nav .prev-ex { display: inline-flex; align-items: center; gap: 2px; padding: 0 14px 0 10px; flex: none; }
