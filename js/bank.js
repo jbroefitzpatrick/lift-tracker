@@ -244,7 +244,7 @@ const RAW = [
   // ---- Glutes ----
   ['hip-thrust', 'Barbell hip thrust', 'A', 'barbell-lower', 'hip-extension', 'glutes', 'hamstrings'],
   ['machine-hip-thrust', 'Hip thrust machine', 'A', 'machine', 'hip-extension', 'glutes', 'hamstrings'],
-  ['glute-bridge', 'Barbell glute bridge', 'A', 'barbell-lower', 'hip-extension', 'glutes', 'hamstrings'],
+
   ['cable-pull-through', 'Cable pull-through', 'A', 'cable', 'hinge', 'glutes hamstrings', 'lower-back'],
   ['cable-kickback', 'Cable glute kickback', 'A', 'cable', 'hip-extension', 'glutes', 'hamstrings'],
   ['smith-hip-thrust', 'Smith machine hip thrust', 'A', 'machine', 'hip-extension', 'glutes', 'hamstrings'],
@@ -353,6 +353,64 @@ const RAW = [
   ['body-saw', 'Body saw', 'A', 'bodyweight', 'anti-extension', 'abs', 'front-delts'],
   ['side-plank-dip', 'Side plank hip dip', 'A', 'bodyweight', 'anti-lateral', 'obliques', 'abs'],
   ['hanging-oblique-raise', 'Hanging oblique knee raise', 'A', 'bodyweight', 'hip-flexion', 'obliques abs', 'hip-flexors'],
+
+  // ---- Equipment variety ----
+  ['cable-chest-press', 'Standing cable chest press', 'C', 'cable', 'horizontal-push', 'chest', 'front-delts triceps'],
+  ['suspension-pushup', 'Suspension pushup', 'C', 'bodyweight', 'horizontal-push', 'chest', 'front-delts triceps abs'],
+  ['db-single-arm-press', 'Single-arm DB shoulder press', 'C', 'dumbbell', 'vertical-push', 'front-delts', 'triceps side-delts abs'],
+  ['kb-press', 'Kettlebell overhead press', 'C', 'dumbbell', 'vertical-push', 'front-delts', 'triceps side-delts abs'],
+  ['pike-pushup', 'Pike pushup', 'C', 'bodyweight', 'vertical-push', 'front-delts triceps', 'side-delts'],
+  ['band-lat-raise', 'Band lateral raise', 'A', 'bodyweight', 'lateral-raise', 'side-delts', 'traps'],
+  ['db-rear-delt-row', 'Chest-supported rear delt row', 'A', 'dumbbell', 'rear-delt', 'rear-delts upper-back', 'traps'],
+  ['band-lat-pulldown', 'Band lat pulldown', 'C', 'bodyweight', 'vertical-pull', 'lats', 'biceps upper-back'],
+  ['band-row', 'Band row', 'C', 'bodyweight', 'horizontal-pull', 'upper-back lats', 'biceps rear-delts'],
+  ['suspension-row', 'Suspension row', 'C', 'bodyweight', 'horizontal-pull', 'upper-back lats', 'biceps rear-delts abs'],
+  ['kb-row', 'Kettlebell row', 'C', 'dumbbell', 'horizontal-pull', 'lats upper-back', 'biceps rear-delts'],
+  ['wide-cable-row', 'Wide-grip cable row', 'C', 'cable', 'horizontal-pull', 'upper-back rear-delts', 'lats biceps'],
+  ['bb-pullover', 'Barbell pullover', 'A', 'barbell-upper', 'pullover', 'lats chest', 'triceps'],
+  ['back-ext-machine', 'Back extension machine', 'A', 'machine', 'back-extension', 'lower-back', 'glutes hamstrings'],
+  ['band-good-morning', 'Band good morning', 'C', 'bodyweight', 'hinge', 'hamstrings lower-back', 'glutes'],
+  ['band-curl', 'Band curl', 'A', 'bodyweight', 'elbow-flexion', 'biceps', 'forearms'],
+  ['kb-curl', 'Kettlebell curl', 'A', 'dumbbell', 'elbow-flexion', 'biceps forearms', ''],
+  ['bb-wrist-curl', 'Barbell wrist curl', 'A', 'barbell-upper', 'wrist', 'forearms', ''],
+  ['cable-wrist-curl', 'Cable wrist curl', 'A', 'cable', 'wrist', 'forearms', ''],
+  ['band-pushdown', 'Band tricep pushdown', 'A', 'bodyweight', 'elbow-extension', 'triceps', ''],
+  ['ez-overhead-ext', 'EZ-bar overhead tricep extension', 'A', 'barbell-upper', 'elbow-extension', 'triceps', ''],
+  ['db-squat', 'DB squat', 'C', 'dumbbell', 'squat', 'quads glutes', 'adductors'],
+  ['db-sumo-squat', 'DB sumo squat', 'C', 'dumbbell', 'squat', 'adductors glutes quads', ''],
+  ['kb-goblet-squat', 'Kettlebell goblet squat', 'C', 'dumbbell', 'squat', 'quads glutes', 'abs upper-back'],
+  ['v-squat', 'V-squat machine', 'C', 'machine', 'squat', 'quads glutes', 'adductors'],
+  ['single-leg-extension', 'Single-leg leg extension', 'A', 'machine', 'knee-extension', 'quads', ''],
+  ['bb-walking-lunge', 'Barbell walking lunge', 'C', 'barbell-lower', 'lunge', 'quads glutes', 'adductors hamstrings'],
+  ['bb-split-squat', 'Barbell split squat', 'C', 'barbell-lower', 'lunge', 'quads glutes', 'adductors'],
+  ['bw-split-squat', 'Bodyweight split squat', 'C', 'bodyweight', 'lunge', 'quads glutes', 'adductors'],
+  ['kb-deadlift', 'Kettlebell deadlift', 'C', 'dumbbell', 'hinge', 'glutes hamstrings', 'lower-back quads'],
+  ['db-deadlift', 'DB deadlift', 'C', 'dumbbell', 'hinge', 'glutes hamstrings', 'lower-back quads forearms'],
+  ['trap-bar-rdl', 'Trap bar RDL', 'C', 'barbell-lower', 'hinge', 'hamstrings glutes', 'lower-back forearms'],
+  ['snatch-grip-deadlift', 'Snatch-grip deadlift', 'C', 'barbell-lower', 'hinge', 'glutes hamstrings upper-back', 'lower-back traps quads forearms'],
+  ['band-pull-through', 'Band pull-through', 'C', 'bodyweight', 'hinge', 'glutes hamstrings', 'lower-back'],
+  ['bb-glute-bridge', 'Barbell glute bridge', 'A', 'barbell-lower', 'hip-extension', 'glutes', 'hamstrings'],
+  ['db-glute-bridge', 'DB glute bridge', 'A', 'dumbbell', 'hip-extension', 'glutes', 'hamstrings'],
+  ['single-leg-glute-bridge', 'Single-leg glute bridge', 'A', 'bodyweight', 'hip-extension', 'glutes', 'hamstrings'],
+  ['band-hip-thrust', 'Banded hip thrust', 'A', 'bodyweight', 'hip-extension', 'glutes', 'hamstrings abductors'],
+  ['kb-hip-thrust', 'Kettlebell hip thrust', 'A', 'dumbbell', 'hip-extension', 'glutes', 'hamstrings'],
+  ['cable-leg-curl', 'Standing cable leg curl', 'A', 'cable', 'knee-flexion', 'hamstrings', 'calves'],
+  ['slider-leg-curl', 'Slider leg curl', 'A', 'bodyweight', 'knee-flexion', 'hamstrings', 'glutes'],
+  ['db-leg-curl', 'DB lying leg curl', 'A', 'dumbbell', 'knee-flexion', 'hamstrings', 'calves'],
+  ['band-leg-curl', 'Band leg curl', 'A', 'bodyweight', 'knee-flexion', 'hamstrings', ''],
+  ['cable-adduction', 'Cable hip adduction', 'A', 'cable', 'hip-adduction', 'adductors', ''],
+  ['side-lying-adduction', 'Side-lying hip adduction', 'A', 'bodyweight', 'hip-adduction', 'adductors', ''],
+  ['bb-calf-raise', 'Standing barbell calf raise', 'A', 'barbell-lower', 'calf-raise', 'calves', ''],
+  ['donkey-calf', 'Donkey calf raise', 'A', 'machine', 'calf-raise', 'calves', ''],
+  ['bw-calf-raise', 'Single-leg calf raise', 'A', 'bodyweight', 'calf-raise', 'calves', ''],
+  ['plate-crunch', 'Weighted crunch', 'A', 'barbell-upper', 'core-flexion', 'abs', 'obliques'],
+  ['ball-pike', 'Stability ball pike', 'A', 'bodyweight', 'hip-flexion', 'abs hip-flexors', 'front-delts'],
+  ['ball-rollout', 'Stability ball rollout', 'A', 'bodyweight', 'anti-extension', 'abs', 'lats obliques'],
+  ['band-pallof', 'Band Pallof press', 'A', 'bodyweight', 'anti-rotation', 'obliques', 'abs'],
+  ['band-woodchop', 'Band woodchop', 'A', 'bodyweight', 'rotation', 'obliques', 'abs'],
+  ['suitcase-deadlift', 'Suitcase deadlift', 'C', 'dumbbell', 'anti-lateral', 'obliques glutes', 'hamstrings forearms'],
+  ['trap-bar-carry', 'Trap bar carry', 'C', 'barbell-lower', 'carry', 'forearms traps', 'abs glutes quads', 'distance'],
+  ['kb-rack-carry', 'Kettlebell front rack carry', 'A', 'dumbbell', 'carry', 'abs', 'front-delts upper-back forearms', 'distance'],
 
   // ---- Full body ----
   ['farmers-carry', "Farmer's carry", 'C', 'dumbbell', 'carry', 'forearms traps', 'abs glutes', 'distance'],
@@ -506,6 +564,7 @@ const NEEDS = {
   'band-pull-apart': 'bands', 'band-external-rotation': 'bands', tke: 'bands', 'lateral-band-walk': 'bands',
   'roll-quads': 'foam-roller', 'roll-hamstrings': 'foam-roller', 'roll-glutes': 'foam-roller', 'roll-upper-back': 'foam-roller', 'roll-lats': 'foam-roller',
   'dead-hang': 'pullup-bar', 'scap-pull': 'pullup-bar',
+  'cable-chest-press': 'cable-tower', 'suspension-pushup': 'suspension', 'kb-press': 'kettlebell', 'band-lat-raise': 'bands', 'db-rear-delt-row': 'incline-bench', 'band-lat-pulldown': 'bands', 'band-row': 'bands', 'suspension-row': 'suspension', 'kb-row': 'kettlebell', 'wide-cable-row': 'cable-row', 'bb-pullover': 'bench', 'back-ext-machine': 'back-ext-machine', 'band-good-morning': 'bands', 'band-curl': 'bands', 'kb-curl': 'kettlebell', 'bb-wrist-curl': 'bench', 'cable-wrist-curl': 'cable-tower', 'band-pushdown': 'bands', 'ez-overhead-ext': 'ez-bar', 'kb-goblet-squat': 'kettlebell', 'v-squat': 'v-squat', 'single-leg-extension': 'leg-ext', 'bb-walking-lunge': 'rack', 'bb-split-squat': 'rack', 'kb-deadlift': 'kettlebell', 'trap-bar-rdl': 'trap-bar', 'band-pull-through': 'bands', 'band-hip-thrust': 'bench bands', 'kb-hip-thrust': 'bench kettlebell', 'cable-leg-curl': 'cable-tower', 'db-leg-curl': 'bench', 'band-leg-curl': 'bands', 'cable-adduction': 'cable-tower', 'bb-calf-raise': 'rack', 'donkey-calf': 'donkey-calf', 'ball-pike': 'stability-ball', 'ball-rollout': 'stability-ball', 'band-pallof': 'bands', 'band-woodchop': 'bands', 'trap-bar-carry': 'trap-bar', 'kb-rack-carry': 'kettlebell',
   'incline-cable-fly': 'cable-tower incline-bench', 'db-squeeze-press': 'bench', 'z-press': 'rack', 'incline-y-raise': 'incline-bench', 'band-face-pull': 'bands', 'cable-shrug': 'cable-tower',
   'low-row-machine': 'plate-row', 'band-assisted-pullup': 'pullup-bar bands', 'negative-pullup': 'pullup-bar', 'weighted-back-ext': 'back-ext',
   'cable-preacher-curl': 'cable-tower preacher-bench', 'cable-kickback-tri': 'cable-tower', 'reverse-pushdown': 'cable-tower', 'tate-press': 'bench',
@@ -523,9 +582,9 @@ const RENAMED = {
 
 // One limb or one side at a time: what the logged weight, reps or time refer to.
 const SIDED = {
-  arm: 'cable-kickback-tri kb-clean kb-snatch stretch-triceps db-row single-arm-pulldown single-arm-cable-row cable-tri-ext concentration-curl db-preacher-curl meadows-row wrist-ext-eccentric band-external-rotation forearm-stretch',
-  leg: 'ffe-split-squat lateral-lunge curtsy-lunge cossack-squat b-stance-rdl side-lying-abduction ankle-rock stretch-quad bulgarian-split-squat single-leg-rdl step-up reverse-lunge walking-lunge single-leg-press single-leg-calf single-leg-hip-thrust smith-split-squat bb-lunge cable-kickback cable-hip-abduction glute-kickback-machine step-up-bw bodyweight-lunge lateral-bound leg-swing tke calf-raise-slow',
-  side: 'side-plank-dip open-book stretch-figure4 stretch-spinal-twist side-plank copenhagen-plank pallof-press cable-woodchop landmine-rotation suitcase-carry db-side-bend cable-oblique-crunch clamshell stretch-couch stretch-hamstring stretch-pigeon stretch-calf stretch-chest stretch-thread stretch-wgs stretch-crossbody stretch-9090 roll-lats',
+  arm: 'db-single-arm-press kb-press kb-row cable-kickback-tri kb-clean kb-snatch stretch-triceps db-row single-arm-pulldown single-arm-cable-row cable-tri-ext concentration-curl db-preacher-curl meadows-row wrist-ext-eccentric band-external-rotation forearm-stretch',
+  leg: 'single-leg-extension bb-walking-lunge bb-split-squat bw-split-squat single-leg-glute-bridge cable-leg-curl band-leg-curl cable-adduction side-lying-adduction bw-calf-raise ffe-split-squat lateral-lunge curtsy-lunge cossack-squat b-stance-rdl side-lying-abduction ankle-rock stretch-quad bulgarian-split-squat single-leg-rdl step-up reverse-lunge walking-lunge single-leg-press single-leg-calf single-leg-hip-thrust smith-split-squat bb-lunge cable-kickback cable-hip-abduction glute-kickback-machine step-up-bw bodyweight-lunge lateral-bound leg-swing tke calf-raise-slow',
+  side: 'band-pallof band-woodchop suitcase-deadlift side-plank-dip open-book stretch-figure4 stretch-spinal-twist side-plank copenhagen-plank pallof-press cable-woodchop landmine-rotation suitcase-carry db-side-bend cable-oblique-crunch clamshell stretch-couch stretch-hamstring stretch-pigeon stretch-calf stretch-chest stretch-thread stretch-wgs stretch-crossbody stretch-9090 roll-lats',
 };
 // Moves that can be logged more than one way (the first is the default). Anything measured by
 // distance can also be timed. Everything else has just its own measure.
@@ -602,7 +661,16 @@ export function similarity(a, b) {
   score -= a.primary.filter((m) => !b.primary.includes(m)).length;
   if (a.category === b.category) score += 2;
   if (a.type === b.type) score += 0.5;
+  // The same movement on other equipment ("hip thrust": barbell, machine, DB, Smith) ranks first.
+  const shared = moveWords(a.name).filter((w) => moveWords(b.name).includes(w)).length;
+  score += Math.min(shared, 2) * 2;
   return score;
+}
+
+// The words that name the movement, without the equipment or setup.
+const NOT_MOVE = new Set(['barbell', 'bb', 'db', 'dumbbell', 'dumbbells', 'kettlebell', 'kb', 'cable', 'machine', 'smith', 'band', 'banded', 'plate', 'plate-loaded', 'loaded', 'weighted', 'single-arm', 'single-leg', 'one-arm', 'seated', 'standing', 'lying', 'incline', 'decline', 'chest-supported', 'iso-lateral', 'ez-bar', 'ez', 'trap', 'bar', 'suspension', 'bodyweight', 'the', 'with', 'and', 'of', 'a']);
+function moveWords(name) {
+  return name.toLowerCase().replace(/\(.*?\)/g, ' ').split(/[\s/]+/).filter((w) => w.length > 2 && !NOT_MOVE.has(w));
 }
 
 export function similarExercises(exercises, exId, limit = 8, exclude = []) {

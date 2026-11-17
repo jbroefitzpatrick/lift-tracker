@@ -254,7 +254,7 @@ const SLOTS = {
   hinge: { patterns: ['hinge'], prefer: ['deadlift', 'trap-bar-deadlift', 'sumo-deadlift', 'rdl', 'db-rdl'] },
   rdl: { patterns: ['hinge'], prefer: ['rdl', 'db-rdl', 'good-morning', 'single-leg-rdl', 'cable-pull-through'] },
   lunge: { patterns: ['lunge'], prefer: ['bulgarian-split-squat', 'walking-lunge', 'reverse-lunge', 'step-up'] },
-  hipExt: { patterns: ['hip-extension'], prefer: ['hip-thrust', 'machine-hip-thrust', 'glute-bridge', 'cable-kickback'] },
+  hipExt: { patterns: ['hip-extension'], prefer: ['hip-thrust', 'machine-hip-thrust', 'smith-hip-thrust', 'db-hip-thrust', 'bb-glute-bridge', 'cable-kickback'] },
   kneeFlex: { patterns: ['knee-flexion'], prefer: ['lying-ham-curl', 'seated-ham-curl', 'nordic-curl', 'ghr'] },
   kneeExt: { patterns: ['knee-extension'], prefer: ['leg-extension'] },
   calf: { patterns: ['calf-raise'], prefer: ['standing-calf', 'seated-calf', 'calf-press', 'smith-calf', 'single-leg-calf'] },
