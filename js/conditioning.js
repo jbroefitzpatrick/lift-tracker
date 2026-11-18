@@ -128,7 +128,8 @@ export const TEMPLATES = [
 // format 'rounds': work each move, rest after the round. 'emom': one move per minute, rest the remainder.
 const FIN_POOL_EXTRA = ['pushup', 'dip', 'pullup', 'chinup', 'inverted-row'];
 
-export function buildFinisher(db, { minutes = 10, mode = 'burn', format = 'rounds', muscles = [], core = false, coreIds = [] }) {
+// shuffle: varies the whole circuit (the app seeds it from the date); alt[i]: steps move i to its next option.
+export function buildFinisher(db, { minutes = 10, mode = 'burn', format = 'rounds', muscles = [], core = false, coreIds = [], shuffle = 0, alt = [] }) {
   const trained = new Set(muscles);
   const OUTDOOR = ['hill-sprint', 'run-sprint', 'run-interval'];
   const ok = (e) => e && !OUTDOOR.includes(e.id) && e.pattern !== 'mobility' && e.pattern !== 'prehab' && e.pattern !== 'run' && e.metric !== 'distance' && isAvailable(db, e) && db.exPrefs?.[e.id] !== 'never';
@@ -140,14 +141,16 @@ export function buildFinisher(db, { minutes = 10, mode = 'burn', format = 'round
     if (e.pattern === 'isometric') sc -= 1;
     return { e, sc };
   }).sort((a, b) => b.sc - a.sc || a.e.name.localeCompare(b.e.name));
-  // Three moves with different patterns; in burn mode, one conditioning move to raise the heart rate.
+  // Three moves with different patterns. Each slot chooses among its five best fits, so the
+  // circuit varies from day to day (shuffle) and any move can be stepped to another option (alt).
+  const fits = (e, picks) => !picks.some((p) => (p.pattern === e.pattern && e.pattern !== 'circuit-move') || p.primary[0] === e.primary[0]);
   const picks = [];
-  for (const { e } of scored) {
-    if (picks.length >= 3) break;
-    if (picks.some((p) => p.pattern === e.pattern && e.pattern !== 'circuit-move') || picks.some((p) => p.primary[0] === e.primary[0])) continue;
-    picks.push(e);
+  for (let slot = 0; slot < 3; slot++) {
+    const opts = scored.filter(({ e }) => !picks.includes(e) && fits(e, picks)).slice(0, 5);
+    if (!opts.length) break;
+    picks.push(opts[((alt[slot] || 0) + shuffle * (slot + 2)) % opts.length].e);
   }
-  if (mode === 'burn' && !picks.some((p) => ['erg', 'sprint', 'plyo'].includes(p.pattern))) {
+  if (mode === 'burn' && !alt[picks.length - 1] && !picks.some((p) => ['erg', 'sprint', 'plyo'].includes(p.pattern))) {
     const cardio = scored.find(({ e }) => ['erg', 'plyo'].includes(e.pattern) && !picks.includes(e));
     if (cardio) picks[picks.length - 1] = cardio.e;
   }

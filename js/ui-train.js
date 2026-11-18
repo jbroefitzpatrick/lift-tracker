@@ -2,7 +2,7 @@
 // conditioning targets, the running goal, and sharing/installing the app.
 import { icon } from './icons.js';
 import { DAY_KEYS, RECOVERY_GROUPS, resolveDay, weekOverride, groupOf } from './engine.js';
-import { todayStr, mondayOf, addDays } from './store.js';
+import { todayStr, mondayOf, addDays, weekOrder } from './store.js';
 import { estimateMinutes } from './builder.js';
 import { composeWeek, adjustDay, splitDay, liftTemplates, doneTemplates, missedTemplates, todayKey, dayIndex } from './week.js';
 import { dueChecks, record, notReady, learnSlowRecovery, RATINGS, groupSets } from './recovery.js';
@@ -18,7 +18,8 @@ export const APP_URL = 'https://jbroefitzpatrick.github.io/lift-tracker/';
 
 export function createTrain(ctx) {
   const { $, esc } = ctx;
-  const st = { avail: null, fin: { minutes: 10, mode: 'burn', format: 'rounds' }, adjust: null, run: null };
+  // The finisher varies by date unless shuffled; alt steps a single move to its next option.
+  const st = { avail: null, fin: { minutes: 10, mode: 'burn', format: 'rounds', shuffle: Math.floor(Date.now() / 864e5) % 5, alt: [] }, adjust: null, run: null };
   const defMin = () => +ctx.db.profile?.sessionMin || 60;
 
   // ---------- Week planner ----------
@@ -26,7 +27,7 @@ export function createTrain(ctx) {
   function defaultAvail(n) {
     const db = ctx.db;
     const from = dayIndex(todayKey());
-    const days = DAY_KEYS.filter((d) => dayIndex(d) >= from);
+    const days = weekOrder().filter((d) => dayIndex(d) >= from);
     const prev = db.week?.start === mondayOf(todayStr()) ? db.week.avail || {} : {};
     const done = doneTemplates(db);
     const out = {};
@@ -53,7 +54,7 @@ export function createTrain(ctx) {
       ${gyms ? `<select data-wk="${d}:gymId" aria-label="${FULL[d]} gym" ${a.on ? '' : 'disabled'}><option value="">Usual gym</option>${db.gyms.map((g) => `<option value="${g.id}" ${a.gymId === g.id ? 'selected' : ''}>${esc(g.name)}</option>`).join('')}</select>` : ''}
     </div>`).join('');
     const { week, summary } = composeWeek(db, st.avail);
-    const preview = DAY_KEYS.filter((d) => st.avail[d]).map((d) => {
+    const preview = weekOrder().filter((d) => st.avail[d]).map((d) => {
       const v = week.days[d];
       if (!v?.items?.length) return `<div class="wk-day muted"><b>${SHORT[d]}</b><span>${st.avail[d].on ? 'Free: cardio or recovery' : 'Rest'}</span></div>`;
       const lifts = v.items.filter((i) => db.exercises[i.exerciseId]?.category !== 'conditioning');
@@ -196,7 +197,8 @@ export function createTrain(ctx) {
     const tpl = buildFinisher(db, { ...st.fin, muscles, core: ['finisher', 'conditioning'].includes(db.settings.corePlacement), coreIds: CORE_FINISHER });
     st.finTpl = tpl;
     return `<p class="small">${esc(tpl.desc)}</p>
-      <ol class="fin-list">${tpl.items.map(([id, , metric, target]) => `<li><b>${esc(db.exercises[id]?.name || id)}</b> · ${fmtTarget(metric, target)}</li>`).join('')}</ol>
+      <ol class="fin-list">${tpl.items.map(([id, , metric, target], i) => `<li><span class="grow"><b>${esc(db.exercises[id]?.name || id)}</b> · ${fmtTarget(metric, target)}</span><button class="mini" data-a="fin-alt" data-i="${i}" aria-label="Change ${esc(db.exercises[id]?.name || id)}">Change</button></li>`).join('')}</ol>
+      <button class="text-btn" data-a="fin-shuffle">Shuffle all</button>
       ${muscles.length ? '' : '<p class="muted small">Log a few sets first and the finisher will match what you trained.</p>'}`;
   }
 
@@ -395,6 +397,8 @@ export function createTrain(ctx) {
       const el = $('#fin-preview');
       if (el) el.innerHTML = finisherPreview();
     },
+    'fin-alt': (d) => { st.fin.alt = [...st.fin.alt]; st.fin.alt[+d.i] = (st.fin.alt[+d.i] || 0) + 1; const el = $('#fin-preview'); if (el) el.innerHTML = finisherPreview(); },
+    'fin-shuffle': () => { st.fin.shuffle += 1; st.fin.alt = []; const el = $('#fin-preview'); if (el) el.innerHTML = finisherPreview(); },
     'fin-add': () => { ctx.addTemplateToSession(st.finTpl); ctx.closeSheet(); ctx.toast('Finisher added at the end. Tap a round\'s play button to time it.'); },
     'cond-rpe': (d) => { const e = ctx.sessionEntry(d.uid, true); if (!e) return; e.rpe = +d.v; ctx.persist(); ctx.render(); },
     'run-open': () => openRunGoal(),

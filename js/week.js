@@ -13,20 +13,21 @@
 //   behind on weekly sets.
 // - A day at a different gym swaps exercises that gym can't do for the closest ones it can.
 import { DAY_KEYS, resolveDay, groupNum, groupOf } from './engine.js';
-import { mondayOf, todayStr, addDays } from './store.js';
+import { mondayOf, todayStr, addDays, weekPos, weekOrder } from './store.js';
 import { estimateMinutes } from './builder.js';
 import { similarExercises } from './bank.js';
 import { isAvailable } from './gym.js';
 import { focusFor, blockInfo } from './blocks.js';
 import { liftLoads } from './fatigue.js';
 
-export const dayIndex = (d) => DAY_KEYS.indexOf(d);
+// Position in the week (0 = the first day, which follows the week-start setting).
+export const dayIndex = (d) => weekPos(d);
 export const todayKey = (date = todayStr()) => DAY_KEYS[(new Date(`${date}T12:00:00`).getDay() + 6) % 7];
 const isLiftItem = (db, it) => db.exercises[it.exerciseId]?.category !== 'conditioning';
 
 // Lift sessions in the weekly plan, in weekday order.
 export function liftTemplates(db) {
-  return DAY_KEYS.filter((d) => db.plan[d] && ['lift', 'both'].includes(db.settings.dayModes?.[d] || 'lift'))
+  return weekOrder().filter((d) => db.plan[d] && ['lift', 'both'].includes(db.settings.dayModes?.[d] || 'lift'))
     .map((d) => ({ day: d, name: db.plan[d].name, items: db.plan[d].items.filter((i) => isLiftItem(db, i)) }))
     .filter((t) => t.items.length);
 }
@@ -149,10 +150,10 @@ export function composeWeek(db, avail, fromDay = todayKey()) {
   const start = mondayOf(todayStr());
   const prev = db.week?.start === start ? db.week : null;
   const days = {};
-  for (const d of DAY_KEYS) if (dayIndex(d) < dayIndex(fromDay) && prev?.days?.[d]) days[d] = prev.days[d];
+  for (const d of weekOrder()) if (dayIndex(d) < dayIndex(fromDay) && prev?.days?.[d]) days[d] = prev.days[d];
   const done = doneTemplates(db, start);
   const todo = liftTemplates(db).filter((t) => !done.has(t.day));
-  const open = DAY_KEYS.filter((d) => dayIndex(d) >= dayIndex(fromDay) && avail[d]?.on);
+  const open = weekOrder().filter((d) => dayIndex(d) >= dayIndex(fromDay) && avail[d]?.on);
   const focus = focusFor(db, blockInfo(db).index) || [];
   const summary = [];
   const gymOf = (d) => db.gyms.find((g) => g.id === avail[d]?.gymId) || null;
@@ -182,7 +183,7 @@ export function composeWeek(db, avail, fromDay = todayKey()) {
     }
     summary.push(`${t.name}: accessories skipped this week`);
   }
-  for (const d of DAY_KEYS) {
+  for (const d of weekOrder()) {
     if (dayIndex(d) < dayIndex(fromDay)) continue;
     const a = assigned[d];
     // Conditioning planned on this weekday stays with the weekday when you're training that day.
@@ -194,7 +195,7 @@ export function composeWeek(db, avail, fromDay = todayKey()) {
     days[d] = { name: a.merged ? `${a.name} + ${a.merged} focus lift${a.merged > 1 ? 's' : ''}` : a.name, mode: cond.length ? 'both' : 'lift', from: a.from, base: a.base.map(({ ex, ...rest }) => rest), cond, minutes: avail[d].minutes, gymId: avail[d].gymId || null };
   }
   const extra = lagging(db, Object.fromEntries(Object.entries(days).map(([d, v]) => [d, { items: v.base || [] }])));
-  for (const d of DAY_KEYS) {
+  for (const d of weekOrder()) {
     const v = days[d];
     if (!v?.base || dayIndex(d) < dayIndex(fromDay)) continue; // earlier days this week may have nothing stored
     const g = adaptToGym(db, clone(v.base), gymOf(d));

@@ -23,16 +23,15 @@ export function createFood(ctx) {
     const t = targets(db, d);
     const tot = dayTotals(db, d);
     const ph = t.goal.phase;
-    const goalChip = ph ? `${PHASE_TYPES[ph.phase.type].label} · week ${ph.weekInPhase} of ${ph.weeks}` : `${PHASE_TYPES[t.goal.type].label}${db.profile ? '' : ' · default targets'}`;
+    const goalChip = ph ? `${PHASE_TYPES[ph.phase.type].label} · week ${ph.weekInPhase} of ${ph.weeks}` : PHASE_TYPES[t.goal.type].label;
     const entries = db.foodLog.filter((x) => x.date === d);
     const left = t.kcal - r0(tot.kcal);
-    const pct = Math.min(100, (tot.kcal / t.kcal) * 100);
     const meals = Array.from({ length: t.meals }, (_, i) => i + 1);
     const mealCards = meals.map((m) => {
       const items = entries.filter((x) => Math.min(x.meal, t.meals) === m);
       const mt = items.reduce((a, x) => ({ kcal: a.kcal + x.kcal, p: a.p + x.p }), { kcal: 0, p: 0 });
       const low = items.length && mt.p < t.perMealProtein * 0.8;
-      return `<section class="card meal" aria-label="Meal ${m}">
+      return `<section class="meal" aria-label="Meal ${m}">
         <div class="meal-head">
           <div class="grow"><h3>Meal ${m}</h3><p class="muted small">${items.length ? `${r0(mt.kcal)} kcal · ${r0(mt.p)} g protein${low ? ` · <span class="hint">aim ~${t.perMealProtein} g</span>` : ''}` : `Aim ~${Math.round(t.kcal / t.meals / 10) * 10} kcal · ${t.perMealProtein} g protein`}</p></div>
           <button class="icon-btn accent" data-a="food-add" data-meal="${m}" aria-label="Add food to meal ${m}">${icon('plus')}</button>
@@ -42,7 +41,6 @@ export function createFood(ctx) {
         ${items.length > 1 ? `<button class="text-btn small-text" data-a="meal-save" data-meal="${m}">Save as a meal</button>` : ''}
       </section>`;
     }).join('');
-    const yEntries = db.foodLog.filter((x) => x.date === addDays(d, -1));
     // New food goes to the first meal that's still empty, else the last one.
     const nextMeal = meals.find((m) => !entries.some((x) => Math.min(x.meal, t.meals) === m)) || t.meals;
     const macro = (label, val, target, cls) => {
@@ -51,38 +49,23 @@ export function createFood(ctx) {
         <span class="progress thin" role="progressbar" aria-label="${label}" aria-valuemin="0" aria-valuemax="${r0(target)}" aria-valuenow="${r0(val)}"><i style="width:${Math.max(p, 2)}%"></i></span></div>`;
     };
 
-    return `<header class="top"><div class="grow"><h1>Nutrition</h1><p class="subtitle">${esc(goalChip)}</p></div></header>
-      <div class="date-nav" role="group" aria-label="Day">
+    // Calories left as a ring: the arc is what's been eaten.
+    const R = 54; const C = 2 * Math.PI * R;
+    const ringSvg = `<svg viewBox="0 0 128 128" class="kcal-ring" aria-hidden="true"><circle cx="64" cy="64" r="${R}" class="track"/><circle cx="64" cy="64" r="${R}" class="arc ${left < 0 ? 'over' : ''}" stroke-dasharray="${(Math.min(1, tot.kcal / t.kcal) * C).toFixed(1)} ${C.toFixed(1)}" transform="rotate(-90 64 64)"/></svg>`;
+    return `<header class="top"><div class="grow"><h1>Food</h1><p class="subtitle">${esc(fmtDay(d))} · ${esc(goalChip)}</p></div>
         <button class="icon-btn" data-a="food-day" data-v="-1" aria-label="Previous day">${icon('left')}</button>
-        <b>${fmtDay(d)}</b>
-        <button class="icon-btn" data-a="food-day" data-v="1" aria-label="Next day" ${d >= todayStr() ? 'disabled' : ''}>${icon('right')}</button>
-      </div>
-      ${db.profile ? '' : '<div class="banner"><p>These targets use defaults. Set up the <b>plan builder</b> (Plan tab) for personal targets.</p></div>'}
-      <section class="card hero" aria-label="Today's targets">
-        <div class="row between">
-          <div><span class="hero-num tnum ${left < 0 ? 'over' : ''}">${Math.abs(left).toLocaleString()}</span> <span class="muted">kcal ${left >= 0 ? 'left' : 'over'}</span></div>
-          <button class="link-btn" data-a="food-why">How it's set</button>
-        </div>
-        <span class="progress" role="progressbar" aria-label="Calories" aria-valuemin="0" aria-valuemax="${t.kcal}" aria-valuenow="${r0(tot.kcal)}"><i style="width:${Math.max(pct, 2)}%"></i></span>
-        <p class="muted small">${r0(tot.kcal).toLocaleString()} of ${t.kcal.toLocaleString()} kcal${t.floored ? ' · held at a safe minimum' : ''}</p>
-        <div class="macro-grid">
+        <button class="icon-btn" data-a="food-day" data-v="1" aria-label="Next day" ${d >= todayStr() ? 'disabled' : ''}>${icon('right')}</button></header>
+      <section class="food-hero" aria-label="Today's targets">
+        <button class="kcal-wrap" data-a="food-why" aria-label="${Math.abs(left)} kcal ${left >= 0 ? 'left' : 'over'}. How targets are set">${ringSvg}<span class="kcal-mid"><b class="tnum ${left < 0 ? 'over' : ''}">${Math.abs(left).toLocaleString()}</b><span>kcal ${left >= 0 ? 'left' : 'over'}</span></span></button>
+        <div class="macro-row">
           ${macro('Protein', tot.p, t.protein, 'm-p')}
           ${macro('Carbs', tot.c, t.carbs, 'm-c')}
           ${macro('Fat', tot.f, t.fat, 'm-f')}
-          ${macro('Fiber', tot.fiber, t.fiber, 'm-fi')}
         </div>
       </section>
-      ${energyCard(d)}
-      <div class="ribbon" role="group" aria-label="Add food">
-        <button data-a="food-add" data-meal="${nextMeal}">${icon('search')}<span>Search</span></button>
-        <button data-a="food-quick">${icon('bolt')}<span>Quick add</span></button>
-        <button data-a="meal-saved" data-meal="${nextMeal}">${icon('bookmark')}<span>Saved meals</span></button>
-        <button data-a="food-copy" aria-label="Copy yesterday's food" ${yEntries.length ? '' : 'disabled'}>${icon('copy')}<span>Yesterday</span></button>
-      </div>
-      <div class="row between quick-links"><button class="link-btn" data-a="food-mine">My foods</button><button class="link-btn" data-a="food-settings">Nutrition settings</button></div>
+      <div class="food-search"><button class="search-btn" data-a="food-add" data-meal="${nextMeal}">${icon('search')}<span>Search foods</span></button><button class="icon-btn accent" data-a="food-more" data-meal="${nextMeal}" aria-label="More ways to add food">${icon('plus')}</button></div>
       ${mealCards}
-      ${checkinCard()}
-      <p class="muted small center pad">Food data: USDA FoodData Central (public domain). Phases are set in Plan → Year.</p>`;
+      <div class="list-group"><button class="list-row" data-a="food-energy"><span class="grow"><b>Energy balance and weekly check-in</b><span class="pick-sub">Burned ~${r0(dayEnergy(db, d).total).toLocaleString()} kcal today${db.profile ? '' : ' · default targets'}</span></span>${icon('right', 'chev')}</button></div>`;
   }
 
   function openSettings() {
@@ -332,6 +315,19 @@ export function createFood(ctx) {
     },
     'food-del': (d) => { ctx.db.foodLog = ctx.db.foodLog.filter((x) => x.id !== d.id); ctx.persist(); ctx.render(); },
     'food-quick': () => openQuick(),
+    'food-more': (d) => {
+      const db = ctx.db;
+      const y = db.foodLog.some((x) => x.date === addDays(date(), -1));
+      ctx.openSheet(`<h2>Add food</h2>
+        <div class="list-group menu">
+          <button class="list-row" data-a="food-quick">${icon('bolt')}<span class="grow">Quick add calories</span></button>
+          <button class="list-row" data-a="meal-saved" data-meal="${d.meal}">${icon('bookmark')}<span class="grow">Saved meals</span></button>
+          <button class="list-row" data-a="food-copy" ${y ? '' : 'disabled'}>${icon('copy')}<span class="grow">Copy yesterday</span></button>
+          <button class="list-row" data-a="food-mine">${icon('star')}<span class="grow">My foods</span></button>
+          <button class="list-row" data-a="food-settings">${icon('gear')}<span class="grow">Nutrition settings</span></button>
+        </div>`);
+    },
+    'food-energy': () => ctx.openSheet(`<h2>Energy balance</h2>${energyCard(date()).replace('<section class="card energy"', '<section class="energy in-sheet"')}<h3 class="sheet-h">Weekly check-in</h3>${checkinCard().replace('<div class="card">', '<div>').replace('<h3>Weekly check-in</h3>', '')}<p class="muted small">Food data: USDA FoodData Central (public domain). Training phases are set in Plan → Goals and year.</p>`),
     'qa-meal': (d, el) => { st.meal = +d.v; el.parentElement.querySelectorAll('.chip').forEach((c) => c.classList.toggle('on', c === el)); },
     'qa-save': () => {
       const kcal = ctx.num('qa-kcal') || 0;
@@ -342,6 +338,7 @@ export function createFood(ctx) {
       ctx.persist(); ctx.closeSheet(); ctx.render();
     },
     'food-copy': () => {
+      if (!$('#sheet').hidden) ctx.closeSheet();
       const y = ctx.db.foodLog.filter((x) => x.date === addDays(date(), -1));
       for (const x of y) { const { id, date: dd, ts, meal, ...rest } = x; addEntry(meal, rest); }
       ctx.persist(); ctx.render(); ctx.toast(`Copied ${y.length} items from yesterday.`);

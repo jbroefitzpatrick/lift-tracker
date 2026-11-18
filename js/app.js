@@ -1,4 +1,4 @@
-import { loadDb, LoadError, allowReplace, download, save, onSaveError, dailySnapshot, safetySnapshot, requestPersistence, todayStr, mondayOf, parseDate, daysBetween, addDays } from './store.js';
+import { loadDb, LoadError, allowReplace, download, save, onSaveError, dailySnapshot, safetySnapshot, requestPersistence, todayStr, mondayOf, parseDate, setWeekStart, weekOrder, weekPos, dateOfDay, daysBetween, addDays } from './store.js';
 import { onReorder, setAnnouncer } from './drag.js';
 import { icon } from './icons.js';
 import { EX_INFO } from './exercise-info.js';
@@ -47,7 +47,9 @@ import { createFocus } from './ui-focus.js';
 import { createExerciseEditor } from './ui-exercise.js';
 import { CORE_PLACEMENTS, applyCore, coreCircuit } from './core.js';
 import { PROGRESSIONS, recommendScheme, schemeFor } from './engine.js';
-import { dayExtras, setDayExtra, warmupItems, cooldownItems } from './warmcool.js';
+import { dayExtras, setDayExtra, warmupItems, cooldownItems, shuffleWarmup } from './warmcool.js';
+import { weekReview, applySuggestion, lastWeekStart } from './review.js';
+import { createTour } from './tour.js';
 import { adjustDay } from './week.js';
 import { splitTemplates, mainLiftOptions } from './builder.js';
 import { createPlanTools, keepManual, countManual } from './ui-plantools.js';
@@ -569,15 +571,17 @@ function finishWorkout() {
 
 // ---------- Screens: Today ----------
 
-function dayTabs(current, action, days = DAY_KEYS) {
+function dayTabs(current, action, days = weekOrder()) {
   const today = defaultDay();
   const mon = mondayOf(todayStr());
   return `<div class="day-strip" role="tablist" aria-label="Day of the week">${days.map((d) => {
-    const date = parseDate(addDays(mon, DAY_KEYS.indexOf(d))).getDate();
+    const iso = addDays(mon, weekPos(d));
+    const date = parseDate(iso).getDate();
     const mode = dayMode(db, d);
+    const done = db.sessions.some((x) => x.date === iso);
     return `<button class="day ${d === current ? 'on' : ''} ${d === today ? 'is-today' : ''}" data-a="${action}" data-day="${d}" role="tab" aria-selected="${d === current}"
       aria-label="${FULL_DAY[d]} ${date}, ${MODE_LABELS[mode]} day${d === today ? ', today' : ''}">
-      <span class="d-name">${DAY_NAMES[d]}</span><span class="d-num">${date}</span><span class="d-dot m-${mode}" aria-hidden="true"></span></button>`;
+      <span class="d-name">${DAY_NAMES[d][0]}</span><span class="d-dot m-${mode} ${done ? 'done' : ''}" aria-hidden="true"></span></button>`;
   }).join('')}</div>`;
 }
 
@@ -661,7 +665,7 @@ function screenToday() {
   const rir = rirTarget(wi);
   const title = session?.freestyle ? 'Workout'
     : dayPlan(db, day) && (mode === 'lift' || mode === 'both' || session) ? esc(dayPlan(db, day).name) : `${MODE_LABELS[mode]} day`;
-  const dateLabel = parseDate(addDays(mondayOf(todayStr()), DAY_KEYS.indexOf(day))).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  const dateLabel = parseDate(dateOfDay(day)).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   const subtitle = [
     dateLabel,
     db.settings.deloadOff ? `Week ${wi.week}` : `Week ${wi.cyclePos} of ${wi.cycleLen}${wi.isDeload ? ' (deload)' : ''}`,
@@ -670,11 +674,9 @@ function screenToday() {
   let html = `
     <header class="top">
       <div class="grow"><h1>${title}</h1><p class="subtitle">${subtitle}</p></div>
-      <button class="icon-btn" data-a="open-recovery" aria-label="Muscle recovery">${icon('body')}</button>
-      <button class="icon-btn" data-a="day-options" aria-label="Day options">${icon('more')}</button>
+      <button class="icon-btn" data-a="day-options" aria-label="More: day options, recovery, settings">${icon('more')}</button>
     </header>
-    ${session ? '' : dayTabs(day, 'day')}
-    ${!session && day === dayKeyOf(todayStr()) && db.settings.welcomed ? weekStrip() : ''}`;
+    ${session ? '' : dayTabs(day, 'day')}`;
   if (session) html = workoutBar(session) + html;
 
   if (!db.settings.welcomed) {
@@ -687,7 +689,7 @@ function screenToday() {
   // Pain always shows; of the other prompts, only one at a time (the rest wait their turn).
   if (!session) html += pain.todayCard(); // during a workout, pain shows on the exercises it affects
   // None while a workout is open: that screen is for logging.
-  if (!session) html += [train.recoveryCheck(), train.weekPrompt(), extras.backupBanner(), db.settings.welcomed ? train.installHint() : ''].filter(Boolean).slice(0, 1).join('');
+  if (!session) html += [train.recoveryCheck(), reviewCard(), train.weekPrompt(), extras.backupBanner(), db.settings.welcomed ? train.installHint() : ''].filter(Boolean).slice(0, 1).join('');
   html += blockCheckinBanner();
   if (needsRotationPrompt(db)) {
     const nextId = nextRowCompound(db);
@@ -732,15 +734,9 @@ function screenToday() {
   const left = Math.max(0, Math.round(est * (1 - (total ? done / total : 0))));
   if (items.length) {
     html += session
-      ? (db.settings.tips?.log ? '' : `<div class="tip" role="note"><p><b>Logging.</b> Tap the check when a set is done; the rest timer starts by itself. Tap <b>Previous</b> to reuse last time's numbers, the set number for warm-up or drop sets, and swipe a set left to delete it.</p><button class="link-btn" data-a="tip-ok" data-k="log">Got it</button></div>`)
-      : `<div class="day-pills">
-          <button class="pill" data-a="adj-open" data-day="${day}" aria-label="About ${est} minutes. Change time">${est} min ${icon('down')}</button>
-          <button class="pill" data-a="adj-open" data-day="${day}" aria-label="Gym: ${esc(activeGym(db).name)}. Change">${esc(db.gyms.find((g) => g.id === weekOverride(db, day)?.gymId)?.name || activeGym(db).name)} ${icon('down')}</button>
-          <button class="pill toggle-pill ${dayExtras(db, day).warm ? 'on' : ''}" data-a="extra-toggle" data-k="warm" data-day="${day}" aria-pressed="${dayExtras(db, day).warm}">Warm-up</button>
-          <button class="pill toggle-pill ${dayExtras(db, day).cool ? 'on' : ''}" data-a="extra-toggle" data-k="cool" data-day="${day}" aria-pressed="${dayExtras(db, day).cool}">Cool-down</button>
-          <span class="pill-note">${allCond ? `${total} rounds` : `${total} sets`}${isDeload ? ' · deload' : ''}</span>
-          <button class="help-btn" data-a="why-workout" aria-label="Why this workout is built this way">?</button>
-        </div>
+      ? ''
+      : `<div class="day-line"><span class="grow"><b>${est} min</b> · ${esc(db.gyms.find((g) => g.id === weekOverride(db, day)?.gymId)?.name || activeGym(db).name)}${dayExtras(db, day).warm ? ' · warm-up' : ''}${isDeload ? ' · deload' : ''}</span>
+          <button class="link-btn" data-a="day-edit" data-day="${day}">Edit</button></div>
         <button class="cta" data-a="start-workout">Start workout</button>`;
     if (!session) html += targetMuscles(items);
   }
@@ -751,7 +747,6 @@ function screenToday() {
   html += `<div class="list-head">
     <h2>${items.length} exercise${items.length === 1 ? '' : 's'}</h2>
     <div class="row">
-      ${!selecting && items.length ? `<button class="link-btn" data-a="list-view">${db.settings.listView === 'full' ? 'Hide sets' : 'Show sets'}</button>` : ''}
       ${items.length > 1 ? `<button class="link-btn" data-a="select-mode">${selecting ? 'Done' : 'Edit'}</button>` : ''}
       <button class="icon-btn accent" data-a="today-add" aria-label="Add exercise">${icon('plus')}</button>
     </div>
@@ -765,12 +760,12 @@ function screenToday() {
     const full = db.settings.listView === 'full' && !selecting;
     const rows = grp.items.map((i) => (full ? exerciseFull(i, session, isDeload) : exerciseRow(i, session, isDeload, selecting, sel))).join('');
     const phase = grp.items[0].phase || 'main';
-    if (phase !== lastPhase && (phase !== 'main' || lastPhase)) html += `<h3 class="phase-h">${phase === 'warmup' ? `Warm-up · about ${warmupMinutes(items.filter((x) => x.phase === 'warmup'))} min` : phase === 'cooldown' ? 'Cool-down' : 'Workout'}</h3>`;
+    if (phase !== lastPhase && (phase !== 'main' || lastPhase)) html += `<h3 class="phase-h">${phase === 'warmup' ? `Warm-up · about ${warmupMinutes(items.filter((x) => x.phase === 'warmup'))} min${!session ? ' <button class="text-btn phase-act" data-a="warm-shuffle">Shuffle</button>' : ''}` : phase === 'cooldown' ? 'Cool-down' : 'Workout'}</h3>`;
     lastPhase = phase;
     if (grp.linked) {
       const restSec = Math.max(...grp.items.map((i) => i.restSec || 0));
       html += `<section class="link-group" aria-label="${linkLabel(grp.items.length)}">
-        <div class="link-label"><b>${linkLabel(grp.items.length)}</b> · rest ${fmtRest(restSec)} after each round</div>${rows}</section>`;
+        <div class="link-label"><b>${linkLabel(grp.items.length)}</b></div>${rows}</section>`;
     } else html += rows;
   }
   html += '</div>';
@@ -813,12 +808,9 @@ function targetMuscles(items) {
     if (!used.length) return null;
     const lead = used.sort((x, y) => (loads[y] || 0) - (loads[x] || 0))[0];
     return { g, lead, load: used.reduce((a, m) => a + loads[m], 0), pct: Math.round(Math.min(...used.map((m) => fresh[m] ?? 1)) * 100) };
-  }).filter(Boolean).sort((x, y) => y.load - x.load).slice(0, 6);
+  }).filter(Boolean).sort((x, y) => y.load - x.load).slice(0, 4);
   if (!tiles.length) return '';
-  return `<section class="targets" aria-label="Target muscles">
-    <h2>Target muscles</h2>
-    <div class="target-strip">${tiles.map(({ g, lead, pct }) => `<button class="target-tile" data-a="open-recovery" data-g="${g.id}" aria-label="${g.name}, ${pct}% recovered"><span class="tile-art">${muscleIcon(lead)}<span class="pct-badge ${pct < 50 ? 'low' : pct < 80 ? 'mid' : ''}">${pct}%</span></span><span class="tile-name">${g.name}</span></button>`).join('')}</div>
-  </section>`;
+  return `<div class="muscle-chips" role="group" aria-label="Muscles today">${tiles.map(({ g, pct }) => `<button class="chip mchip" data-a="open-recovery" data-g="${g.id}" aria-label="${g.name}, ${pct}% recovered"><span class="rdot ${pct < 50 ? 'low' : pct < 85 ? 'mid' : ''}" aria-hidden="true"></span>${g.name}</button>`).join('')}</div>`;
 }
 
 function exerciseRow(item, session, isDeload, selecting, sel) {
@@ -839,7 +831,7 @@ function exerciseRow(item, session, isDeload, selecting, sel) {
     ${selecting ? `<label class="sel"><input type="checkbox" data-a="sel-toggle" data-uid="${item.uid}" ${checked ? 'checked' : ''} aria-label="Select ${esc(ex.name)}"></label>` : ''}
     <button class="ex-item-main" data-a="ex-open" data-uid="${item.uid}" ${selecting ? 'tabindex="-1"' : ''}>
       <span class="thumb">${thumb(ex)}</span>
-      <span class="grow">${isNext ? '<span class="eyebrow next">Up next</span>' : (focusFor(db, blockInfo(db).index) || []).includes(ex.id) ? '<span class="eyebrow">Focus lift</span>' : ''}<span class="ex-name2">${esc(ex.name)}</span><span class="ex-meta">${meta}</span>
+      <span class="grow">${isNext ? '<span class="eyebrow next">Up next</span>' : ''}<span class="ex-name2">${esc(ex.name)}</span><span class="ex-meta">${meta}</span>
         ${notices.length ? `<span class="row-notice ${notices[0][0]}">${esc(notices[0][1])}</span>` : ''}</span>
     </button>
     ${allDone ? `<span class="status-done" aria-label="Done">${icon('check')}</span>` : ''}
@@ -1074,9 +1066,6 @@ function screenExercise() {
     ${(() => { const f = freshness(currentFatigue(db)); const gs = [...new Set(ex.primary.map((m) => groupOfMuscle(m)).filter(Boolean))]; return gs.length ? `<button class="rec-line" data-a="open-recovery" data-g="${gs[0].id}">${gs.map((g) => `${g.name} <b class="num">${Math.round(groupFreshness(g, f) * 100)}%</b>`).join(' · ')} recovered ${icon('right', 'chev')}</button>` : ''; })()}
     <div class="chips quick-row">
       <button class="chip" data-a="ex-rest" data-uid="${item.uid}">Rest ${fmtRest(item.restSec || grp.items.reduce((a, i) => Math.max(a, i.restSec || 0), 0)) || 'off'}</button>
-      <button class="chip" data-a="ex-info" data-id="${ex.id}">History</button>
-      <button class="chip" data-a="swap" data-uid="${item.uid}">Swap</button>
-      ${grp.linked ? `<button class="chip" data-a="unlink-one" data-uid="${item.uid}">Unlink</button>` : next ? `<button class="chip" data-a="link-next" data-uid="${item.uid}">Link</button>` : ''}
     </div>
     ${grp.linked ? `<div class="group-note"><b>${linkLabel(grp.items.length)}</b>${entry ? (() => { const n = Math.max(...grp.items.map((i) => session.entries[i.uid]?.sets.length || i.sets)); const r = entry.sets.findIndex((x) => !x.done); return ` · round ${r < 0 ? entry.sets.length : r + 1} of ${n}`; })() : ''} · ${grp.items.map((i) => (i === item ? `<span class="cur">${esc(i.ex.name)}</span>` : esc(i.ex.name))).join(' → ')}</div>` : ''}
     <p class="aim-line">${aim}${conditioning || t.aim ? '' : t.rir ? ` · ${t.rir} RIR` : rir ? ` · about ${rir} in reserve` : ''}</p>
@@ -1215,6 +1204,34 @@ function relabel(list, keyOf) {
   }
 }
 
+// ---------- Weekly review ----------
+// Early in a new week (first three days), a card offers last week's review until it's opened.
+function reviewCard() {
+  const start = lastWeekStart();
+  if (db.settings.reviewSeen === start || weekPos(dayKeyOf(todayStr())) > 2) return '';
+  const r = weekReview(db, start);
+  if (!r.sessions) return '';
+  const n = r.items.filter((x) => x.action).length;
+  return `<div class="slim-banner review-card"><button class="grow banner-main" data-a="rv-open"><span class="dot" aria-hidden="true"></span><b>Last week</b> · ${n ? `${n} suggestion${n === 1 ? '' : 's'}` : `${r.lifts ?? r.sessions} of ${r.planned || r.sessions} workouts`}</button><button class="icon-btn subtle" data-a="rv-dismiss" aria-label="Dismiss">${icon('x')}</button></div>`;
+}
+
+function openReview() {
+  const r = weekReview(db);
+  ui.rv = r;
+  db.settings.reviewSeen = r.start; persist();
+  const fmt = (d) => parseDate(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  const max = Math.max(...r.bars.map((b) => Math.max(b.sets, b.hi)), 1);
+  const bar = (b) => {
+    const state = b.sets < b.lo ? 'under' : b.sets > b.hi * 1.15 ? 'over' : 'ok';
+    return `<div class="vbar ${state}"><span class="vbar-name">${esc(b.name)}</span><span class="vbar-track"><i class="vbar-band" style="left:${(b.lo / max) * 100}%;width:${((b.hi - b.lo) / max) * 100}%"></i><i class="vbar-fill" style="width:${Math.min(100, (b.sets / max) * 100)}%"></i></span><b class="num">${b.sets}</b></div>`;
+  };
+  openSheet(`<h2>Last week</h2>
+    <p class="muted small">${fmt(r.start)}–${fmt(r.end)} · ${r.sessions ? `${r.lifts ?? r.sessions} of ${r.planned || r.sessions} workouts` : 'No workouts logged'}</p>
+    ${r.items.length ? r.items.map((x, i) => `<div class="rv-item ${x.kind}"><b>${esc(x.title)}</b><p class="small muted">${esc(x.text)}</p>${x.action ? `<button class="btn sm" data-a="rv-apply" data-i="${i}">${esc(x.action.label)}</button>` : ''}</div>`).join('')
+      : r.sessions ? '<p class="small">Nothing to change: every muscle was in its range.</p>' : ''}
+    ${r.bars.length ? `<h3 class="sheet-h">Sets per muscle ${helpBtn()}</h3><p class="help-text" hidden>Hard sets logged last week; assisting muscles count half. The shaded band is your target range. ${refChips(['schoenfeld2017vol', 'pelland2026'])}</p><div class="vbars">${r.bars.map(bar).join('')}</div>` : ''}`);
+}
+
 // ---------- Undo for list edits (move, link, unlink, remove) ----------
 function listSnapshot() {
   const s = sessionFor(ui.day);
@@ -1285,6 +1302,11 @@ function openDayOptions() {
   const isDeload = isDeloadFor(day);
   const modes = db.plan[day] ? ['lift', 'both', 'cardio', 'rest'] : ['cardio', 'rest'];
   openSheet(`<h2>${FULL_DAY[day]}</h2>
+    <div class="list-group menu">
+      <button class="list-row" data-a="open-recovery">${icon('body')}<span class="grow">Muscle recovery</span>${icon('right', 'chev')}</button>
+      <button class="list-row" data-a="list-view-menu">${icon('note')}<span class="grow">${db.settings.listView === 'full' ? 'Hide set tables in the list' : 'Show set tables in the list'}</span></button>
+      <button class="list-row" data-a="open-settings">${icon('gear')}<span class="grow">Settings</span>${icon('right', 'chev')}</button>
+    </div>
     <div class="field"><span>Day type</span><div class="segmented" role="radiogroup" aria-label="Day type">${modes.map((m) =>
       `<button class="${m === mode ? 'on' : ''}" data-a="day-mode-today" data-v="${m}" role="radio" aria-checked="${m === mode}">${MODE_LABELS[m]}</button>`).join('')}</div>
       <p class="muted small">Applies to every ${FULL_DAY[day]}. Change it for the whole week in Plan.</p></div>
@@ -1294,10 +1316,8 @@ function openDayOptions() {
       ${!db.activeSession ? `<button class="list-row" data-a="start-empty"><span class="grow">Empty workout</span>${icon('right', 'chev')}</button>` : ''}
       ${session ? `<button class="list-row" data-a="leave-workout-view"><span class="grow">Plan, food and progress</span>${icon('right', 'chev')}</button>` : ''}
       <button class="list-row" data-a="wk-open"><span class="grow">Adjust week</span>${icon('right', 'chev')}</button>
-      ${dayPlan(db, day) && !session ? `<button class="list-row" data-a="adj-open" data-day="${day}"><span class="grow">Adjust ${day === dayKeyOf(todayStr()) ? 'today' : FULL_DAY[day]}</span>${icon('right', 'chev')}</button>` : ''}
       <button class="list-row" data-a="pain-report"><span class="grow">Log pain</span>${icon('right', 'chev')}</button>
       <button class="list-row" data-a="open-templates" data-day="${day}"><span class="grow">Conditioning and recovery</span>${icon('right', 'chev')}</button>
-      <button class="list-row" data-a="open-share"><span class="grow">Share app</span>${icon('right', 'chev')}</button>
       ${session ? `<button class="list-row danger-row" data-a="discard"><span class="grow">Discard this workout</span></button>` : ''}
     </div>
     <button class="btn plain block" data-a="close-sheet">Done</button>`);
@@ -2188,21 +2208,36 @@ function exerciseHistory(exId) {
 
 function screenHistory() {
   if (ui.historyEx) return screenExerciseHistory(ui.historyEx);
-  const seen = new Map();
-  for (const s of [...db.sessions].reverse()) for (const e of s.entries) if (!seen.has(e.exerciseId)) seen.set(e.exerciseId, s.date);
-  const recent = [...db.sessions].reverse().slice(0, 8);
+  if (ui.progSub) return progressPage(ui.progSub);
+  const lastWorkout = db.sessions[db.sessions.length - 1];
+  const seenN = new Set(db.sessions.flatMap((s) => s.entries.map((e) => e.exerciseId))).size;
   return `<header class="top"><h1 class="grow">Progress</h1></header>
-    ${progressTabs()}
     ${!db.sessions.length && !db.cardio.length ? '<div class="empty"><div class="big">No workouts yet</div><p class="muted">Finished workouts show up here.</p></div>' : ''}
     ${weekRingsCard()}
     ${calendarCard()}
-    ${extras.volumeCard()}
+    <div class="list-group">
+      <button class="list-row" data-a="prog-sub" data-v="muscles"><span class="grow"><b>Muscles</b><span class="pick-sub">Weekly sets, recovery, last week's review</span></span>${icon('right', 'chev')}</button>
+      <button class="list-row" data-a="prog-sub" data-v="exercises"><span class="grow"><b>Exercises</b><span class="pick-sub">${seenN ? `History and records for ${seenN} lifts` : 'History and records for each lift'}</span></span>${icon('right', 'chev')}</button>
+      <button class="list-row" data-a="prog-sub" data-v="workouts"><span class="grow"><b>Workouts</b><span class="pick-sub">${lastWorkout ? `Last: ${fmtDate(lastWorkout.date)}` : 'Every workout and cardio session'}</span></span>${icon('right', 'chev')}</button>
+      <button class="list-row" data-a="progress-view" data-v="body"><span class="grow"><b>Body</b><span class="pick-sub">Weight, measurements, photos</span></span>${icon('right', 'chev')}</button>
+    </div>`;
+}
+
+function progressPage(which) {
+  const seen = new Map();
+  for (const s of [...db.sessions].reverse()) for (const e of s.entries) if (!seen.has(e.exerciseId)) seen.set(e.exerciseId, s.date);
+  const recent = [...db.sessions].reverse().slice(0, 40);
+  if (which === 'muscles') return `${subHeader('Muscles', 'progress-back')}
+    <div class="list-group"><button class="list-row" data-a="open-recovery"><span class="grow"><b>Recovery</b><span class="pick-sub">How ready each muscle is</span></span>${icon('right', 'chev')}</button><button class="list-row" data-a="rv-open"><span class="grow"><b>Last week's review</b><span class="pick-sub">Suggestions for your plan</span></span>${icon('right', 'chev')}</button></div>
+    ${extras.volumeCard()}`;
+  if (which === 'workouts') return `${subHeader('Workouts', 'progress-back')}
     ${recent.length ? `<div class="card"><h3>Recent workouts</h3>${recent.map((s) => `
       <button class="list-row" data-a="summary" data-id="${s.id}">
         <span class="grow"><b>${s.freestyle ? 'Freestyle' : esc(db.plan[s.day]?.name || DAY_NAMES[s.day])}${s.isDeload ? ' · deload' : ''}</b><span class="pick-sub">${fmtDate(s.date)} · ${Math.round(workoutBurn(db, s).minutes)} min · ~${Math.round(workoutBurn(db, s).active)} kcal</span></span>
         ${s.prs?.length ? `<span class="pill good">${s.prs.length} PR${s.prs.length > 1 ? 's' : ''}</span>` : (() => { const up = s.results.filter((r) => r.status === 'progressed').length; return up ? `<span class="muted small">${up} up</span>` : ''; })()}${icon('right', 'chev')}
-      </button>`).join('')}</div>` : ''}
-    ${cardioHistory()}
+      </button>`).join('')}</div>` : '<p class="muted small pad">No workouts yet.</p>'}
+    ${cardioHistory()}`;
+  return `${subHeader('Exercises', 'progress-back')}
     ${seen.size ? `<div class="card"><div class="row between"><h3>By exercise</h3><button class="link-btn" data-a="browse-bank">Exercise library</button></div>${seen.size > 6 ? '<input class="search list-filter" type="search" placeholder="Search your exercises" data-filter="#by-ex" autocomplete="off" enterkeyhint="search">' : ''}<div id="by-ex">${[...seen.entries()].map(([id, date]) => `
       <button class="list-row" data-a="history-ex" data-id="${id}">
         <span class="grow">${esc(db.exercises[id]?.name || id)}</span><span class="muted small">${fmtDate(date)}</span>${icon('right', 'chev')}
@@ -2265,8 +2300,7 @@ function screenBody() {
     return { x: b.date, values: [b.weight, win.reduce((a, x) => a + x.weight, 0) / win.length] };
   });
   setTimeout(() => { const el = $('#bw-chart'); if (el && pts.length) lineChart(el, { points: pts, series: [{ name: 'Weigh-in', cls: 's2' }, { name: '7-day average', cls: 's1' }] }); });
-  return `<header class="top"><h1 class="grow">Progress</h1></header>
-    ${progressTabs()}
+  return `${subHeader('Body', 'progress-back')}
     ${freshnessCard()}
     <h2 class="sect-h">Bodyweight</h2>
     <div class="card">
@@ -2303,22 +2337,68 @@ function planViewTabs() {
     </div>`;
 }
 
+// A sub-page header: back arrow, title, optional subtitle.
+const subHeader = (title, back, sub = '') => `<header class="top"><button class="back" data-a="${back}" aria-label="Back">${icon('left')}</button><div class="grow"><h1>${title}</h1>${sub ? `<p class="subtitle">${sub}</p>` : ''}</div></header>`;
+
+// Plan opens on the week as seven rows; a day, the program and goals are one tap deeper.
 function screenPlan() {
-  if (ui.planView === 'year') return planViewTabs() + year.view();
+  if (ui.planView === 'year') return subHeader('Goals and year', 'plan-back') + train.runCard() + year.view();
+  if (ui.planView === 'program') return planProgram();
+  if (ui.planView !== 'day') return planWeek();
+  return planDay();
+}
+
+function planWeek() {
+  const today = dayKeyOf(todayStr());
+  const adjusted = db.week?.start === mondayOf(todayStr());
+  const rows = weekOrder().map((d) => {
+    const mode = dayMode(db, d);
+    const p = dayPlan(db, d);
+    const lift = p?.items?.length && (mode === 'lift' || mode === 'both');
+    const name = lift ? esc(p.name) : mode === 'cardio' ? 'Cardio' : 'Rest';
+    const sub = lift ? `${p.items.length} exercises · ~${estimateMinutes(p.items)} min${mode === 'both' ? ' + cardio' : ''}` : '';
+    return `<button class="list-row week-row ${d === today ? 'is-today' : ''}" data-a="plan-open-day" data-day="${d}"><span class="wd">${DAY_NAMES[d]}</span><span class="grow"><b>${name}</b>${sub ? `<span class="pick-sub">${sub}</span>` : ''}</span>${icon('right', 'chev')}</button>`;
+  }).join('');
+  const b = blockInfo(db);
+  const rv = weekReview(db);
+  const nSug = rv.items.filter((x) => x.action).length;
+  return `<header class="top"><h1 class="grow">Plan</h1></header>
+    <div class="section-title"><h2>This week</h2><div class="row">${adjusted ? '<button class="link-btn" data-a="wk-reset">Reset</button>' : ''}<button class="link-btn" data-a="wk-open">Adjust</button></div></div>
+    ${adjusted ? '<p class="muted small week-note">Adjusted for this week only.</p>' : ''}
+    <div class="list-group">${rows}</div>
+    <h2 class="group-title">Program</h2>
+    <div class="list-group">
+      <button class="list-row" data-a="plan-view" data-v="program"><span class="grow"><b>Block ${b.index} · week ${b.weekInBlock} of ${b.n}</b><span class="pick-sub">Focus lifts, deloads, progression</span></span>${icon('right', 'chev')}</button>
+      <button class="list-row" data-a="rv-open"><span class="grow"><b>Last week</b><span class="pick-sub">${rv.sessions ? (nSug ? `${nSug} suggestion${nSug === 1 ? '' : 's'}` : 'Nothing to change') : 'No workouts logged'}</span></span>${icon('right', 'chev')}</button>
+      <button class="list-row" data-a="plan-view" data-v="year"><span class="grow"><b>Goals and year</b><span class="pick-sub">Running goal, training phases</span></span>${icon('right', 'chev')}</button>
+      <button class="list-row" data-a="open-builder"><span class="grow"><b>Rebuild plan from goals</b><span class="pick-sub">Days, sets, reps and exercises</span></span>${icon('right', 'chev')}</button>
+    </div>`;
+}
+
+function planProgram() {
+  const name = PROGRESSIONS[db.settings.progression] ? PROGRESSIONS[db.settings.progression].name : PROGRESSIONS.double.name;
+  return `${subHeader('Program', 'plan-back')}
+    ${blockCard()}
+    <div class="list-group">
+      <button class="list-row" data-a="open-settings" data-page="training"><span class="grow"><b>Progression</b><span class="pick-sub">${esc(name)}</span></span>${icon('right', 'chev')}</button>
+      <button class="list-row" data-a="open-settings" data-page="training"><span class="grow"><b>Blocks and deloads</b><span class="pick-sub">${db.settings.deloadOff ? 'No scheduled deloads' : `Deload every ${db.settings.deloadEvery} weeks`}</span></span>${icon('right', 'chev')}</button>
+    </div>`;
+}
+
+function planDay() {
   const day = ui.planDay;
   const plan = db.plan[day];
   const mode = dayMode(db, day);
   const modes = plan ? ['lift', 'both', 'cardio', 'rest'] : ['cardio', 'rest'];
-  const head = `${dayTabs(day, 'plan-day')}
-    <div class="segmented small-seg" role="radiogroup" aria-label="Day type">${modes.map((m) =>
+  const head = `<div class="segmented small-seg" role="radiogroup" aria-label="Day type">${modes.map((m) =>
       `<button class="${m === mode ? 'on' : ''}" data-a="day-mode" data-v="${m}" role="radio" aria-checked="${m === mode}">${MODE_LABELS[m]}</button>`).join('')}</div>`;
   const weekAdjusted = db.week?.start === mondayOf(todayStr());
-  const weekBar = `<div class="week-bar"><button class="btn grow" data-a="wk-open">Adjust week</button>${weekAdjusted ? '<button class="btn" data-a="wk-reset">Reset</button>' : ''}</div>${weekAdjusted ? '<p class="muted small week-note">This week is adjusted. Your plan returns Monday.</p>' : ''}`;
-  if (!plan) return planViewTabs() + weekBar + train.runCard() + head + `<div class="empty small-empty"><p class="muted">No lifting on ${FULL_DAY[day]}s. Cardio days get suggestions based on your fatigue and upcoming lift days.</p></div><button class="btn block" data-a="pt-add" data-day="${day}">Add lifting on ${FULL_DAY[day]}s</button><button class="btn block" data-a="open-templates" data-day="${day}" data-mode="plan">Add conditioning</button>${builderEntry()}`;
+  const weekBar = `<div class="week-bar"><button class="btn grow" data-a="wk-open">Adjust week</button><button class="btn" data-a="rv-open">Last week</button>${weekAdjusted ? '<button class="btn" data-a="wk-reset">Reset</button>' : ''}</div>${weekAdjusted ? '<p class="muted small week-note">This week is adjusted. Your plan returns Monday.</p>' : ''}`;
+  if (!plan) return subHeader(FULL_DAY[day], 'plan-back') + head + `<div class="empty small-empty"><p class="muted">No lifting on ${FULL_DAY[day]}s. Cardio days get suggestions based on your fatigue and upcoming lift days.</p></div><button class="btn block" data-a="pt-add" data-day="${day}">Add lifting on ${FULL_DAY[day]}s</button><button class="btn block" data-a="open-templates" data-day="${day}" data-mode="plan">Add conditioning</button>${builderEntry()}`;
   const items = plan.items;
   const est = estimateMinutes(items);
   const totalSets = items.reduce((a, i) => a + i.sets, 0);
-  return `${planViewTabs()}${blockCard()}${weekBar}${train.runCard()}${head}
+  return `${subHeader(FULL_DAY[day], 'plan-back')}${head}
     ${mode === 'cardio' || mode === 'rest' ? `<p class="muted small pad">Lifting is off on ${FULL_DAY[day]}s. The exercises below are kept for when you switch back.</p>` : ''}
     <div class="card plan-day">
       <div class="row between"><input id="plan-name" class="title-input" type="text" value="${esc(plan.name)}" data-a="plan-name" aria-label="Day name"><button class="icon-btn plain" data-a="plan-day-menu" data-day="${day}" aria-label="${FULL_DAY[day]} options: move, edit all, remove">${icon('more')}</button></div>
@@ -2340,8 +2420,7 @@ function screenPlan() {
       </div>
       <div class="plan-actions"><button class="text-btn" data-a="plan-add">${icon('plus')} Exercise</button><button class="text-btn" data-a="open-templates" data-day="${day}" data-mode="plan">${icon('plus')} Conditioning</button><button class="text-btn" data-a="browse-bank">Library</button></div>
     </div>
-    ${builderEntry()}
-    <p class="muted small pad">Drag ⠿ to reorder, or tap an exercise to edit, swap or move it. Swapping keeps each exercise's history.</p>`;
+`;
 }
 
 function openPlanEdit(i) {
@@ -2638,7 +2717,7 @@ function screenBuilder() {
     body = `
       <div class="card">
         <div class="field"><span>Lifting days per week · suggested <b>${sug.lift}</b></span>${dayChips('liftDays', 2, 6, p.liftDays)}</div>
-        <div class="field"><span>Days ${helpBtn()}</span><p class="help-text" hidden>The weekdays you lift. You can adjust any single week later.</p><div class="chips wrap" role="group" aria-label="Lifting days">${DAY_KEYS.map((d) => {
+        <div class="field"><span>Days ${helpBtn()}</span><p class="help-text" hidden>The weekdays you lift. You can adjust any single week later.</p><div class="chips wrap" role="group" aria-label="Lifting days">${weekOrder().map((d) => {
           const on = liftDayKeys(p).includes(d);
           return `<button class="chip ${on ? 'on' : ''}" data-a="b-weekday" data-v="${d}" aria-pressed="${on}">${DAY_NAMES[d]}</button>`;
         }).join('')}</div></div>
@@ -2655,7 +2734,7 @@ function screenBuilder() {
         </details>
         <div class="field"><span>Variety ${helpBtn()}</span><p class="help-text" hidden>How often exercises change. Focus lifts always stay the same.</p>${bChips('variety', Object.fromEntries(Object.entries(VARIETY).map(([k, v]) => [k, v.name])), p.variety || 'low')}
           <p class="muted small">${VARIETY[p.variety || 'low'].desc} ${refChips(['kassiano2022', 'bazvalle2019', 'fonseca2014'])}</p></div>
-        <div class="field"><span>Progression ${helpBtn()}</span><p class="help-text" hidden>How your focus lifts move forward. Every other lift adds reps, then weight. You can also pick a progression for any single lift from its options.</p>${progressionList(p.progression || recommendProgression(p), recommendProgression(p), 'b-set')}</div>
+        <div class="field"><span>For your focus lifts ${helpBtn()}</span><p class="help-text" hidden>How your focus lifts move forward. Every other lift adds reps, then weight. You can also pick a progression for any single lift from its options.</p>${progressionList(p.progression || recommendProgression(p), recommendProgression(p), 'b-set')}</div>
         <div class="field"><span>Routines ${helpBtn()}</span><p class="help-text" hidden>Add a short warm-up (easy cardio, dynamic moves, and PT drills for any pain you've logged) and a cool-down stretch to every lifting day. You can switch either off on any day.</p>${bChips('routines', { warm: 'Warm-up', cool: 'Cool-down' }, p.routines || [], true)}</div>
         <div class="field"><span>Core ${helpBtn()}</span><p class="help-text" hidden>Where core work goes. Default: one core exercise to finish each lifting day, mixing weighted and bodyweight.</p>${bChips('corePlacement', Object.fromEntries(Object.entries(CORE_PLACEMENTS).map(([k, v]) => [k, v.name])), p.corePlacement || 'end')}</div>
         <div class="field"><span>Equipment</span>${bChips('equipment', EQUIPMENT, p.equipment, true)}</div>
@@ -2716,7 +2795,7 @@ function reviewHtml(p, rx, out) {
     ['Deload', `every ${rx.deloadEvery} weeks`],
     ['Bodyweight', rx.weightGoal === 'gain' ? `+${rx.rate[0]}–${rx.rate[1]}%/week` : rx.weightGoal === 'lose' ? `−${rx.rate[0]}–${rx.rate[1]}%/week` : 'maintain'],
   ];
-  const week = DAY_KEYS.map((d) => {
+  const week = weekOrder().map((d) => {
     const mode = out.dayModes[d];
     const day = out.plan[d];
     const label = day ? `${esc(day.name)} · ~${out.minutes[d]} min${mode === 'both' ? ' + cardio' : ''}` : mode === 'cardio' ? 'Cardio' : 'Rest';
@@ -2836,16 +2915,11 @@ function screenSettings() {
   // Options that only apply to the original sample plan.
   const legacy = Object.values(db.plan).some((d) => d.items?.some((i) => i.role === 'rowCompound' || i.exerciseId === 'iso-row'));
   const p = db.profile;
-  return `<header class="top"><button class="back" data-a="settings-back" aria-label="Back">${icon('left')}</button><h1 class="grow">Settings</h1></header>
-
-    <h2 class="group-title">Profile</h2>
-    <div class="list-group">
-      <button class="list-row" data-a="open-builder"><span class="row-icon accent" aria-hidden="true">${icon('sparkle')}</span>
-        <span class="grow"><b>Plan builder</b><span class="pick-sub">${p ? `${EXPERIENCE[p.experience]?.label || ''} · ${p.liftDays} lifting days · built ${new Date(p.builtAt).toLocaleDateString()}` : 'Not set up yet'}</span></span>${icon('right', 'chev')}</button>
-    </div>
-
-    <h2 class="group-title">Training</h2>
+  // Settings: a short list of pages, like iPhone Settings.
+  const pages = {
+    training: { title: 'Training', html: `    <h2 class="group-title">Week and blocks</h2>
     <div class="card">
+      <div class="field"><span>Week starts on</span><select data-a="week-start" aria-label="Week starts on">${['mon', 'sun', 'sat', 'tue', 'wed', 'thu', 'fri'].map((d) => `<option value="${d}" ${(db.settings.weekStart || 'mon') === d ? 'selected' : ''}>${FULL_DAY[d]}</option>`).join('')}</select></div>
       <div class="field"><span>Block length (deload in the last week)</span>
         <div class="row stepper-row"><button class="step" data-a="deload-weeks" data-v="-1" aria-label="Shorter block" ${s.deloadEvery <= 3 ? 'disabled' : ''}>−</button><b class="tnum">${s.deloadEvery} weeks</b><button class="step" data-a="deload-weeks" data-v="1" aria-label="Longer block" ${s.deloadEvery >= 8 ? 'disabled' : ''}>+</button></div></div>
       <label class="toggle"><input type="checkbox" data-a="deload-off" ${s.deloadOff ? 'checked' : ''}><span>No scheduled deloads (deload when you choose, from day options)</span></label>
@@ -2855,13 +2929,22 @@ function screenSettings() {
         <div class="segmented small-seg grow" role="radiogroup" aria-label="Last week reps in reserve">${[0, 1, 2].map((n) => `<button class="${(s.rampEnd ?? db.profile?.rx?.rirLo ?? 1) === n ? 'on' : ''}" data-a="ramp-end" data-v="${n}" role="radio" aria-checked="${(s.rampEnd ?? db.profile?.rx?.rirLo ?? 1) === n}">${n}</button>`).join('')}</div></div></div>
       <div class="field"><span>Current week of program · week ${wi.cyclePos} of ${wi.cycleLen} in this block${wi.isDeload ? ' (deload)' : ''}</span>
         <div class="row">${stepper('set-week', wi.week, 1)}<button class="btn" data-a="set-week">Set</button></div></div>
-      <div class="field"><span>Progression ${helpBtn()}</span><p class="help-text" hidden>How your focus lifts move forward. Every other lift adds reps, then weight. You can also pick a progression for any single lift from its options.</p>
+    </div>
+    <h2 class="group-title">Progression</h2>
+    <div class="card">
+      <div class="field"><span>For your focus lifts ${helpBtn()}</span><p class="help-text" hidden>How your focus lifts move forward. Every other lift adds reps, then weight. You can also pick a progression for any single lift from its options.</p>
         ${progressionList(PROGRESSIONS[s.progression] ? s.progression : 'double', recommendProgression(db.profile), 'set-progression')}</div>
+    </div>
+    <h2 class="group-title">Warm-ups and core</h2>
+    <div class="card">
       <label class="toggle"><input type="checkbox" data-a="set-extra" data-k="warmupRoutine" ${s.warmupRoutine ? 'checked' : ''}><span>Warm-up routine before lifting</span></label>
       <label class="toggle"><input type="checkbox" data-a="set-extra" data-k="cooldownRoutine" ${s.cooldownRoutine ? 'checked' : ''}><span>Cool-down stretch after lifting</span></label>
       <div class="field"><span>Core</span>
         <div class="segmented small-seg wrap-seg" role="radiogroup" aria-label="Core placement">${Object.entries(CORE_PLACEMENTS).map(([k, v]) => `<button class="${(s.corePlacement || 'end') === k ? 'on' : ''}" data-a="set-core" data-v="${k}" role="radio" aria-checked="${(s.corePlacement || 'end') === k}">${v.name}</button>`).join('')}</div>
         <p class="muted small">${CORE_PLACEMENTS[s.corePlacement || 'end'].desc} ${refChips(['mcgill2010', 'hibbs2008', 'granata2008'])}</p></div>
+    </div>
+    <h2 class="group-title">Exercises and logging</h2>
+    <div class="card">
       <div class="field"><span>Exercise variety</span>
         <div class="segmented small-seg" role="radiogroup" aria-label="Exercise variety">${Object.entries(VARIETY).map(([k, v]) => `<button class="${(s.variety || 'low') === k ? 'on' : ''}" data-a="set-variety" data-v="${k}" role="radio" aria-checked="${(s.variety || 'low') === k}">${v.name}</button>`).join('')}</div>
         <p class="muted small">${VARIETY[s.variety || 'low'].desc} ${refChips(['kassiano2022', 'bazvalle2019'])}</p></div>
@@ -2877,31 +2960,38 @@ function screenSettings() {
         <div class="grid2">${Object.entries(TYPES).map(([k, v]) => `<div class="field"><span>${v} (lb)</span><input type="text" inputmode="decimal" data-a="def-inc" data-k="${k}" value="${s.defaultIncrements[k]}"></div>`).join('')}</div>
         <button class="btn block" data-a="apply-inc">Apply to all existing exercises</button>
       </details>
-    </div>
-
-    <h2 class="group-title">Gym & equipment</h2>
-    ${extras.gymCard()}
-
-    <h2 class="group-title">Appearance</h2>
-    <div class="card">
+    </div>` },
+    gym: { title: 'Gym', html: `    ${extras.gymCard()}` },
+    appearance: { title: 'Appearance', html: `    <div class="card">
       <div class="segmented small-seg" role="radiogroup" aria-label="Theme">${['dark', 'light', 'system'].map((t) => `<button class="${s.theme === t ? 'on' : ''}" data-a="theme" data-v="${t}" role="radio" aria-checked="${s.theme === t}">${t[0].toUpperCase() + t.slice(1)}</button>`).join('')}</div>
       <p class="muted small">Text follows your iPhone's text size (Settings → Display & Brightness → Text Size).</p>
-    </div>
-
-    <h2 class="group-title">Apple Health</h2>
-    <div class="list-group"><button class="list-row" data-a="health-setup"><span class="grow">Set up the Lift to Health shortcut<span class="pick-sub">Sends each workout's calories to Health</span></span>${icon('right', 'chev')}</button>${db.settings.healthSetupHidden ? '<button class="list-row" data-a="health-reset"><span class="grow">Show setup steps again</span></button>' : ''}</div>
-
-    <h2 class="group-title">Share</h2>
-    <div class="list-group"><button class="list-row" data-a="open-share"><span class="grow">Share app</span>${icon('right', 'chev')}</button></div>
-
-    <h2 class="group-title">Data & security</h2>
-    ${cloud.card()}
+    </div>` },
+    backup: { title: 'Backup and data', html: `    ${cloud.card()}
     ${extras.dataCard()}
-
     <h2 class="group-title">Reset</h2>
     <div class="list-group">
       <button class="list-row" data-a="reset-plan"><span class="grow">Restore the sample plan</span></button>
       <button class="list-row danger-row" data-a="reset-all"><span class="grow">Erase all data</span></button>
+    </div>
+    <p class="muted small center pad">Lift Tracker · ${db.sessions.length} workouts logged</p>` },
+  };
+  const pg = pages[ui.setPage];
+  if (pg) return `<header class="top"><button class="back" data-a="settings-back" aria-label="Back">${icon('left')}</button><h1 class="grow">${pg.title}</h1></header>${pg.html}`;
+  const row = (a, v, title, sub) => `<button class="list-row" data-a="${a}" ${v ? `data-v="${v}"` : ''}><span class="grow"><b>${title}</b>${sub ? `<span class="pick-sub">${sub}</span>` : ''}</span>${icon('right', 'chev')}</button>`;
+  const prog = PROGRESSIONS[s.progression] ? PROGRESSIONS[s.progression].name : PROGRESSIONS.double.name;
+  const lastBk = s.lastBackupAt ? new Date(s.lastBackupAt).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }) : null;
+  return `<header class="top"><button class="back" data-a="settings-back" aria-label="Back">${icon('left')}</button><h1 class="grow">Settings</h1></header>
+    <div class="list-group">
+      ${row('open-builder', '', 'Profile and goals', p ? 'Plan builder · ' + (EXPERIENCE[p.experience]?.label || '') : 'Plan builder · not set up yet')}
+      ${row('settings-page', 'training', 'Training', `Week starts ${FULL_DAY[s.weekStart || 'mon']} · ${esc(prog)}`)}
+      ${row('settings-page', 'gym', 'Gym', esc(activeGym(db).name))}
+    </div>
+    <div class="list-group">
+      ${row('settings-page', 'backup', 'Backup and data', lastBk ? `Last backup ${lastBk}` : 'No backup yet')}
+      ${row('health-setup', '', 'Apple Health', 'Send workout calories to Health')}
+      ${row('settings-page', 'appearance', 'Appearance', { dark: 'Dark', light: 'Light', system: 'Match iPhone' }[s.theme] || '')}
+      ${row('open-share', '', 'Share the app', '')}
+      ${row('tour-replay', '', 'Show the tour again', '')}
     </div>
     <p class="muted small center pad">Lift Tracker · ${db.sessions.length} workouts logged</p>`;
 }
@@ -2979,6 +3069,7 @@ const focusUi = createFocus(ctx);
 const exEditor = createExerciseEditor(ctx);
 const planTools = createPlanTools(ctx);
 const health = createHealth(ctx);
+const tour = createTour(ctx);
 
 // ---------- Render ----------
 
@@ -3007,6 +3098,10 @@ const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
 function screenKey() {
   if (ui.tab === 'exercise') return `exercise:${ui.exUid}`;
   if (ui.tab === 'history' && ui.historyEx) return `history:${ui.historyEx}`;
+  if (ui.tab === 'history' && ui.progSub) return `history:${ui.progSub}`;
+  if (ui.tab === 'body') return 'history:body';
+  if (ui.tab === 'plan' && ui.planView && ui.planView !== 'week') return `plan:${ui.planView}`;
+  if (ui.tab === 'settings' && ui.setPage) return `settings:${ui.setPage}`;
   return ui.tab;
 }
 function navDir(from, to) {
@@ -3057,9 +3152,11 @@ function render() {
   // Elsewhere in the app mid-workout: a pill to get back.
   if (db.activeSession && !['today', 'exercise', 'summary'].includes(ui.tab)) $('#main').insertAdjacentHTML('beforeend', '<button class="back-to-workout" data-a="back-to-workout">Back to workout</button>');
   refreshRecovery();
+  tour.maybe();
   // Settings is reached from a gear in the header of each main screen.
   const header = $('#main header.top');
-  if (header && MAIN_SCREENS.includes(ui.tab) && !(ui.tab === 'history' && ui.historyEx)) {
+  const subPage = (ui.tab === 'plan' && ui.planView && ui.planView !== 'week') || (ui.tab === 'history' && (ui.historyEx || ui.progSub)) || ui.tab === 'body';
+  if (header && MAIN_SCREENS.includes(ui.tab) && !['today', 'food'].includes(ui.tab) && !subPage) {
     header.insertAdjacentHTML('beforeend', `<button class="icon-btn" data-a="open-settings" aria-label="Settings">${GEAR}</button>`);
   }
   const active = { exercise: 'today', summary: ui.summaryFresh ? 'today' : 'progress', builder: 'plan', 'edit-session': 'progress', history: 'progress', body: 'progress', settings: ui.prevTab === 'history' || ui.prevTab === 'body' ? 'progress' : ui.prevTab }[ui.tab] || ui.tab;
@@ -3073,7 +3170,7 @@ function render() {
 // ---------- Events ----------
 
 const actions = {
-  tab: (d) => { ui.infoFrom = null; if (d.tab === 'today') ui.peek = false; if (!$('#sheet').hidden) closeSheet(); ui.summaryFresh = false; ui.selecting = false; ui.tab = d.tab === 'progress' ? ui.progressTab || 'history' : d.tab; if (d.tab === 'today') ui.summaryId = null; if (d.tab === 'history') ui.historyEx = null; window.scrollTo(0, 0); render(); },
+  tab: (d) => { ui.infoFrom = null; if (d.tab === 'today') ui.peek = false; if (!$('#sheet').hidden) closeSheet(); ui.summaryFresh = false; ui.selecting = false; ui.tab = d.tab === 'progress' ? 'history' : d.tab; if (d.tab === 'progress') ui.progSub = null; if (d.tab === 'plan') ui.planView = 'week'; if (d.tab === 'today') ui.summaryId = null; if (d.tab === 'history') ui.historyEx = null; window.scrollTo(0, 0); render(); },
   day: (d) => { ui.day = d.day; ui.tab = 'today'; ui.showCardio = false; ui.selecting = false; render(); },
   'open-set': (d) => openSetSheet(d.uid, +d.i),
   'leave-workout-view': () => { closeSheet(); ui.peek = true; render(); toast('Your workout keeps running. Tap "Back to workout" to return.'); },
@@ -3280,9 +3377,14 @@ const actions = {
   'cardio-toggle': (d) => { (ui.cardioOpen ||= {})[d.day] = d.open !== '1'; render(); },
   'ex-toggle': (d) => { (ui.exOpen ||= {})[d.uid] = d.open !== '1'; render(); },
   'start-workout': () => { ensureSession(ui.day); render(); toast('Workout started. Tap the check as you finish each set.'); },
-  'open-settings': () => { ui.prevTab = ui.tab; ui.tab = 'settings'; window.scrollTo(0, 0); render(); },
-  'settings-back': () => { ui.tab = ui.prevTab || 'today'; window.scrollTo(0, 0); render(); },
-  'progress-view': (d) => { ui.tab = d.v; ui.progressTab = d.v; ui.historyEx = null; render(); },
+  'open-settings': (d) => { if (!$('#sheet').hidden) closeSheet(); ui.setPage = d?.page || null; ui.prevTab = ui.tab; ui.tab = 'settings'; window.scrollTo(0, 0); render(); },
+  'settings-back': () => { if (ui.setPage) { ui.setPage = null; window.scrollTo(0, 0); return render(); } ui.tab = ui.prevTab || 'today'; window.scrollTo(0, 0); render(); },
+  'settings-page': (d) => { ui.setPage = d.v; window.scrollTo(0, 0); render(); },
+  'prog-sub': (d) => { ui.progSub = d.v; window.scrollTo(0, 0); render(); },
+  'progress-back': () => { if (ui.tab === 'body') ui.tab = 'history'; ui.progSub = null; window.scrollTo(0, 0); render(); },
+  'plan-open-day': (d) => { ui.planDay = d.day; ui.planView = 'day'; window.scrollTo(0, 0); render(); },
+  'plan-back': () => { ui.planView = 'week'; window.scrollTo(0, 0); render(); },
+  'progress-view': (d) => { ui.tab = d.v; ui.historyEx = null; window.scrollTo(0, 0); render(); },
   'start-empty': () => { if (db.activeSession) return toast('Finish or discard the current workout first.'); startSession(ui.day, true); render(); openPicker({ mode: 'session-add' }); },
   'session-add': () => openPicker({ mode: 'session-add' }),
   'ex-open-close': (d) => { closeSheet(); actions['ex-open'](d); },
@@ -3386,6 +3488,41 @@ const actions = {
     toast(d.k === 'warm' ? 'Warm-up added at the top.' : 'Cool-down added at the end.');
   },
   'add-cardio': () => { ui.workoutCardio = ui.day; (ui.cardioOpen ||= {})[ui.day] = true; render(); requestAnimationFrame(() => document.querySelector('.card.cardio')?.scrollIntoView({ behavior: 'smooth', block: 'start' })); },
+  'day-edit': (d) => {
+    const day = d.day || ui.day;
+    const x = dayExtras(db, day);
+    openSheet(`<h2>Today's workout</h2>
+      <div class="list-group">
+        <button class="list-row" data-a="adj-open" data-day="${day}"><span class="grow">Time and gym<span class="pick-sub">Fit the workout to the time you have, or another gym</span></span>${icon('right', 'chev')}</button>
+        <label class="list-row toggle"><span class="grow">Warm-up<span class="pick-sub">Picked for today's muscles</span></span><input type="checkbox" data-a="extra-check" data-k="warm" data-day="${day}" ${x.warm ? 'checked' : ''}></label>
+        <label class="list-row toggle"><span class="grow">Cool-down<span class="pick-sub">A few stretches at the end</span></span><input type="checkbox" data-a="extra-check" data-k="cool" data-day="${day}" ${x.cool ? 'checked' : ''}></label>
+        <button class="list-row" data-a="why-workout"><span class="grow">Why this workout</span>${icon('right', 'chev')}</button>
+      </div>`);
+  },
+  'extra-check': (d, el) => { setDayExtra(db, d.day, d.k, el.checked); persist(); render(); },
+  'list-view-menu': () => { closeSheet(); actions['list-view'](); },
+  'tour-replay': () => { tour.replay(); ui.setPage = null; ui.tab = 'today'; ui.day = defaultDay(); window.scrollTo(0, 0); render(); },
+  'rv-open': () => openReview(),
+  'rv-dismiss': () => { db.settings.reviewSeen = lastWeekStart(); persist(); render(); },
+  'rv-apply': (d) => {
+    const x = ui.rv?.items[+d.i];
+    if (!x?.action) return;
+    const makeItem = (day, exId, sets) => {
+      const ex = db.exercises[exId];
+      const compound = ex.category === 'compound';
+      const plan = db.plan[day];
+      const nextGroup = Math.max(0, ...plan.items.map((i) => parseInt(groupNum(i.group), 10) || 0)) + 1;
+      return { uid: `${day}-${Date.now()}`, exerciseId: exId, group: String(nextGroup), sets, repMin: compound ? 6 : 10, repMax: compound ? 10 : 15, restSec: compound ? 150 : 90, note: '' };
+    };
+    const msg = applySuggestion(db, x.action, makeItem);
+    if (!msg) return toast('That change no longer fits your plan.');
+    applyGoals(db);
+    persist(); render();
+    const btn = document.querySelector(`[data-a="rv-apply"][data-i="${d.i}"]`);
+    if (btn) { btn.disabled = true; btn.textContent = 'Done'; }
+    toast(msg);
+  },
+  'warm-shuffle': () => { shuffleWarmup(db, ui.day); persist(); render(); toast('New warm-up.'); },
   'list-undo': () => { if (!$('#sheet').hidden) closeSheet(); undoList(); },
   'log-all': (d) => {
     closeSheet();
@@ -3591,7 +3728,7 @@ const actions = {
   },
   fb: (d) => { const e = sessionFor(ui.day).entries[d.uid]; e.feedback = e.feedback === d.v ? undefined : d.v; persist(); render(); },
   'fb-joint': (d) => { const e = sessionFor(ui.day).entries[d.uid]; e.joint = !e.joint; persist(); render(); },
-  'plan-view': (d) => { ui.planView = d.v; render(); },
+  'plan-view': (d) => { ui.planView = d.v; window.scrollTo(0, 0); render(); },
   'ref-sheet': (d) => openRefs(d.ids.split(',')),
   'share-session': async (d) => {
     const sx = db.sessions.find((x) => x.id === d.id);
@@ -3974,6 +4111,7 @@ document.addEventListener('change', (e) => {
   if (el.id === 'session-note') { const sx = db.sessions.find((x) => x.id === el.dataset.sid); if (sx) { sx.note = el.value.trim(); persist(); } return; }
   if (el.dataset?.bgoal && ui.b) { render(); return; }
   if (a === 'set-exprog') { actions[a](el.dataset, el); return; }
+  if (a === 'week-start') { db.settings.weekStart = el.value; setWeekStart(el.value); persist(); render(); toast(`Weeks now start on ${FULL_DAY[el.value]}.`); return; }
   if (a === 'pk-muscle') { picker.muscle = el.value; renderPickerList(); return; }
   if (a === 'b-mgoal') { const mg = (ui.b.draft.muscleGoals ||= {}); if (el.value) mg[el.dataset.g] = el.value; else delete mg[el.dataset.g]; return; }
   if (a === 'b-main') { (ui.b.draft.mainLift ||= {})[el.dataset.k] = el.value; render(); return; }
@@ -4063,7 +4201,7 @@ actions.reload = () => location.reload();
 actions['recovery-download'] = () => recoveryRaw && download(`lift-recovery-${todayStr()}.json`, recoveryRaw, 'application/json');
 
 (async () => {
-  try { db = await loadDb(); } catch (e) {
+  try { db = await loadDb(); setWeekStart(db.settings.weekStart || 'mon'); } catch (e) {
     if (!(e instanceof LoadError)) throw e;
     recoveryScreen(e);
     return;

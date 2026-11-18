@@ -3,34 +3,26 @@
 // The warm-up follows the RAMP structure (jeffreys2007), which the research on warming up supports
 // (mcgowan2015, fradkin2010):
 //   1. Raise   — 3–5 minutes of easy cardio to raise muscle temperature.
-//   2. Mobilize — dynamic stretches through the ranges today's lifts use, one easy set each.
+//   2. Mobilize — dynamic drills through the ranges today's lifts use, one easy set each.
 //      Dynamic stretching beforehand helps or is neutral for performance; long static holds right
 //      before lifting can blunt it slightly, so static stretching waits for the cool-down (behm2016).
-//   3. Prime   — two light sets of 8–10 reps of a movement that wakes up today's main muscles.
+//   3. Prime   — two light sets of a movement that wakes up today's main muscles.
 //      Easy enough to leave you fresh; the ramp-up sets on your first lift finish the job.
+// Tailored to the day: the muscles doing the most work in today's lifts are the focus, and every
+// focus muscle gets at least one drill. Drills are picked from the whole warm-up library and vary
+// by date (with a shuffle), so two days that train the same muscles don't get the same routine.
 //   4. Rehab   — when pain is logged, standard physical-therapy drills for that area (aaos2017,
 //      mcgill2010), e.g. isometric holds for sore knee tendons (rio2015). None for sharp pain.
 // About 8–10 minutes in all. The cool-down is a short static stretch; it does little for recovery
 // (vanhooren2018) but is a pleasant way to wind down, so it's optional.
 import { groupOf } from './engine.js';
 import { activePain, areaLabel, JOINTS } from './pain.js';
-import { todayStr, mondayOf, addDays } from './store.js';
+import { todayStr, addDays, dateOfDay } from './store.js';
+import { isAvailable } from './gym.js';
 
 const DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 
 // [exerciseId, sets, metric, target]
-const MOBILIZE = {
-  legs: [['leg-swing', 1, 'reps', 10], ['stretch-wgs', 1, 'reps', 5]],
-  push: [['arm-circle', 1, 'time', 30], ['stretch-thread', 1, 'reps', 6]],
-  pull: [['arm-circle', 1, 'time', 30], ['stretch-catcow', 1, 'reps', 8]],
-  core: [['stretch-catcow', 1, 'reps', 8]],
-};
-const PRIME = {
-  legs: [['glute-bridge', 2, 'reps', 10], ['lateral-band-walk', 2, 'reps', 10]],
-  push: [['scap-pushup', 2, 'reps', 10], ['band-pull-apart', 2, 'reps', 12]],
-  pull: [['scap-pull', 2, 'reps', 8], ['band-pull-apart', 2, 'reps', 12]],
-  core: [['dead-bug', 2, 'reps', 6]],
-};
 const PREHAB = {
   shoulder: [['band-external-rotation', 2, 'reps', 12], ['scap-pushup', 2, 'reps', 10]],
   knee: [['spanish-squat-hold', 3, 'time', 30], ['tke', 2, 'reps', 15]],
@@ -53,7 +45,7 @@ const COOL = {
   core: [['stretch-catcow', 1, 'time', 40]],
 };
 
-const dateOf = (day) => addDays(mondayOf(todayStr()), DAY_KEYS.indexOf(day));
+const dateOf = (day) => dateOfDay(day);
 
 export function dayExtras(db, day) {
   const o = db.dayExtras?.[dateOf(day)] || {};
@@ -82,28 +74,97 @@ function build(db, day, rows, phase) {
   }));
 }
 
+// Warm-up drills (conditioning-type moves, so they never count toward progression).
+// mobilize: dynamic range of motion, one set. prime: light activation, two sets.
+const DRILLS = {
+  mobilize: ['leg-swing', 'arm-circle', 'hip-circle', 'ankle-rock', 'open-book', 'inchworm', 'knee-hug-walk', 'band-dislocate', 'wall-slide',
+    'stretch-catcow', 'stretch-wgs', 'stretch-thread', 'stretch-9090', 'wrist-circle'],
+  prime: ['scap-pushup', 'scap-pull', 'band-pull-apart', 'band-external-rotation', 'prone-ytw', 'glute-bridge', 'glute-bridge-march',
+    'lateral-band-walk', 'clamshell', 'air-squat', 'bodyweight-lunge', 'step-up-bw', 'calf-raise-slow', 'plank', 'side-plank'],
+};
+
+// A small seeded random generator, so a day's warm-up stays the same until it's shuffled.
+function rng(seed) {
+  let h = 2166136261;
+  for (const c of String(seed)) h = Math.imul(h ^ c.charCodeAt(0), 16777619);
+  return () => { h = Math.imul(h ^ (h >>> 15), 2246822507); h = Math.imul(h ^ (h >>> 13), 3266489909); h ^= h >>> 16; return (h >>> 0) / 4294967296; };
+}
+
+// The muscles today's lifts work hardest, in order (sets on primary muscles, half for assisting).
+function focusMuscles(liftItems) {
+  const w = {};
+  for (const it of liftItems) {
+    const n = it.sets || 3;
+    for (const m of it.ex?.primary || []) w[m] = (w[m] || 0) + n;
+    for (const m of it.ex?.secondary || []) w[m] = (w[m] || 0) + n * 0.3;
+  }
+  return Object.keys(w).sort((x, y) => w[y] - w[x]).filter((m) => w[m] >= 3).slice(0, 5);
+}
+
 export function warmupItems(db, day, liftItems) {
-  const groups = groupsTrained(liftItems);
-  const main = groups[0];
-  const second = groups.find((g) => g !== main && g !== 'core');
+  const date = dateOf(day);
+  const rand = rng(`${date}:${day}:${db.dayExtras?.[date]?.warmSeed || 0}`);
+  const focus = focusMuscles(liftItems);
+  const ok = (id) => { const e = db.exercises[id]; return e && isAvailable(db, e) && db.exPrefs?.[id] !== 'never'; };
+  const covers = (id, m) => { const e = db.exercises[id]; return e.primary.includes(m) ? 1 : e.secondary.includes(m) ? 0.4 : 0; };
   const rows = [['warmup-cardio', 1, 'time', 180, 'Raise: bike, rower or brisk walk, easy pace']];
-  for (const g of [main, second].filter(Boolean)) for (const r of MOBILIZE[g] || []) rows.push([...r, 'Mobilize: smooth, through the full range']);
   // PT drills for logged pain (not sharp pain), most relevant to today's muscles first.
   const trained = new Set(liftItems.flatMap((i) => [...(i.ex?.primary || []), ...(i.ex?.secondary || [])]));
   const pains = activePain(db).filter((r) => r.level < 3)
     .sort((a, b) => (JOINTS[b.area]?.muscles || [b.area]).some((m) => trained.has(m)) - (JOINTS[a.area]?.muscles || [a.area]).some((m) => trained.has(m)));
-  let rehab = 0;
+  const rehab = [];
   for (const r of pains) {
     const set = PREHAB[AREA_SET[r.area]];
-    if (!set || rehab >= 3) continue;
-    for (const [id, sets, metric, target] of set.slice(0, 2)) { rows.push([id, sets, metric, target, `Rehab: for your ${areaLabel(r.area, r.side).toLowerCase()}`]); rehab += 1; }
+    if (!set || rehab.length >= 2) continue;
+    for (const [id, sets, metric, target] of set.slice(0, 2)) if (rehab.length < 2 && ok(id)) rehab.push([id, sets, metric, target, `Rehab: for your ${areaLabel(r.area, r.side).toLowerCase()}`]);
   }
-  // Prime: the main muscle group (two light sets), plus the second group if there's no rehab work.
-  for (const g of [main, rehab ? null : second].filter(Boolean)) {
-    const p = PRIME[g]?.[0];
-    if (p) rows.push([...p, 'Prime: 2 light sets, stop well short of tired']);
+  // Cover every focus muscle: for each one still uncovered, pick a drill that covers it (and as many
+  // other focus muscles as possible), choosing at random among the near-best. Mobilize drills first.
+  const chosen = { mobilize: [], prime: [] };
+  const covered = new Map(focus.map((m) => [m, 0]));
+  for (const id of rehab.map((r) => r[0])) for (const m of focus) covered.set(m, covered.get(m) + covers(id, m));
+  const limit = { mobilize: 3, prime: 3 };
+  const pick = (kind, need) => {
+    const pool = DRILLS[kind].filter((id) => ok(id) && !chosen.mobilize.includes(id) && !chosen.prime.includes(id) && !rehab.some((r) => r[0] === id));
+    const score = (id) => (need ? covers(id, need) * 3 : 0) + focus.reduce((acc, m) => acc + (covered.get(m) < 1 ? covers(id, m) : covers(id, m) * 0.2), 0);
+    const ranked = pool.map((id) => ({ id, sc: score(id) })).filter((x) => x.sc > 0 && (!need || covers(x.id, need) > 0)).sort((p, q) => q.sc - p.sc);
+    if (!ranked.length) return false;
+    const near = ranked.filter((x) => x.sc >= ranked[0].sc - 0.6);
+    const id = near[Math.floor(rand() * near.length)].id;
+    chosen[kind].push(id);
+    for (const m of focus) covered.set(m, covered.get(m) + covers(id, m));
+    return true;
+  };
+  for (const m of focus) {
+    if (covered.get(m) >= 1) continue;
+    // Alternate which kind tries first, so the routine isn't always the same shape.
+    const order = rand() < 0.5 ? ['mobilize', 'prime'] : ['prime', 'mobilize'];
+    for (const k of order) if (chosen[k].length < limit[k] && pick(k, m) && covered.get(m) >= 1) break;
   }
+  // At least one of each kind.
+  for (const k of ['mobilize', 'prime']) if (!chosen[k].length) pick(k, null);
+  // At least four drills in all, still chosen for today's muscles.
+  while (chosen.mobilize.length + chosen.prime.length < 4) {
+    const k = chosen.mobilize.length <= chosen.prime.length ? 'mobilize' : 'prime';
+    if (!pick(k, null) && !pick(k === 'mobilize' ? 'prime' : 'mobilize', null)) break;
+  }
+  const target = (id, kind) => {
+    const e = db.exercises[id];
+    const metric = e.metric === 'time' ? 'time' : 'reps';
+    return [id, kind === 'prime' ? 2 : 1, metric, metric === 'time' ? (kind === 'prime' ? 20 : 30) : kind === 'prime' ? 10 : 8,
+      kind === 'prime' ? 'Prime: light, stop well short of tired' : 'Mobilize: smooth, through the full range'];
+  };
+  rows.push(...chosen.mobilize.map((id) => target(id, 'mobilize')), ...rehab, ...chosen.prime.map((id) => target(id, 'prime')));
   return build(db, day, rows.slice(0, 8), 'warmup');
+}
+
+// Which focus muscles a warm-up covers (for the "why" line).
+export function warmupFocus(liftItems) { return focusMuscles(liftItems); }
+
+export function shuffleWarmup(db, day) {
+  db.dayExtras ||= {};
+  const date = dateOf(day);
+  db.dayExtras[date] = { ...(db.dayExtras[date] || {}), warmSeed: (db.dayExtras[date]?.warmSeed || 0) + 1 };
 }
 
 export function cooldownItems(db, day, liftItems) {

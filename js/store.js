@@ -42,12 +42,26 @@ export function addDays(dateStr, n) {
   return todayStr(d);
 }
 
+// ---------- Weeks ----------
+// A week starts on Monday unless the lifter picks another day (Settings → Training). Everything that
+// says "this week" goes through these, so the setting applies everywhere.
+const WEEK_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+let weekStartIdx = 0;
+export function setWeekStart(day) { const i = WEEK_KEYS.indexOf(day); weekStartIdx = i < 0 ? 0 : i; }
+export const weekStartDay = () => WEEK_KEYS[weekStartIdx];
+// First day of the week containing dateStr. (Named for the default; follows the setting.)
 export function mondayOf(dateStr) {
   const d = parseDate(dateStr);
   const dow = (d.getDay() + 6) % 7; // 0 = Monday
-  d.setDate(d.getDate() - dow);
+  d.setDate(d.getDate() - ((dow - weekStartIdx + 7) % 7));
   return todayStr(d);
 }
+// 0 for the first day of the week, 6 for the last.
+export const weekPos = (day) => (WEEK_KEYS.indexOf(day) - weekStartIdx + 7) % 7;
+// The day keys in week order, starting with the chosen first day.
+export const weekOrder = () => WEEK_KEYS.map((_, i) => WEEK_KEYS[(i + weekStartIdx) % 7]);
+// The date of a weekday in the week containing ref.
+export const dateOfDay = (day, ref = todayStr()) => addDays(mondayOf(ref), weekPos(day));
 
 // ---------- Shape ----------
 

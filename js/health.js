@@ -43,6 +43,7 @@ export function createHealth(ctx) {
       ${steps()}
       ${sessionId ? `<label class="toggle"><input type="checkbox" id="hs-hide"><span>Don't show this again</span></label>
       <button class="btn primary block big" data-a="health-send-now" data-id="${esc(sessionId)}">I've set it up — send ${kcal} kcal</button>` : ''}
+      ${!sessionId && ctx.db.settings.healthSetupHidden ? '<button class="btn block" data-a="health-reset">Show these steps again when I send</button>' : ''}
       <button class="btn plain block" data-a="close-sheet">${sessionId ? 'Not now' : 'Done'}</button>`);
   }
 
