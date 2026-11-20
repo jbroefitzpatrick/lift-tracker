@@ -1,5 +1,7 @@
 // Exercise detail, gyms & equipment, data & security, measurements & photos, weekly volume, backups.
 import { icon } from './icons.js';
+import { account, signOut } from './account.js';
+import { resetSyncState } from './sync.js';
 import { EX_INFO } from './exercise-info.js';
 import { bestRecords } from './records.js';
 import { activeGym, GEAR } from './gym.js';
@@ -479,9 +481,12 @@ export function createExtras(ctx) {
       ctx.render();
     },
     'reset-all': async () => {
-      if (!confirm('Erase ALL data on this device? A snapshot is kept, but export a backup first.')) return;
+      const signedIn = !!account();
+      if (!confirm(`Erase ALL data on this device? A snapshot is kept, but export a backup first.${signedIn ? ' This phone is also signed out of your account; the data in your account stays as it is.' : ''}`)) return;
       if (!confirm('Really erase everything?')) return;
       await safetySnapshot(ctx.db, 'Before erase');
+      // Signed out first, so the erase isn't synced to the account and the other phones.
+      if (signedIn) { await signOut(); resetSyncState(); try { localStorage.removeItem('lift.sync.pending'); } catch {} }
       ctx.replaceDb(freshDb());
     },
   };

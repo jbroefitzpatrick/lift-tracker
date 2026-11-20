@@ -113,3 +113,21 @@ New phone, wiped data, or a bad update:
 - **Progress photos aren't uploaded,** to keep backups small. Use a file backup with "Include progress photos" for those.
 - **Anyone with the access key can use the free quota.** The worst case is that backups stop for the rest of the day; no data is exposed, because everything stored is encrypted. Change the key if it leaks.
 - **This is for the beta.** The native iPhone app plan ([NATIVE-APP.md](NATIVE-APP.md)) replaces it with iCloud sync, which needs no server at all.
+
+## Accounts and sync
+
+The same worker also runs accounts (`cloud/accounts.js`) on a D1 database named `lift` (binding `DB` in `cloud/wrangler.toml`). In the app: **Settings → Account and sync**.
+
+- **Sign-in:** a passkey (Face ID, stored in iCloud Keychain, so it reaches the person's other Apple devices) or a recovery code shown once when the account is made. The server keeps only public keys, a hash of the recovery code, and hashes of session tokens.
+- **New accounts need the beta access key** (the same one as cloud backup, so it arrives with the setup link). Signing in to an existing account doesn't.
+- **Sync:** the record is split into small documents (one per workout, weigh-in, food entry, exercise, plan day, and each top-level setting group). Each phone sends what changed since its last sync and receives what's newer than the last version it saw. The newest change to each document wins. It runs about 20 seconds after a change, when the app opens, and when it's put away.
+- **First sign-in on a phone with its own data** asks whether to combine both or use the account's data. Where both have the same document (settings, plan days), the account's copy is kept. A snapshot of the phone's data is taken first, and again before the first sync each day.
+- **Not synced:** progress photos, and settings that describe the phone itself (tips shown, backup reminders, the install hint).
+- **Unlike cloud backup, synced data isn't end-to-end encrypted:** the server can read it, which sharing with a trainer or friends will need. It's stored in Cloudflare D1 and only returned to a signed-in session for that account.
+
+| Task | How |
+|---|---|
+| Create the database (done once) | `npx wrangler d1 create lift`, paste the id into `wrangler.toml` |
+| Create or update the tables | `npx wrangler d1 execute lift --remote --file schema.sql` (from `cloud`) |
+| See accounts | Dashboard → Storage & Databases → D1 → lift → `SELECT id, name, created FROM users` |
+| Remove an account | `DELETE FROM docs WHERE user_id = ?`, then the same for `sessions`, `creds`, `codes`, and `users` (by `id`) |

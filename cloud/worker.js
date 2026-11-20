@@ -15,6 +15,8 @@
 // Free plan budget: KV allows 1,000 writes a day. Each upload is 2 writes, so a few testers
 // backing up a few times a day use well under 5% of it.
 
+import { handleV2 } from './accounts.js';
+
 const MAX_BYTES = 10 * 1024 * 1024; // backups without photos are far smaller than this
 const KEEP_DAYS = 60;
 
@@ -26,6 +28,14 @@ export default {
     });
 
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
+    // Accounts and sync (accounts.js): signed in with a passkey or recovery code, not the access key.
+    const url = new URL(req.url);
+    if (url.pathname.startsWith('/v2/')) {
+      if (!env.DB) return json({ error: 'Accounts are not set up on this server yet.' }, 503);
+      const allowed = String(env.ALLOWED_ORIGINS || '').split(',').map((x) => x.trim()).filter(Boolean);
+      const accessOk = !!env.ACCESS_KEY && safeEqual(req.headers.get('X-Access-Key') || '', env.ACCESS_KEY);
+      return handleV2(req, env, url, json, allowed, accessOk);
+    }
     if (!env.ACCESS_KEY) return json({ error: 'Server is missing its ACCESS_KEY secret.' }, 500);
     if (!safeEqual(req.headers.get('X-Access-Key') || '', env.ACCESS_KEY)) return json({ error: 'Wrong access key.' }, 401);
 
@@ -84,8 +94,8 @@ function corsHeaders(req, env) {
   const allowed = String(env.ALLOWED_ORIGINS || '').split(',').map((s) => s.trim()).filter(Boolean);
   return {
     'Access-Control-Allow-Origin': allowed.includes(origin) ? origin : (allowed[0] || 'null'),
-    'Access-Control-Allow-Methods': 'GET, PUT, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, X-Access-Key',
+    'Access-Control-Allow-Methods': 'GET, PUT, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, X-Access-Key, Authorization',
     'Access-Control-Max-Age': '86400',
     Vary: 'Origin',
   };

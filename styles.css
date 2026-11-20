@@ -1314,3 +1314,41 @@ button.day-line .ic { color: var(--muted); }
 button.vol-btn { width: 100%; border: 0; background: none; color: inherit; font: inherit; text-align: left; padding: 0; cursor: pointer; }
 .vol-more { margin: 6px 0 2px; }
 .add-opt .btn.sm { margin-left: 6px; }
+/* Food search: recent foods with a one-tap Add */
+.recent-food { display: flex; align-items: center; gap: 8px; }
+.plain-pick { border: 0; background: none; color: inherit; font: inherit; text-align: left; padding: 0; cursor: pointer; display: flex; flex-direction: column; min-width: 0; }
+
+/* Messages appear low on the screen, above the main buttons, not over titles. */
+#toast { top: auto; bottom: calc(var(--tabbar-h) + 92px + env(safe-area-inset-bottom)); }
+body.in-workout #toast { bottom: calc(96px + env(safe-area-inset-bottom)); }
+body.resting #toast { bottom: calc(var(--tabbar-h) + 176px + env(safe-area-inset-bottom)); }
+@media (prefers-reduced-motion: no-preference) { #toast:not([hidden]) { animation: toast-in .25s cubic-bezier(0.2, 0.9, 0.3, 1.1); } }
+@keyframes toast-in { from { opacity: 0; transform: translateY(12px) scale(0.98); } }
+
+/* Summary: a record gets a moment. */
+.up-count { color: var(--good); }
+.pr-card.celebrate { position: relative; overflow: hidden; border-color: color-mix(in srgb, var(--good) 45%, var(--line)); }
+@media (prefers-reduced-motion: no-preference) {
+  .pr-card.celebrate { animation: pr-pop .7s cubic-bezier(0.2, 0.9, 0.3, 1.25) .2s backwards; }
+  .pr-card.celebrate::after { content: ""; position: absolute; inset: 0; background: linear-gradient(110deg, transparent 30%, rgb(255 255 255 / 0.12) 50%, transparent 70%); transform: translateX(-100%); animation: pr-shine 1.2s ease .6s; pointer-events: none; }
+}
+@keyframes pr-pop { from { transform: scale(0.94); opacity: 0; } }
+@keyframes pr-shine { to { transform: translateX(100%); } }
+
+/* Train: today's finished workout. */
+.done-card { display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px 14px; margin-bottom: 14px; border: 1px solid color-mix(in srgb, var(--good) 35%, var(--line)); border-radius: var(--radius); background: var(--good-soft); color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+.done-check { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: var(--good); color: #0b1a10; flex: none; }
+
+/* Progress → Strength */
+.strength-row .up { color: var(--good); font-weight: 600; }
+.strength-row .down { color: var(--warn); font-weight: 600; }
+.spark { width: 72px; height: 26px; flex: none; }
+.spark polyline { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+.base-find { margin: -2px 0 10px; }
+#main { will-change: auto; }
+/* The app's own swipes replace the browser's back swipe. */
+html, body { overscroll-behavior-x: none; }
+
+/* Account */
+.code-big { font: 600 1.25rem/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.04em; text-align: center; background: var(--surface-2); border-radius: 14px; padding: 14px; margin: 12px 0; user-select: all; -webkit-user-select: all; word-break: break-all; }

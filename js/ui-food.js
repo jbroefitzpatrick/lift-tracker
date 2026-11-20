@@ -165,13 +165,33 @@ export function createFood(ctx) {
       <button class="btn block" data-a="close-sheet">Close</button>`);
   }
 
+  // Foods logged most in the last 30 days, each with the amount used last time.
+  function recentFoods(n = 8) {
+    const db = ctx.db;
+    const since = addDays(todayStr(), -30);
+    const by = new Map();
+    for (const x of db.foodLog) {
+      if (x.date < since || x.unit === 'quick') continue;
+      const k = x.ref || x.name;
+      const o = by.get(k) || { n: 0, last: x };
+      o.n += 1;
+      if ((x.ts || 0) >= (o.last.ts || 0)) o.last = x;
+      by.set(k, o);
+    }
+    return [...by.values()].sort((a, b) => b.n - a.n || (b.last.ts || 0) - (a.last.ts || 0)).slice(0, n).map((o) => o.last);
+  }
+
   function foodList() {
     const db = ctx.db;
     const q = st.q.trim().toLowerCase();
     const mine = db.customFoods.map((f) => ({ ...f, cat: 'mine' }));
     const all = [...mine, ...FOODS];
-    const list = all.filter((f) => (st.cat === 'all' || f.cat === st.cat) && (!q || f.name.toLowerCase().includes(q))).slice(0, 80);
-    return list.map((f) => `<button class="pick-row" data-a="food-pick" data-id="${f.id}">
+    // Every word must match, in any order ("chicken breast" finds "Breast, chicken").
+    const words = q.split(/\s+/).filter(Boolean);
+    const list = all.filter((f) => (st.cat === 'all' || f.cat === st.cat) && words.every((w) => f.name.toLowerCase().includes(w))).slice(0, 80);
+    const recent = !q && st.cat === 'all' ? recentFoods() : [];
+    const recentHtml = recent.length ? `<h3 class="sect">Recent</h3>${recent.map((x) => `<div class="pick-row recent-food"><button class="grow plain-pick" data-a="food-pick" data-id="${esc(x.ref || '')}" ${x.ref ? '' : 'disabled'}><b>${esc(x.name)}</b><span class="pick-sub">${esc(fmtQty(x))} · ${r0(x.kcal)} kcal</span></button><button class="btn sm" data-a="food-again" data-id="${x.id}" aria-label="Add ${esc(x.name)} again">Add</button></div>`).join('')}<h3 class="sect">All foods</h3>` : '';
+    return recentHtml + list.map((f) => `<button class="pick-row" data-a="food-pick" data-id="${f.id}">
       <span class="grow"><b>${esc(f.name)}</b><span class="pick-sub">${f.per100 ? `per 100 g: ${f.per100.kcal} kcal · P ${f.per100.p} · C ${f.per100.c} · F ${f.per100.f}` : `per ${esc(f.serving || 'serving')}: ${f.kcal} kcal · P ${f.p} · C ${f.c} · F ${f.f}`}</span></span>
       ${f.cat === 'mine' ? '<span class="cat">Mine</span>' : ''}</button>`).join('') || '<p class="muted small pad">No matches. Create it as your own food.</p>';
   }
@@ -307,6 +327,15 @@ export function createFood(ctx) {
     'food-add': (d) => openAdd(+d.meal),
     'food-cat': (d, el) => { st.cat = d.v; el.parentElement.querySelectorAll('.chip').forEach((c) => c.classList.toggle('on', c === el)); $('#food-list').innerHTML = foodList(); },
     'food-pick': (d) => openAmount(d.id),
+    // One tap: the same food and amount as last time, into this meal.
+    'food-again': (d) => {
+      const x = ctx.db.foodLog.find((e) => e.id === d.id);
+      if (!x) return;
+      const { id, date: _d, ts, meal, ...item } = x;
+      addEntry(st.meal, item);
+      ctx.persist(); ctx.closeSheet(); ctx.render();
+      ctx.toast(`Added ${x.name}.`);
+    },
     'amt-save': () => {
       const f = st.pickFood;
       const a = currentAmount();

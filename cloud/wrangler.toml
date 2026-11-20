@@ -13,3 +13,10 @@ binding = "BACKUPS"
 id = "ebe04eb6176f4901bcb81889e8048176"
 
 # The access key is a secret, not a var: set it with `npx wrangler secret put ACCESS_KEY`.
+
+# Accounts and sync (cloud/accounts.js). Tables: cloud/schema.sql, applied with
+# `npx wrangler d1 execute lift --remote --file schema.sql`.
+[[d1_databases]]
+binding = "DB"
+database_name = "lift"
+database_id = "eba7bd72-63b2-4df3-a242-96dd3dc209a8"
