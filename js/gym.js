@@ -1,4 +1,5 @@
 // Gym equipment: real weight steps, plate math and warm-up sets.
+import { toDisp, wt } from './units.js';
 
 export function activeGym(db) {
   return db.gyms.find((g) => g.id === db.settings.activeGym) || db.gyms[0];
@@ -44,7 +45,7 @@ export function roundToGym(ex, weight, gym) {
 
 export function plateText(weight, gym) {
   const { perSide, under } = platesFor(weight, gym);
-  if (under) return `Below the ${gym.barWeight} lb bar`;
+  if (under) return `Below the ${wt(gym.barWeight)} bar`;
   if (!perSide.length) return 'Empty bar';
   // Group: 45×2 + 10
   const counts = [];
@@ -52,7 +53,7 @@ export function plateText(weight, gym) {
     const last = counts[counts.length - 1];
     if (last && last.p === p) last.n += 1; else counts.push({ p, n: 1 });
   }
-  return `${counts.map((c) => (c.n > 1 ? `${c.p}×${c.n}` : `${c.p}`)).join(' + ')} per side`;
+  return `${counts.map((c) => (c.n > 1 ? `${toDisp(c.p)}×${c.n}` : `${toDisp(c.p)}`)).join(' + ')} per side`;
 }
 
 // Ramp-up sets before the first working set (common practice: ~40/60/80% of working weight).

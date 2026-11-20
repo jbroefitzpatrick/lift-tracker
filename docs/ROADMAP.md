@@ -20,3 +20,10 @@ A short note at the top of each day's workout ("Squat is your focus today. Last 
 
 ## Native iPhone app
 See [NATIVE-APP.md](NATIVE-APP.md): lock-screen and Dynamic Island rest timer (Live Activity), portrait lock, widgets, Apple Health, haptics, iCloud sync, barcode scanning for food.
+
+## Trainer and client
+A trainer sees a client's plan and history, edits exercises, and sends lifts or whole programs; the client keeps logging as usual.
+- Needs accounts and a shared copy of the plan on a server: the Cloudflare Worker can hold it (free tier), keyed by a client invite code the client can revoke.
+- Trainer edits become a "proposed plan" the client accepts, so nothing changes mid-workout and both sides keep their own history.
+- Sharing is opt-in and per section (plan, workouts, body weight, food), since health data is sensitive.
+- Natural fit for the paid app: trainers pay per client seat; clients use the app as normal.

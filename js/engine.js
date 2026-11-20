@@ -4,6 +4,7 @@ import { runItemsFor } from './running.js';
 import { ROW_ROTATION } from './plan.js';
 import { activeGym, isAvailable } from './gym.js';
 import { similarExercises } from './bank.js';
+import { wt } from './units.js';
 
 export const DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 export const DAY_NAMES = { mon: 'Mon', tue: 'Tue', wed: 'Wed', thu: 'Thu', fri: 'Fri', sat: 'Sat', sun: 'Sun' };
@@ -117,7 +118,8 @@ export function resolveDay(db, day, opts = {}) {
     if (!item.ex) continue;
     // Not at this gym (missing equipment or marked never): use the closest exercise that is.
     if (!opts.template && db.gyms?.length && !isAvailable(db, item.ex)) {
-      const alt = similarExercises(db.exercises, item.ex.id, 40).find(({ ex: e }) => isAvailable(db, e) && e.category === item.ex.category);
+      const alts = similarExercises(db.exercises, item.ex.id, 40).filter(({ ex: e }) => isAvailable(db, e) && e.category === item.ex.category);
+      const alt = alts.find(({ ex: e }) => db.exPrefs?.[e.id] === 'prefer') || alts.find(({ ex: e }) => db.exPrefs?.[e.id] !== 'avoid') || alts[0];
       if (alt) { item.note = `In place of ${item.ex.name}, which isn't available at ${activeGym(db).name}`; item.exerciseId = alt.ex.id; item.ex = alt.ex; }
     }
     // Slow recovery last week: one set fewer this week on that muscle group (learned from check-ins).
@@ -146,6 +148,7 @@ export function getState(db, exId) {
     tm: st.tm ?? null, // training max, for percentage cycles
     cycleIdx: st.cycleIdx || 0, // where a per-session rotation (heavy, medium, light) is up to
     stage: st.stage || 0, // rep stage for "weight, then fewer reps"
+    setPlan: st.setPlan || null, // per-set weights and reps when the lifter used their own ladder
     misses: st.misses || 0,
     stallCount: st.stallCount || 0,
     lastIncreaseDate: st.lastIncreaseDate || null,
@@ -286,6 +289,10 @@ export function targetsFor(db, item, isDeload) {
       return { ...base, weight: st.targetWeight, reps, sets: n, rir: null, setWeights, setReps, ratios, aim };
     }
   }
+  if (scheme === 'double' && !isDeload && st.setPlan?.length) {
+    const p = st.setPlan;
+    return { ...base, weight: Math.max(...p.map((x) => x.weight)), reps: p[0].reps, sets: p.length, rir: null, setWeights: p.map((x) => x.weight), setReps: p.map((x) => x.reps), fixedLadder: true, aim: 'Your weights from last time, one more rep on each set' };
+  }
   const sets = isDeload ? Math.ceil(item.sets / 2) : item.sets;
   const repMax = scheme === 'linear' ? item.repMin : item.repMax;
   const reps = Math.min(Math.max(st.targetReps ?? item.repMin, item.repMin), repMax);
@@ -316,23 +323,23 @@ function evaluateCycle(db, scheme, entry, session, ex, st) {
     : done.length >= w.reps.length && done.every((s, i) => s.reps >= (w.reps[i] ?? w.reps[0]));
   const next = { ...st, tm: w.tm, targetTotal: null, stallCount: 0 };
   let status = 'held';
-  let message = `Top set ${top.weight} × ${top.reps} (est. max ${est} lb).`;
+  let message = `Top set ${wt(top.weight)} × ${top.reps} (est. max ${wt(est)}).`;
   const endOfCycle = w.idx === parts.length - 1;
   if (!ok) {
     next.misses = st.misses + 1;
     status = 'missed';
-    if (next.misses >= 2) { next.tm = roundTo(w.tm * 0.9, 5); next.misses = 0; status = 'reduced'; message += ` Missed twice: training max back to ${next.tm} lb to rebuild.`; }
+    if (next.misses >= 2) { next.tm = roundTo(w.tm * 0.9, 5); next.misses = 0; status = 'reduced'; message += ` Missed twice: training max back to ${wt(next.tm)} to rebuild.`; }
     else message += ' Short of the planned reps. Same plan next time.';
   } else {
     next.misses = 0;
-    if (endOfCycle) { next.tm = w.tm + inc; next.lastIncreaseDate = session.date; status = 'progressed'; message += ` ${scheme === 'wave' ? 'Wave' : 'Rotation'} done: training max +${inc} lb to ${next.tm}.`; }
+    if (endOfCycle) { next.tm = w.tm + inc; next.lastIncreaseDate = session.date; status = 'progressed'; message += ` ${scheme === 'wave' ? 'Wave' : 'Rotation'} done: training max +${wt(inc)} to ${wt(next.tm)}.`; }
   }
   const ni = scheme === 'undulating' ? (w.idx + 1) % parts.length : (w.idx + 1) % parts.length;
   if (scheme === 'undulating') next.cycleIdx = ni;
   const np = parts[ni];
   next.targetWeight = roundTo(next.tm * np.pct[np.pct.length - 1], 5);
   next.targetReps = np.reps[np.reps.length - 1];
-  if (status === 'held') message += ` Next: ${np.label}, ${np.reps.length} × ${np.reps[0]}${CYCLES[scheme].amrap ? '+' : ''} at ${next.targetWeight} lb.`;
+  if (status === 'held') message += ` Next: ${np.label}, ${np.reps.length} × ${np.reps[0]}${CYCLES[scheme].amrap ? '+' : ''} at ${wt(next.targetWeight)}.`;
   next.status = status;
   next.message = message;
   next.last = lastOf(session, done);
@@ -355,18 +362,48 @@ function evaluateStages(entry, session, ex, st) {
   let status; let message;
   if (made) {
     next.targetWeight = top + inc; next.lastIncreaseDate = session.date; status = 'progressed';
-    message = `${g.sets} × ${g.reps} done. +${inc} lb.`;
+    message = `${g.sets} × ${g.reps} done. +${wt(inc)}.`;
   } else if (stage < STAGES.length - 1) {
     next.stage = stage + 1; next.targetWeight = top; status = 'held';
     message = `Missed ${g.sets} × ${g.reps}. Same weight next time as ${STAGES[stage + 1].sets} × ${STAGES[stage + 1].reps}.`;
   } else {
     next.stage = 0; next.targetWeight = reduceBy(top, 0.15, inc); status = 'reduced';
-    message = `Stages done. Back to 5 × 3 at ${next.targetWeight} lb, about 15% lighter, to build up again.`;
+    message = `Stages done. Back to 5 × 3 at ${wt(next.targetWeight)}, about 15% lighter, to build up again.`;
   }
   next.targetReps = STAGES[next.stage || 0].reps;
   next.status = status; next.message = message; next.last = lastOf(session, done);
   return {
     result: { exerciseId: entry.exerciseId, name: ex.name, prevWeight: st.targetWeight, status, message, stalled: false, next: { weight: next.targetWeight, reps: next.targetReps, total: null } },
+    state: next,
+  };
+}
+
+// ---------- Your own set ladder ----------
+// Next time: the same weights with one more rep each (up to the top of the range). Once the
+// heaviest set reaches the top of the range, it goes up one step and starts again at the bottom.
+function evaluateLadder(db, entry, session, ex, st, next, res, done, repMin, repMax) {
+  const inc = Number(ex.increment) || 5;
+  const top = Math.max(...done.map((s) => s.weight));
+  const topReps = Math.max(...done.filter((s) => s.weight === top).map((s) => s.reps));
+  const plan = done.map((s) => ({ weight: s.weight, reps: Math.min(repMax, Math.max(repMin, s.reps + 1)) }));
+  let status = 'held';
+  if (topReps >= repMax) {
+    for (const p of plan) if (p.weight === top) { p.weight = top + inc; p.reps = repMin; }
+    status = 'progressed';
+    next.lastIncreaseDate = session.date;
+  }
+  next.setPlan = plan;
+  next.targetWeight = Math.max(...plan.map((p) => p.weight));
+  next.targetReps = plan[0].reps;
+  next.targetTotal = null;
+  next.misses = 0;
+  next.stallCount = 0;
+  next.status = status;
+  const list = plan.map((p) => `${wt(p.weight)} × ${p.reps}`).join(', ');
+  next.message = status === 'progressed' ? `Top set reached ${repMax}. Next time: ${list}.` : `Same weights, one more rep each: ${list}.`;
+  next.last = { date: session.date, weight: top, weights: done.map((s) => s.weight), reps: done.map((s) => s.reps), totalReps: done.reduce((a, s) => a + s.reps, 0) };
+  return {
+    result: { ...res, status, message: next.message, stalled: false, next: { weight: next.targetWeight, reps: next.targetReps, total: null } },
     state: next,
   };
 }
@@ -413,6 +450,9 @@ export function evaluate(db, entry, session) {
   const done = entry.sets.filter((s) => s.done && s.reps > 0 && s.type !== 'd'); // drop sets are extra work, not judged
   if (!done.length) return { result: { ...res, status: 'skipped', message: 'No sets logged.' }, state: null };
 
+  delete next.setPlan;
+  const mixed = !judgeTop && new Set(done.map((s) => s.weight)).size > 1;
+  if (mixed && !session.isDeload) return evaluateLadder(db, entry, session, ex, st, next, res, done, repMin, repMax);
   const evalSets = judgeTop ? [done[0]] : done;
   const topWeight = judgeTop ? done[0].weight : Math.max(...done.map((s) => s.weight));
   const totalReps = done.reduce((a, s) => a + s.reps, 0);
@@ -432,7 +472,7 @@ export function evaluate(db, entry, session) {
   if (first.reps <= repMin - 3 && !unloadedBW) {
     weight = reduceBy(topWeight, 0.1, inc);
     status = 'reduced';
-    message = `First set missed the range by 3+ reps. Down ~10% to ${weight} lb.`;
+    message = `First set missed the range by 3+ reps. Down ~10% to ${wt(weight)}.`;
     next.targetReps = repMin;
     next.misses = 0;
   } else if (allTop) {
@@ -447,9 +487,9 @@ export function evaluate(db, entry, session) {
       weight = topWeight + step;
       status = 'progressed';
       if (unloadedBW) {
-        message = `Top of range on all sets. Add ${step}–${step + 5} lb of load.`;
+        message = `Top of range on all sets. Add ${wt(step)} or more of load.`;
       } else {
-        message = tooEasy ? `Too easy (RIR 4+). Double jump: +${step} lb.` : `+${step} lb.`;
+        message = tooEasy ? `Too easy (RIR 4+). Double jump: +${wt(step)}.` : `+${wt(step)}.`;
       }
       next.targetReps = repMin;
       next.lastIncreaseDate = session.date;
@@ -461,7 +501,7 @@ export function evaluate(db, entry, session) {
     if (next.misses >= 2 && !unloadedBW) {
       weight = reduceBy(topWeight, 0.05, inc);
       status = 'reduced';
-      message = `Below range two sessions in a row. Down ~5% to ${weight} lb.`;
+      message = `Below range two sessions in a row. Down ~5% to ${wt(weight)}.`;
       next.misses = 0;
     } else {
       status = 'missed';
@@ -483,7 +523,7 @@ export function evaluate(db, entry, session) {
   if (next.stallCount >= 3) {
     message += ' Stalled 3 sessions: drop a set for a week, or swap to a variation next block.';
   }
-  if (baseline) message = `Baseline set at ${topWeight} lb. ` + message;
+  if (baseline) message = `Baseline set at ${wt(topWeight)}. ` + message;
 
   next.targetWeight = weight;
   next.status = status;

@@ -316,7 +316,7 @@ function pickExercise(db, p, slotKey, variant, usedToday, role) {
     && equip.includes(equipOf(e.type)) && hasGear(gym, e.needs) && !blocked.has(e.id) && !usedToday.has(e.id));
   if (!cands.length) return null;
   const easier = p.experience === 'beginner' || (+p.age || 30) >= 65;
-  const rank = (e) => { const i = slot.prefer.indexOf(e.id); return (i < 0 ? 100 : i) + (easier && DEMANDING.includes(e.id) ? 50 : 0) - (prefs[e.id] === 'fav' ? 30 : 0); };
+  const rank = (e) => { const i = slot.prefer.indexOf(e.id); return (i < 0 ? 100 : i) + (easier && DEMANDING.includes(e.id) ? 50 : 0) - (prefs[e.id] === 'prefer' ? 30 : 0) + (prefs[e.id] === 'avoid' ? 60 : 0); };
   cands.sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
   const pick = cands[Math.min(variant, cands.length - 1)];
   // A hard isolation move is not worth it for a beginner or older lifter; the slot is skipped.
@@ -333,6 +333,10 @@ function roleRx(rx, role) {
 // ---------- Volume ----------
 
 export const VOLUME_MUSCLES = ['chest', 'lats', 'upper-back', 'side-delts', 'rear-delts', 'biceps', 'triceps', 'quads', 'hamstrings', 'glutes', 'calves', 'abs'];
+// Also tracked week to week (weekly sets and the review), with lower floors because the big lifts
+// already train them: front delts (every press), traps (deadlifts, rows), obliques (most standing
+// lifts), forearms (every grip), lower back (hinges, squats), adductors and abductors (squats, lunges).
+export const TRACKED_MUSCLES = [...VOLUME_MUSCLES, 'front-delts', 'traps', 'obliques', 'forearms', 'lower-back', 'adductors', 'abductors'];
 
 // Weekly hard sets per muscle, counting secondary muscles as half a set.
 export function weeklySets(db, plan) {
@@ -350,6 +354,8 @@ export function weeklySets(db, plan) {
 
 export function volumeTarget(rx, m) {
   const [lo, hi] = rx.weekly;
+  const SHARE = { 'front-delts': 0.4, traps: 0.5, obliques: 0.4, forearms: 0.4, 'lower-back': 0.3, adductors: 0.3, abductors: 0.3 };
+  if (SHARE[m]) return [Math.max(2, Math.round(lo * SHARE[m])), m === 'lower-back' ? Math.round(hi * 0.75) : hi];
   if (m === 'abs' || m === 'calves' || m === 'rear-delts') return [Math.round(lo * 0.6), hi];
   if (rx.includePhysique && ['side-delts', 'biceps', 'triceps', 'calves', 'rear-delts'].includes(m)) return [Math.round(lo * 1.1), Math.round(hi * 1.1)];
   return [lo, hi];

@@ -5,6 +5,7 @@ import { icon } from './icons.js';
 import { bodySvg, MUSCLE_NAMES } from './body.js';
 import { TYPES, DEFAULT_INCREMENTS } from './plan.js';
 import { PATTERNS, METRICS } from './bank.js';
+import { wUnit, toDisp, fromDisp } from './units.js';
 
 const MEASURES = { reps: 'Reps and weight', time: 'Time', distance: 'Distance', cal: 'Calories' };
 
@@ -56,8 +57,8 @@ export function createExerciseEditor(ctx) {
         <div class="field"><span>Measured by</span><div id="exe-metric">${seg('metric', MEASURES, st.metric)}</div></div>
         <div class="field"><span>Movement ${ctx.helpBtn()}</span><p class="help-text" hidden>Optional. Used to suggest similar exercises when you swap.</p>
           <select id="exe-pattern"><option value="">Not sure</option>${Object.entries(PATTERNS).map(([k, v]) => `<option value="${k}" ${ex?.pattern === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
-        <div class="field"><span>Weight jump (lb) ${ctx.helpBtn()}</span><p class="help-text" hidden>How much the weight goes up when you progress.</p>
-          <input id="exe-inc" type="text" inputmode="decimal" value="${ex?.increment ?? ''}" placeholder="${DEFAULT_INCREMENTS[st.type] || 5}"></div>
+        <div class="field"><span>Weight jump (${wUnit()}) ${ctx.helpBtn()}</span><p class="help-text" hidden>How much the weight goes up when you progress.</p>
+          <input id="exe-inc" type="text" inputmode="decimal" value="${toDisp(ex?.increment) ?? ''}" placeholder="${toDisp(DEFAULT_INCREMENTS[st.type] || 5)}"></div>
       </details>
       <div class="field"><span>Notes</span><textarea id="exe-notes" rows="2" placeholder="Setup, cues, seat height…">${esc(ex?.notes || '')}</textarea></div>
       <button class="btn primary block big" data-a="exe-save">${ex ? 'Save' : opts.then ? 'Create and add' : 'Create'}</button>
@@ -85,7 +86,7 @@ export function createExerciseEditor(ctx) {
       if (name === name.toLowerCase()) name = name[0]?.toUpperCase() + name.slice(1); // "viking press" from search → "Viking press"
       if (!name) return ctx.toast('Give it a name.');
       if (!st.primary.length) return ctx.toast('Tap at least one main muscle on the body.');
-      const inc = parseFloat($('#exe-inc').value);
+      const inc = fromDisp(parseFloat($('#exe-inc').value));
       const fields = {
         name, type: st.type, category: st.category, metric: st.metric,
         primary: [...st.primary], secondary: st.secondary.filter((m) => !st.primary.includes(m)),

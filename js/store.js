@@ -115,7 +115,7 @@ export function freshDb() {
     photos: [], // { id, date, note } — image data is in IndexedDB
     cardio: [], // { id, date, ts, cardioId, minutes, distance?, rpe?, note? }
     gyms: [defaultGym()],
-    exPrefs: {}, // exercise id -> 'fav' | 'never'
+    exPrefs: {}, // exercise id -> 'prefer' | 'avoid' | 'never' (Prefer: picked first; Avoid: only when nothing else fits)
     foodLog: [], // { id, date, ts, meal, name, qty, unit, grams?, kcal, p, c, f, fiber, ref? }
     customFoods: [], // { id, name, serving, grams?, kcal, p, c, f, fiber }
     meals: [], // saved meals: { id, name, items: [{ ref, name, qty, unit, grams, kcal, p, c, f, fiber }] }
@@ -172,6 +172,8 @@ const MIGRATIONS = {
 
 export function migrate(db) {
   const base = freshDb();
+  // "Favorite" became "Prefer".
+  for (const [k, v] of Object.entries(db.exPrefs || {})) if (v === 'fav') db.exPrefs[k] = 'prefer';
   while ((db.schemaVersion || 1) < SCHEMA_VERSION) {
     const v = db.schemaVersion || 1;
     db = MIGRATIONS[v](db);

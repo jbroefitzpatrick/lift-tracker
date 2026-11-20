@@ -89,8 +89,9 @@ export function createTrain(ctx) {
     const missed = missedTemplates(db);
     const planned = db.week?.start === start;
     if (missed.length && !planned) {
-      return `<div class="notice-card week-prompt"><p><b>Missed ${missed.map((t) => `${FULL[t.day]}'s ${esc(t.name)}`).join(' and ')}?</b> Fit ${missed.length > 1 ? 'them' : 'it'} into the rest of the week. Main lifts first, accessories as time allows.</p>
-        <div class="row"><button class="btn primary" data-a="wk-open">Adjust week</button><button class="btn" data-a="wk-dismiss">Not now</button></div></div>`;
+      // One line: what was missed, and a way to fit it in.
+      const what = missed.length === 1 ? `${FULL[missed[0].day]}'s ${esc(missed[0].name)}` : `${missed.length} workouts`;
+      return `<div class="slim-banner review-card"><button class="grow banner-main" data-a="wk-open"><span class="dot" aria-hidden="true"></span><span><b>Missed ${what}</b> · fit ${missed.length > 1 ? 'them' : 'it'} in</span></button><button class="icon-btn subtle" data-a="wk-dismiss" aria-label="Dismiss">${icon('x')}</button></div>`;
     }
     if (!planned && dayIndex(todayKey()) <= 1 && liftTemplates(db).length) {
       const left = 7 - dayIndex(todayKey());

@@ -3,8 +3,9 @@ import { icon } from './icons.js';
 import { EX_INFO } from './exercise-info.js';
 import { bestRecords } from './records.js';
 import { activeGym, GEAR } from './gym.js';
+import { wt, toDisp, wUnit, BAR_CHOICES, PLATE_CHOICES, DB_STEP_CHOICES, MACHINE_STEP_CHOICES, fromDisp } from './units.js';
 import { MUSCLES } from './bank.js';
-import { VOLUME_MUSCLES, volumeTarget } from './builder.js';
+import { TRACKED_MUSCLES, volumeTarget } from './builder.js';
 import {
   defaultGym, todayStr, daysBetween, exportJson, exportCsv, download, parseBackup, importData, storageInfo, requestPersistence,
   listSnapshots, readSnapshot, safetySnapshot, putPhoto, getPhoto, deletePhoto, freshDb,
@@ -13,8 +14,6 @@ import { GROUPS, PARTS, weeklySets } from './groups.js';
 import { encryptText, decryptText, isEncrypted, cryptoAvailable } from './crypto.js';
 
 const MEASURES = { waist: 'Waist', chest: 'Chest', arms: 'Arms', thighs: 'Thighs', hips: 'Hips', neck: 'Neck' };
-const BAR_OPTIONS = [45, 35, 33, 25, 20, 15];
-const PLATE_OPTIONS = [55, 45, 35, 25, 15, 10, 5, 2.5, 1.25];
 const EQUIP = { barbell: 'Barbells', dumbbell: 'Dumbbells', machine: 'Machines', cable: 'Cables', bodyweight: 'Bodyweight' };
 
 export function createExtras(ctx) {
@@ -40,17 +39,17 @@ export function createExtras(ctx) {
       ${ex.notes ? `<h3 class="sect">Your notes</h3><p class="small">${esc(ex.notes)}</p>` : ''}
       <a class="btn block demo-link" href="${demo}" target="_blank" rel="noopener">Watch a demo on YouTube</a>
       <button class="btn block" data-a="ex-edit" data-id="${ex.id}">${ex.custom ? 'Edit exercise' : 'Edit muscles and notes'}</button>
+      <div class="field"><span>Use this exercise ${ctx.helpBtn()}</span><p class="help-text" hidden>Prefer: picked first when the app builds a plan, swaps, rotates variations or fills a finisher. Avoid: only used when nothing better fits. Never: not picked at all.</p>
+        <div class="segmented small-seg" role="radiogroup" aria-label="Use this exercise">${[['prefer', 'Prefer'], ['', 'Normal'], ['avoid', 'Avoid'], ['never', 'Never']].map(([v, l]) => `<button class="${(pref || '') === v ? 'on' : ''}" data-a="pref" data-id="${ex.id}" data-v="${v}" role="radio" aria-checked="${(pref || '') === v}">${l}</button>`).join('')}</div></div>
       <div class="row wrap controls">
-        <button class="mini ${pref === 'fav' ? 'on-good' : ''}" data-a="pref" data-id="${ex.id}" data-v="fav">${pref === 'fav' ? 'Favorited' : 'Favorite'}</button>
-        <button class="mini ${pref === 'never' ? 'on-bad' : ''}" data-a="pref" data-id="${ex.id}" data-v="never">${pref === 'never' ? 'Never suggested' : 'Never suggest'}</button>
         <button class="mini ${unavailable ? 'on-bad' : ''}" data-a="unavail" data-id="${ex.id}">${unavailable ? `Not at ${esc(gym.name)}` : `Not at ${esc(gym.name)}`}</button>
       </div>
     </div>
     ${rec ? `<div class="card"><h3>Personal records</h3>
-      ${rec.e1.v ? `<div class="rx-row"><span class="muted">Best est. 1RM</span><b>${Math.round(rec.e1.v)} lb <span class="muted small">(${rec.e1.w}×${rec.e1.r}, ${ctx.fmtDate(rec.e1.date)})</span></b></div>` : ''}
-      <div class="rx-row"><span class="muted">Heaviest set</span><b>${rec.heavy.v} lb × ${rec.heavy.r}</b></div>
-      <div class="rx-row"><span class="muted">Most reps</span><b>${rec.reps.v}${rec.reps.w ? ` @ ${rec.reps.w} lb` : ''}</b></div>
-      ${rec.vol.v ? `<div class="rx-row"><span class="muted">Best workout volume</span><b>${Math.round(rec.vol.v).toLocaleString()} lb</b></div>` : ''}
+      ${rec.e1.v ? `<div class="rx-row"><span class="muted">Best est. 1RM</span><b>${wt(Math.round(rec.e1.v))} <span class="muted small">(${toDisp(rec.e1.w)}×${rec.e1.r}, ${ctx.fmtDate(rec.e1.date)})</span></b></div>` : ''}
+      <div class="rx-row"><span class="muted">Heaviest set</span><b>${wt(rec.heavy.v)} × ${rec.heavy.r}</b></div>
+      <div class="rx-row"><span class="muted">Most reps</span><b>${rec.reps.v}${rec.reps.w ? ` @ ${wt(rec.reps.w)}` : ''}</b></div>
+      ${rec.vol.v ? `<div class="rx-row"><span class="muted">Best workout volume</span><b>${Math.round(toDisp(rec.vol.v)).toLocaleString()} ${wUnit()}</b></div>` : ''}
     </div>` : ''}`;
   }
 
@@ -65,7 +64,7 @@ export function createExtras(ctx) {
     const bar = (v, lo, hi) => `<span class="fr-bar target" style="--lo:${(lo / hi) * 100}%"><i class="${v < lo ? 'low' : ''}" style="width:${Math.max(Math.min(100, (v / hi) * 100), 2)}%"></i></span>`;
     const line = (name, v, lo, hi, cls = '', note = '') => `<div class="fresh-row vol ${cls}"><span class="fr-name">${name}${note}</span>${bar(v, lo, hi)}<span class="fr-pct"><b>${r(v)}</b> <span class="muted">/ ${lo}–${hi}</span></span></div>`;
     const rows = GROUPS.map((g) => {
-      const tracked = g.muscles.filter((m) => VOLUME_MUSCLES.includes(m));
+      const tracked = g.muscles.filter((m) => TRACKED_MUSCLES.includes(m));
       if (!tracked.length) return '';
       const t = tracked.map((m) => volumeTarget(rx, m));
       const v = tracked.reduce((x, m) => x + (ws[m] || 0), 0);
@@ -74,7 +73,7 @@ export function createExtras(ctx) {
       const lowOne = tracked.length > 1 ? tracked.find((m, i) => (ws[m] || 0) < t[i][0] && v >= lo) : null;
       const pm = g.parts && parts[g.parts];
       const sub = [
-        ...(g.muscles.length > 1 ? g.muscles.map((m) => (VOLUME_MUSCLES.includes(m)
+        ...(g.muscles.length > 1 ? g.muscles.map((m) => (TRACKED_MUSCLES.includes(m)
           ? line(MUSCLES[m], ws[m] || 0, ...volumeTarget(rx, m), 'sub')
           : `<div class="fresh-row vol sub"><span class="fr-name">${MUSCLES[m]}</span><span></span><span class="fr-pct"><b>${r(ws[m] || 0)}</b></span></div>`)) : []),
         ...(pm ? Object.entries(PARTS[g.parts]).map(([k, name]) => {
@@ -145,7 +144,7 @@ export function createExtras(ctx) {
     return `<div class="card">
       <div class="chips wrap">${db.gyms.map((x) => `<button class="chip ${x.id === g.id ? 'on' : ''}" data-a="gym-use" data-id="${x.id}">${esc(x.name)}</button>`).join('')}
         <button class="chip" data-a="gym-add">Add gym</button></div>
-      <p class="small">${esc(g.name)}: ${g.barWeight} lb bar · plates ${g.plates.join(', ')} · dumbbells every ${g.dbStep} lb up to ${g.dbMax} · machines every ${g.machineStep} lb${g.unavailable.length ? ` · ${g.unavailable.length} exercises marked unavailable` : ''}</p>
+      <p class="small">${esc(g.name)}: ${wt(g.barWeight)} bar · plates ${g.plates.map(toDisp).join(', ')} · dumbbells every ${wt(g.dbStep)} up to ${toDisp(g.dbMax)} · machines every ${wt(g.machineStep)}${g.unavailable.length ? ` · ${g.unavailable.length} exercises marked unavailable` : ''}</p>
       <button class="btn block" data-a="gym-edit" data-id="${g.id}">Edit ${esc(g.name)}</button>
     </div>`;
   }
@@ -154,8 +153,9 @@ export function createExtras(ctx) {
     const db = ctx.db;
     const g = db.gyms.find((x) => x.id === id);
     const chips = (key, opts, cur, multi) => `<div class="chips wrap">${opts.map((v) => {
-      const on = multi ? cur.includes(v) : cur === v;
-      return `<button class="chip ${on ? 'on' : ''}" data-a="gym-set" data-k="${key}" data-v="${v}" ${multi ? 'data-multi="1"' : ''}>${EQUIP[v] || v}</button>`;
+      const same = (a, b) => (typeof a === 'number' && typeof b === 'number' ? Math.abs(a - b) < 0.001 : a === b);
+      const on = multi ? cur.some((c) => same(c, v)) : same(cur, v);
+      return `<button class="chip ${on ? 'on' : ''}" data-a="gym-set" data-k="${key}" data-v="${v}" ${multi ? 'data-multi="1"' : ''}>${EQUIP[v] || (typeof v === 'number' ? toDisp(v) : v)}</button>`;
     }).join('')}</div>`;
     ctx.openSheet(`<h2>Edit gym</h2>
       <div class="field"><span>Name</span><input id="gym-name" type="text" value="${esc(g.name)}"></div>
@@ -164,13 +164,13 @@ export function createExtras(ctx) {
         <div class="gear-groups">${Object.entries(GEAR).map(([gk, grp]) => { const keys = Object.keys(grp.items); const have = keys.filter((k) => !(g.missing || []).includes(k)).length; return `<details class="gear-group" data-id="gear-${gk}"><summary><span class="grow">${grp.name}</span><span class="muted small">${have === keys.length ? 'All' : `${have} of ${keys.length}`}</span></summary>
           <div class="chips wrap">${keys.map((k) => { const on = !(g.missing || []).includes(k); return `<button class="chip ${on ? 'on' : ''}" data-a="gym-gear" data-k="${k}" aria-pressed="${on}">${grp.items[k]}</button>`; }).join('')}</div>
           <div class="row gear-all"><button class="text-btn" data-a="gym-gear-all" data-g="${gk}" data-v="1">Select all</button><button class="text-btn" data-a="gym-gear-all" data-g="${gk}" data-v="0">Select none</button></div></details>`; }).join('')}</div></div>
-      <div class="field"><span>Barbell weight (lb)</span>${chips('barWeight', BAR_OPTIONS, g.barWeight)}</div>
-      <div class="field"><span>Plates available (lb)</span>${chips('plates', PLATE_OPTIONS, g.plates, true)}</div>
+      <div class="field"><span>Barbell weight (${wUnit()})</span>${chips('barWeight', BAR_CHOICES(), g.barWeight)}</div>
+      <div class="field"><span>Plates available (${wUnit()})</span>${chips('plates', PLATE_CHOICES(), g.plates, true)}</div>
       <div class="grid2">
-        <div class="field"><span>Dumbbell jumps (lb)</span>${chips('dbStep', [2.5, 5, 10], g.dbStep)}</div>
-        <div class="field"><span>Machine / stack step (lb)</span>${chips('machineStep', [2.5, 5, 10, 15, 20], g.machineStep)}</div>
+        <div class="field"><span>Dumbbell jumps (${wUnit()})</span>${chips('dbStep', DB_STEP_CHOICES(), g.dbStep)}</div>
+        <div class="field"><span>Machine / stack step (${wUnit()})</span>${chips('machineStep', MACHINE_STEP_CHOICES(), g.machineStep)}</div>
       </div>
-      <div class="field"><span>Heaviest dumbbell (lb)</span><input id="gym-dbmax" type="text" inputmode="numeric" value="${g.dbMax}"></div>
+      <div class="field"><span>Heaviest dumbbell (${wUnit()})</span><input id="gym-dbmax" type="text" inputmode="numeric" value="${toDisp(g.dbMax)}"></div>
       ${g.unavailable.length ? `<h3 class="sect">Not available here</h3>${g.unavailable.map((exId) => `<div class="list-row"><span class="grow">${esc(db.exercises[exId]?.name || exId)}</span><button class="mini" data-a="gym-unblock" data-id="${exId}">Available</button></div>`).join('')}` : '<p class="muted small">Mark exercises "Not at this gym" from their detail page (tap an exercise name).</p>'}
       <button class="btn primary block big" data-a="gym-save" data-id="${g.id}">Done</button>
       ${db.gyms.length > 1 ? `<button class="btn danger block" data-a="gym-del" data-id="${g.id}">Delete this gym</button>` : ''}`);
@@ -323,7 +323,7 @@ export function createExtras(ctx) {
   const actions = {
     pref: (d) => {
       const db = ctx.db;
-      db.exPrefs[d.id] = db.exPrefs[d.id] === d.v ? undefined : d.v;
+      db.exPrefs[d.id] = d.v || undefined;
       if (!db.exPrefs[d.id]) delete db.exPrefs[d.id];
       ctx.persist(); ctx.render();
     },
@@ -385,7 +385,8 @@ export function createExtras(ctx) {
       const v = Number.isNaN(+d.v) ? d.v : +d.v;
       if (d.multi) {
         const arr = new Set(g[d.k]);
-        if (arr.has(v)) arr.delete(v); else arr.add(v);
+        const hit = [...arr].find((x) => typeof x === 'number' && typeof v === 'number' ? Math.abs(x - v) < 0.001 : x === v);
+        if (hit !== undefined) arr.delete(hit); else arr.add(v);
         g[d.k] = [...arr];
         if (d.k === 'plates') g.plates.sort((a, b) => b - a);
         el.classList.toggle('on');
@@ -399,7 +400,7 @@ export function createExtras(ctx) {
     'gym-save': (d) => {
       const g = ctx.db.gyms.find((x) => x.id === d.id);
       g.name = $('#gym-name').value.trim() || g.name;
-      g.dbMax = ctx.num('gym-dbmax') || g.dbMax;
+      g.dbMax = fromDisp(ctx.num('gym-dbmax')) || g.dbMax;
       if (!g.plates.length) g.plates = [5];
       ctx.persist(); ctx.closeSheet(); ctx.render();
     },

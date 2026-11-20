@@ -90,8 +90,8 @@ export function bodySvg(view, values = {}, { cls = '', label = '', viewBox = '0 
   const half = (h) => {
     const regions = h === 'c' ? (view === 'back' ? BACK_CENTER : FRONT_CENTER) : view === 'back' ? BACK : FRONT;
     const side = sideOf(view, h);
-    // Midline shapes match a report on either side too (older reports split abs, traps and lower back in two).
-    const has = (set, m) => !!set && (set.has(m + ':' + side) || (side === 'center' && (set.has(m + ':left') || set.has(m + ':right'))));
+    // A muscle highlights on both sides whichever side was picked (the side is a detail of a pain report).
+    const has = (set, m) => !!set && ['left', 'right', 'center'].some((x) => set.has(m + ':' + x));
     const shapes = Object.entries(regions).flatMap(([m, ds]) => (Array.isArray(ds) ? ds : [ds]).map((d) => [m, d])).map(([m, d]) => {
       const v = Math.max(0, Math.min(1, values[m] || 0));
       const fill = v > 0.02 ? `style="--v:${v.toFixed(2)}"` : '';
@@ -100,7 +100,7 @@ export function bodySvg(view, values = {}, { cls = '', label = '', viewBox = '0 
     }).join('');
     const js = joints ? Object.entries(JOINT_POS).filter(([j]) => (j === 'neck') === (h === 'c')).map(([j, [x, y]]) => {
       const s = j === 'neck' ? 'center' : side;
-      return `<circle cx="${x}" cy="${y}" r="7" data-j="${j}" class="joint ${sel?.has(`${j}:${s}`) ? 'sel' : ''} ${mark?.has(`${j}:${s}`) ? 'hurt' : ''}"><title>${JOINT_NAMES[j]}</title></circle>`;
+      return `<circle cx="${x}" cy="${y}" r="7" data-j="${j}" class="joint ${has(sel, j) ? 'sel' : ''} ${has(mark, j) ? 'hurt' : ''}"><title>${JOINT_NAMES[j]}</title></circle>`;
     }).join('') : '';
     const detail = h === 'c' ? `<path class="detail" d="${view === 'back' ? BACK_DETAIL : FRONT_DETAIL}"/>` : '';
     return shapes + detail + js;

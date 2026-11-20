@@ -8,7 +8,7 @@
 const TOURS = {
   home: [
     { sel: '.day-strip', text: 'Your week. Tap a day to see its workout.' },
-    { sel: '.day-line', text: 'About how long it takes, and where. Tap Edit to fit it to your time, change gym or add a warm-up.' },
+    { sel: '.day-line', text: 'About how long it takes, and where. Tap it to fit the workout to your time, change gym or add a warm-up.' },
     { sel: '.ex-list .ex-item', text: 'Your exercises. Tap one for how to do it. Hold and drag to reorder, or drop it on another to pair them.' },
     { sel: '.cta[data-a="start-workout"]', text: 'At the gym, start here. The app keeps time, starts your rest timer and shows what\'s next.' },
     { sel: '#tabs [data-tab="plan"]', text: 'Plan: your week and program. After each week it suggests what to change.' },

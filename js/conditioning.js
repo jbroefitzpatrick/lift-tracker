@@ -139,6 +139,8 @@ export function buildFinisher(db, { minutes = 10, mode = 'burn', format = 'round
     const o = overlap(e);
     let sc = mode === 'burn' ? o * 3 + (e.category !== 'conditioning' ? 1 : 0) : -o * 3 + (['erg', 'sprint'].includes(e.pattern) ? 3 : 0) + (e.pattern === 'circuit-move' ? 1 : 0);
     if (e.pattern === 'isometric') sc -= 1;
+    if (db.exPrefs?.[e.id] === 'prefer') sc += 2;
+    if (db.exPrefs?.[e.id] === 'avoid') sc -= 4;
     return { e, sc };
   }).sort((a, b) => b.sc - a.sc || a.e.name.localeCompare(b.e.name));
   // Three moves with different patterns. Each slot chooses among its five best fits, so the
@@ -150,9 +152,12 @@ export function buildFinisher(db, { minutes = 10, mode = 'burn', format = 'round
     if (!opts.length) break;
     picks.push(opts[((alt[slot] || 0) + shuffle * (slot + 2)) % opts.length].e);
   }
-  if (mode === 'burn' && !alt[picks.length - 1] && !picks.some((p) => ['erg', 'sprint', 'plyo'].includes(p.pattern))) {
-    const cardio = scored.find(({ e }) => ['erg', 'plyo'].includes(e.pattern) && !picks.includes(e));
-    if (cardio) picks[picks.length - 1] = cardio.e;
+  // Burn mode always has one heart-rate move. It rotates through the six best fits (by date, and
+  // with Change), so it isn't the same machine every time.
+  if (mode === 'burn' && picks.length && !picks.some((p) => ['erg', 'sprint', 'plyo'].includes(p.pattern))) {
+    const last = picks.length - 1;
+    const cands = scored.filter(({ e }) => ['erg', 'plyo'].includes(e.pattern) && !picks.slice(0, last).includes(e)).slice(0, 6);
+    if (cands.length) picks[last] = cands[(shuffle + (alt[last] || 0)) % cands.length].e;
   }
   // Core placement "finishers" or "cardio only": one move is always a core move.
   if (core && !picks.some((p) => coreIds.includes(p.id))) {

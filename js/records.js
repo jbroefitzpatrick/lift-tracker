@@ -1,4 +1,5 @@
 // Personal records and check-in based plan adjustments.
+import { wt, toDisp } from './units.js';
 import { e1rm } from './engine.js';
 import { weightOn } from './energy.js';
 
@@ -55,18 +56,18 @@ export function detectPRs(db, entry, beforeTs) {
   const bestNow = sets.reduce((a, x) => (e1rm(x.weight, x.reps) > e1rm(a.weight, a.reps) ? x : a));
   const prevE1 = Math.max(...prev.map((x) => e1rm(x.weight, x.reps)));
   if (e1rm(bestNow.weight, bestNow.reps) > prevE1 + 0.5) {
-    prs.push({ type: 'e1rm', text: `Est. 1RM ${Math.round(e1rm(bestNow.weight, bestNow.reps))} lb${bw ? ' incl. body weight' : ''} (${bw ? `+${bestNow.added}` : bestNow.weight}×${bestNow.reps}), up from ${Math.round(prevE1)}` });
+    prs.push({ type: 'e1rm', text: `Est. 1RM ${wt(Math.round(e1rm(bestNow.weight, bestNow.reps)))}${bw ? ' incl. body weight' : ''} (${bw ? `+${toDisp(bestNow.added)}` : toDisp(bestNow.weight)}×${bestNow.reps}), up from ${Math.round(prevE1)}` });
   }
   // Rep PR: more reps than ever at this weight or heavier (report the heaviest one).
   const repPRs = sets.filter((x) => x.weight > 0 && x.reps > Math.max(0, ...prev.filter((p) => p.weight >= x.weight).map((p) => p.reps)))
     .sort((a, b) => b.weight - a.weight);
   if (repPRs.length && !prs.length) {
     const x = repPRs[0];
-    prs.push({ type: 'reps', text: `${x.reps} reps at ${x.weight} lb — most ever at that weight` });
+    prs.push({ type: 'reps', text: `${x.reps} reps at ${wt(x.weight)}, the most at that weight` });
   }
   const vNow = volumeOf(sets);
   const vPrev = Math.max(...prior.map((p) => volumeOf(p.sets)));
-  if (vNow > vPrev && vPrev > 0) prs.push({ type: 'volume', text: `Workout volume ${Math.round(vNow).toLocaleString()} lb (was ${Math.round(vPrev).toLocaleString()})` });
+  if (vNow > vPrev && vPrev > 0) prs.push({ type: 'volume', text: `Workout volume ${Math.round(toDisp(vNow)).toLocaleString()} ${wt(0).split(' ')[1]} (was ${Math.round(toDisp(vPrev)).toLocaleString()})` });
   return prs;
 }
 

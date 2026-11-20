@@ -1,4 +1,5 @@
 // Pain reporting on the body map, daily check-ins, and lighter options for sore areas.
+import { wt } from './units.js';
 import { bodySvg, sideOf, MUSCLE_NAMES } from './body.js';
 import { JOINTS, LEVELS, areaLabel, activePain, painDue, painMap, exercisePain, painSwaps, crossEducationTip } from './pain.js';
 import { roundTo } from './engine.js';
@@ -7,7 +8,9 @@ import { todayStr } from './store.js';
 export function createPain(ctx) {
   const { $, esc } = ctx;
   // Picker state: which view, what's selected ("area:side"), how bad, and the exercise it came from.
-  const st = { view: 'front', sel: new Set(), level: null, uid: null, i: null, hint: [] };
+  const st = { view: 'front', sel: new Set(), level: null, uid: null, i: null, hint: [], pending: null };
+  // Midline areas have no left or right.
+  const MIDLINE = ['abs', 'traps', 'lower-back', 'neck'];
 
   const AREAS = [...Object.keys(JOINTS), ...Object.keys(MUSCLE_NAMES)];
 
@@ -28,6 +31,12 @@ export function createPain(ctx) {
     if (m) m.innerHTML = mapHtml();
     const s = $('#pain-sel');
     if (s) s.innerHTML = selHtml();
+    // After tapping an area: which side?
+    const ps = $('#pain-side-pick');
+    if (ps) {
+      ps.hidden = !st.pending;
+      if (st.pending) ps.innerHTML = `<span class="small"><b>${esc(areaLabel(st.pending, 'center'))}</b>: which side?</span><div class="chips">${[['left', 'Left'], ['right', 'Right'], ['center', 'Both']].map(([v, l]) => `<button class="chip" data-a="pain-side-pick" data-v="${v}">${l}</button>`).join('')}</div>`;
+    }
     document.querySelectorAll('[data-a="pain-view"]').forEach((b) => { const on = b.dataset.v === st.view; b.classList.toggle('on', on); b.setAttribute('aria-checked', on); });
     document.querySelectorAll('[data-a="pain-level"]').forEach((b) => { const on = +b.dataset.v === st.level; b.classList.toggle('on', on); b.setAttribute('aria-checked', on); });
     const adv = $('#pain-advice');
@@ -42,14 +51,19 @@ export function createPain(ctx) {
     Object.assign(st, { view: 'front', sel: new Set(), level: null, uid: opts.uid || null, i: opts.i ?? null, hint: ex ? ex.primary : [] });
     const BACK = ['lats', 'upper-back', 'traps', 'rear-delts', 'triceps', 'lower-back', 'glutes', 'hamstrings'];
     if (ex && BACK.includes(ex.primary[0])) st.view = 'back';
-    if (opts.pre) { st.sel.add(opts.pre); if (BACK.includes(opts.pre.split(':')[0])) st.view = 'back'; }
+    if (opts.pre) {
+      const [a, sd] = opts.pre.split(':');
+      if (sd || MIDLINE.includes(a)) st.sel.add(`${a}:${sd || 'center'}`); else st.pending = a;
+      if (BACK.includes(a)) st.view = 'back';
+    }
     const options = AREAS.map((a) => `<option value="${a}">${esc(JOINTS[a]?.name || MUSCLE_NAMES[a])}</option>`).join('');
     ctx.openSheet(`<h2>Where does it hurt?</h2>
-      <p class="muted small">Tap muscles or joints (the circles). Left and right are separate.${ex ? ` Outlined: what ${esc(ex.name)} works.` : ''}</p>
+      <p class="muted small">Tap a muscle or joint (the circles), then pick the side.${ex ? ` Outlined: what ${esc(ex.name)} works.` : ''}</p>
       <div class="segmented small-seg" role="radiogroup" aria-label="View">
         <button data-a="pain-view" data-v="front" role="radio">Front</button><button data-a="pain-view" data-v="back" role="radio">Back</button>
       </div>
       <div id="pain-map" class="pain-map"></div>
+      <div id="pain-side-pick" class="pain-side-pick" hidden aria-live="polite"></div>
       <div id="pain-sel" class="chips pain-sel" aria-live="polite"></div>
       <details class="pain-list"><summary>Choose from a list instead</summary>
         <div class="row"><select id="pain-area" aria-label="Area">${options}</select>
@@ -69,11 +83,11 @@ export function createPain(ctx) {
     $('#pain-map').addEventListener('click', (e) => {
       const el = e.target.closest('[data-m],[data-j]');
       if (!el) return;
-      const half = el.closest('[data-half]')?.dataset.half;
       const area = el.dataset.m || el.dataset.j;
-      const side = area === 'neck' ? 'center' : sideOf(st.view, half);
-      const k = `${area}:${side}`;
-      if (st.sel.has(k)) st.sel.delete(k); else st.sel.add(k);
+      const picked = [...st.sel].filter((k) => k.startsWith(`${area}:`));
+      if (picked.length) picked.forEach((k) => st.sel.delete(k)); // tap again to clear it
+      else if (MIDLINE.includes(area)) st.sel.add(`${area}:center`);
+      else st.pending = area;
       ctx.haptic?.();
       refresh();
     });
@@ -117,10 +131,10 @@ export function createPain(ctx) {
     const swaps = painSwaps(ctx.db, ex.id, map, 3).filter(({ ex: e }) => isAvailable(e));
     const tip = crossEducationTip(ex, p);
     return `<div class="pain-advice lv-${p.level}" role="note">
-      <p><b>${esc(p.labels.join(', '))}</b> · ${p.name.toLowerCase()} pain. ${p.level === 3 ? 'Skip this one today.' : `Go about ${Math.round(p.cut * 100)}% lighter${lighter != null ? ` (${lighter} lb)` : ''} and keep pain at ${p.level === 1 ? '3' : '5'}/10 or less.`}</p>
+      <p><b>${esc(p.labels.join(', '))}</b> · ${p.name.toLowerCase()} pain. ${p.level === 3 ? 'Skip this one today.' : `Go about ${Math.round(p.cut * 100)}% lighter${lighter != null ? ` (${wt(lighter)})` : ''} and keep pain at ${p.level === 1 ? '3' : '5'}/10 or less.`}</p>
       ${tip ? `<p class="small">${esc(tip)} ${ctx.refChips(['manca2017'])}</p>` : ''}
       <div class="row wrap">
-        ${lighter != null && lighter !== cur ? `<button class="btn sm" data-a="pain-lighter" data-uid="${item.uid}" data-w="${lighter}">Use ${lighter} lb</button>` : ''}
+        ${lighter != null && lighter !== cur ? `<button class="btn sm" data-a="pain-lighter" data-uid="${item.uid}" data-w="${lighter}">Use ${wt(lighter)}</button>` : ''}
         ${swaps.map(({ ex: e }) => `<button class="btn sm" data-a="pain-swap" data-uid="${item.uid}" data-id="${e.id}">${esc(e.name)}</button>`).join('')}
       </div>
     </div>`;
@@ -136,6 +150,7 @@ export function createPain(ctx) {
       refresh();
     },
     'pain-unsel': (d) => { st.sel.delete(d.k); refresh(); },
+    'pain-side-pick': (d) => { if (!st.pending) return; st.sel.add(`${st.pending}:${d.v}`); st.pending = null; ctx.haptic?.(); refresh(); },
     'pain-add': () => {
       const a = $('#pain-area').value;
       const side = a === 'neck' ? 'center' : $('#pain-side').value;
@@ -166,7 +181,7 @@ export function createPain(ctx) {
       if (!e) return;
       for (const s of e.sets) if (!s.done) s.weight = +d.w;
       ctx.persist(); ctx.render();
-      ctx.toast(`Remaining sets set to ${d.w} lb.`);
+      ctx.toast(`Remaining sets set to ${wt(d.w)}.`);
     },
     'pain-swap': (d) => ctx.swapEntry(d.uid, d.id),
   };

@@ -10,11 +10,11 @@
 import { addDays, mondayOf, todayStr } from './store.js';
 import { emphasis, PARTS } from './groups.js';
 import { MUSCLES, similarExercises } from './bank.js';
-import { volumeTarget, VOLUME_MUSCLES } from './builder.js';
+import { volumeTarget, TRACKED_MUSCLES } from './builder.js';
 import { isAvailable } from './gym.js';
 import { DAY_KEYS } from './engine.js';
 
-const COUNTED = [...VOLUME_MUSCLES, 'front-delts'];
+const COUNTED = TRACKED_MUSCLES;
 const UPPER = ['chest', 'lats', 'upper-back', 'front-delts', 'side-delts', 'rear-delts', 'biceps', 'triceps', 'forearms'];
 // Go-to isolation work per muscle (first available one not already in the plan is suggested).
 const ADD_FOR = {
@@ -65,7 +65,7 @@ function setsBetween(db, start) {
 }
 
 const inPlan = (db, id) => Object.values(db.plan).some((d) => d?.items?.some((it) => it.exerciseId === id));
-const firstAvailable = (db, ids) => ids.map((id) => db.exercises[id]).find((e) => e && isAvailable(db, e) && db.exPrefs?.[e.id] !== 'never' && !inPlan(db, e.id))
+const firstAvailable = (db, ids) => ids.map((id) => db.exercises[id]).find((e) => e && isAvailable(db, e) && !['never', 'avoid'].includes(db.exPrefs?.[e.id]) && !inPlan(db, e.id))
   || ids.map((id) => db.exercises[id]).find((e) => e && isAvailable(db, e) && db.exPrefs?.[e.id] !== 'never');
 
 // The lifting day that already trains this region and has the fewest exercises.
@@ -95,7 +95,7 @@ export function weekReview(db, start = lastWeekStart()) {
   if (!sessions.length) return { start, end, sessions: 0, planned, items, bars: [] };
 
   const bars = COUNTED.map((m) => {
-    const [lo, hi] = m === 'front-delts' ? [Math.round(weekly[0] * 0.4), weekly[1]] : volumeTarget({ weekly, includePhysique: rx?.includePhysique }, m);
+    const [lo, hi] = volumeTarget({ weekly, includePhysique: rx?.includePhysique }, m);
     return { m, name: MUSCLES[m], sets: Math.round((muscles[m] || 0) * 2) / 2, lo, hi };
   });
   for (const b of bars) {

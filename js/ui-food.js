@@ -4,6 +4,7 @@ import { FOODS } from './foods.js';
 import { targets, dayTotals, weeklyCheckin, MEAL_TEMPLATES, solveMeal, macrosFor, foodById, ACTIVITY, dayEnergy, weekEnergy, palOf } from './nutrition.js';
 import { PHASE_TYPES } from './year.js';
 import { todayStr, addDays } from './store.js';
+import { toDisp, wUnit } from './units.js';
 
 const CATS = { protein: 'Protein', carb: 'Carbs', fruit: 'Fruit', veg: 'Veg', dairy: 'Dairy', fat: 'Fats & nuts', treat: 'Treats', drink: 'Drinks', other: 'Sauces' };
 const r0 = (x) => Math.round(x);
@@ -115,7 +116,7 @@ export function createFood(ctx) {
       </div>
       <div class="energy-bar" aria-hidden="true">${parts.map(([, v, c]) => `<i class="${c}" style="flex:${Math.max(1, r0(v))}"></i>`).join('')}</div>
       <p class="energy-legend small">${parts.map(([n, v, c]) => `<span><i class="dot ${c}"></i>${n} ${k(v)}</span>`).join('')}</p>
-      <p class="muted small">${w.logged >= 3 ? `Last 7 days: ${sign(w.avgBalance)}${k(Math.abs(w.avgBalance))} kcal/day on average, which predicts about ${w.lbPerWeek > 0 ? "+" : w.lbPerWeek < 0 ? "−" : ""}${Math.abs(w.lbPerWeek).toFixed(1)} lb/week.` : 'Log food on a few more days to see your weekly trend.'}${w.cal.ready ? ' Tuned to your weight trend.' : ''}</p>
+      <p class="muted small">${w.logged >= 3 ? `Last 7 days: ${sign(w.avgBalance)}${k(Math.abs(w.avgBalance))} kcal/day on average, which predicts about ${w.lbPerWeek > 0 ? "+" : w.lbPerWeek < 0 ? "−" : ""}${Math.abs(toDisp(w.lbPerWeek)).toFixed(1)} ${wUnit()}/week.` : 'Log food on a few more days to see your weekly trend.'}${w.cal.ready ? ' Tuned to your weight trend.' : ''}</p>
     </section>`;
   }
 
@@ -148,7 +149,7 @@ export function createFood(ctx) {
     const a = t.adaptive;
     ctx.openSheet(`<h2>How your targets are set</h2>
       <div class="rx-row"><span class="muted">Maintenance</span><b>${t.maintenance} kcal</b></div>
-      <p class="muted small">${a.ready ? `From your log: you ate ~${r0(a.intake)} kcal/day while weight changed ${a.lbPerWeek >= 0 ? '+' : ''}${a.lbPerWeek.toFixed(2)} lb/week (${a.loggedDays} days logged).` : `Estimated: resting energy (Mifflin-St Jeor) × daily activity + planned training. After ~2 weeks of food and weight logging this switches to your real numbers (${a.loggedDays}/10 food days, ${a.weighIns}/6 weigh-ins).`} ${ctx.refChips(['mifflin1990', 'ainsworth2011', 'hall2008'])}</p>
+      <p class="muted small">${a.ready ? `From your log: you ate ~${r0(a.intake)} kcal/day while weight changed ${a.lbPerWeek >= 0 ? '+' : ''}${toDisp(a.lbPerWeek).toFixed(2)} ${wUnit()}/week (${a.loggedDays} days logged).` : `Estimated: resting energy (Mifflin-St Jeor) × daily activity + planned training. After ~2 weeks of food and weight logging this switches to your real numbers (${a.loggedDays}/10 food days, ${a.weighIns}/6 weigh-ins).`} ${ctx.refChips(['mifflin1990', 'ainsworth2011', 'hall2008'])}</p>
       <div class="rx-row"><span class="muted">${PHASE_TYPES[t.goal.type].label} adjustment</span><b>${t.deltaKcal >= 0 ? '+' : ''}${t.deltaKcal} kcal</b></div>
       <p class="muted small">${t.goal.goal === 'gain' ? `Gain ${t.rate[0]}–${t.rate[1]}% of bodyweight per week.` : t.goal.goal === 'lose' ? `Lose ${t.rate[0]}–${t.rate[1]}% of bodyweight per week.` : 'Hold your weight steady.'} ${ctx.refChips(t.goal.goal === 'lose' ? ['helms2014'] : ['iraki2019'])}</p>
       ${t.offset ? `<div class="rx-row"><span class="muted">Check-in adjustment</span><b>${t.offset > 0 ? '+' : ''}${t.offset} kcal</b></div>` : ''}

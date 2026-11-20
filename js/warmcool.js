@@ -78,9 +78,11 @@ function build(db, day, rows, phase) {
 // mobilize: dynamic range of motion, one set. prime: light activation, two sets.
 const DRILLS = {
   mobilize: ['leg-swing', 'arm-circle', 'hip-circle', 'ankle-rock', 'open-book', 'inchworm', 'knee-hug-walk', 'band-dislocate', 'wall-slide',
-    'stretch-catcow', 'stretch-wgs', 'stretch-thread', 'stretch-9090', 'wrist-circle'],
+    'stretch-catcow', 'stretch-wgs', 'stretch-thread', 'stretch-9090', 'wrist-circle',
+    'arm-swing', 'shoulder-car', 'hip-car', 'reach-open', 'spiderman-lunge', 'lateral-lunge-stretch', 'leg-cradle', 'toy-soldier', 'butt-kick', 'a-skip', 'carioca', 'neck-circle', 'tspine-extension', 'wrist-rock', 'ankle-circle', 'adductor-rockback', 'hip-flexor-rock', 'goblet-hold'],
   prime: ['scap-pushup', 'scap-pull', 'band-pull-apart', 'band-external-rotation', 'prone-ytw', 'glute-bridge', 'glute-bridge-march',
-    'lateral-band-walk', 'clamshell', 'air-squat', 'bodyweight-lunge', 'step-up-bw', 'calf-raise-slow', 'plank', 'side-plank'],
+    'lateral-band-walk', 'clamshell', 'air-squat', 'bodyweight-lunge', 'step-up-bw', 'calf-raise-slow', 'plank', 'side-plank',
+    'hip-airplane', 'fire-hydrant', 'band-row-light', 'cuban-rotation', 'banded-squat'],
 };
 
 // A small seeded random generator, so a day's warm-up stays the same until it's shuffled.
@@ -91,6 +93,16 @@ function rng(seed) {
 }
 
 // The muscles today's lifts work hardest, in order (sets on primary muscles, half for assisting).
+function recentDrills(db, days = 6) {
+  const since = addDays(todayStr(), -days);
+  const out = new Map();
+  for (const s of db.sessions || []) {
+    if (s.date < since) continue;
+    for (const e of s.entries) if (/^(warmup|cooldown)-/.test(e.uid || '')) out.set(e.exerciseId, (out.get(e.exerciseId) || 0) + 1);
+  }
+  return out;
+}
+
 function focusMuscles(liftItems) {
   const w = {};
   for (const it of liftItems) {
@@ -105,6 +117,7 @@ export function warmupItems(db, day, liftItems) {
   const date = dateOf(day);
   const rand = rng(`${date}:${day}:${db.dayExtras?.[date]?.warmSeed || 0}`);
   const focus = focusMuscles(liftItems);
+  const recent = recentDrills(db);
   const ok = (id) => { const e = db.exercises[id]; return e && isAvailable(db, e) && db.exPrefs?.[id] !== 'never'; };
   const covers = (id, m) => { const e = db.exercises[id]; return e.primary.includes(m) ? 1 : e.secondary.includes(m) ? 0.4 : 0; };
   const rows = [['warmup-cardio', 1, 'time', 180, 'Raise: bike, rower or brisk walk, easy pace']];
@@ -126,10 +139,11 @@ export function warmupItems(db, day, liftItems) {
   const limit = { mobilize: 3, prime: 3 };
   const pick = (kind, need) => {
     const pool = DRILLS[kind].filter((id) => ok(id) && !chosen.mobilize.includes(id) && !chosen.prime.includes(id) && !rehab.some((r) => r[0] === id));
-    const score = (id) => (need ? covers(id, need) * 3 : 0) + focus.reduce((acc, m) => acc + (covered.get(m) < 1 ? covers(id, m) : covers(id, m) * 0.2), 0);
+    const score = (id) => (need ? covers(id, need) * 3 : 0) + focus.reduce((acc, m) => acc + (covered.get(m) < 1 ? covers(id, m) : covers(id, m) * 0.2), 0)
+      - (recent.get(id) || 0) * 0.8 + (db.exPrefs?.[id] === 'prefer' ? 0.6 : 0) - (db.exPrefs?.[id] === 'avoid' ? 2 : 0);
     const ranked = pool.map((id) => ({ id, sc: score(id) })).filter((x) => x.sc > 0 && (!need || covers(x.id, need) > 0)).sort((p, q) => q.sc - p.sc);
     if (!ranked.length) return false;
-    const near = ranked.filter((x) => x.sc >= ranked[0].sc - 0.6);
+    const near = ranked.filter((x) => x.sc >= ranked[0].sc - 0.9);
     const id = near[Math.floor(rand() * near.length)].id;
     chosen[kind].push(id);
     for (const m of focus) covered.set(m, covered.get(m) + covers(id, m));
@@ -168,8 +182,26 @@ export function shuffleWarmup(db, day) {
 }
 
 export function cooldownItems(db, day, liftItems) {
-  const rows = groupsTrained(liftItems).slice(0, 2).flatMap((g) => COOL[g] || []).map((r) => [...r, 'Hold gently, breathe slowly']);
-  return build(db, day, rows.slice(0, 4), 'cooldown');
+  const date = dateOf(day);
+  const rand = rng(`cool:${date}:${day}:${db.dayExtras?.[date]?.warmSeed || 0}`);
+  const focus = focusMuscles(liftItems).slice(0, 4);
+  const recent = recentDrills(db);
+  // Static stretches (timed holds), not foam rolling or dynamic drills.
+  const pool = Object.values(db.exercises).filter((e) => e.pattern === 'mobility' && e.metric === 'time' && !/^roll-/.test(e.id)
+    && isAvailable(db, e) && !['never', 'avoid'].includes(db.exPrefs?.[e.id]));
+  const chosen = [];
+  for (const m of focus) {
+    if (chosen.length >= 4 || chosen.some((e) => e.primary.includes(m))) continue;
+    const opts = pool.filter((e) => e.primary.includes(m) && !chosen.includes(e))
+      .map((e) => ({ e, sc: 1 - (recent.get(e.id) || 0) * 0.5 + (db.exPrefs?.[e.id] === 'prefer' ? 0.5 : 0) }))
+      .sort((a, b) => b.sc - a.sc);
+    if (!opts.length) continue;
+    const near = opts.filter((x) => x.sc >= opts[0].sc - 0.5);
+    chosen.push(near[Math.floor(rand() * near.length)].e);
+  }
+  if (chosen.length < 3) for (const r of groupsTrained(liftItems).flatMap((g) => COOL[g] || [])) { const e = db.exercises[r[0]]; if (e && chosen.length < 3 && !chosen.includes(e)) chosen.push(e); }
+  const rows = chosen.map((e) => [e.id, 1, 'time', 40, 'Hold gently, breathe slowly']);
+  return build(db, day, rows, 'cooldown');
 }
 
 // Rough length of a warm-up, in minutes.
