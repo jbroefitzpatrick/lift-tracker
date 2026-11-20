@@ -48,7 +48,7 @@ import { createExerciseEditor } from './ui-exercise.js';
 import { CORE_PLACEMENTS, applyCore, coreCircuit } from './core.js';
 import { PROGRESSIONS, recommendScheme, schemeFor } from './engine.js';
 import { dayExtras, setDayExtra, warmupItems, cooldownItems, shuffleWarmup } from './warmcool.js';
-import { weekReview, applySuggestion, lastWeekStart } from './review.js';
+import { weekReview, applySuggestion, lastWeekStart, muscleWork, addOptions } from './review.js';
 import { createTour } from './tour.js';
 import { setUnit, wUnit, toDisp, fromDisp, wt, KG_GYM, LB_GYM, weightStepper } from './units.js';
 import { adjustDay } from './week.js';
@@ -382,6 +382,23 @@ function nextInCircuit(session, uid, idx) {
   return after ? { uid: after, round: 0, groupDone: true } : { groupDone: true, end: true };
 }
 
+// When an exercise (or every exercise in its superset/circuit) is finished, it moves up to just
+// before the first unfinished one in the same section, so what's left is always below what's done.
+// Warm-up, workout and cool-down are reordered separately.
+function settleDone(session, uid) {
+  const e = session.entries[uid];
+  if (!e) return;
+  const phaseOf = (u) => session.entries[u]?.phase || 'main';
+  const done = (u) => { const x = session.entries[u]; return !x || x.pain || x.sets.every((st) => st.done); };
+  const g = groupNum(e.group);
+  const members = session.order.filter((u) => groupNum(session.entries[u]?.group) === g && phaseOf(u) === phaseOf(uid));
+  if (!members.every(done)) return;
+  const firstOpen = session.order.find((u) => phaseOf(u) === phaseOf(uid) && !members.includes(u) && !done(u));
+  if (!firstOpen || session.order.indexOf(members[0]) < session.order.indexOf(firstOpen)) return;
+  session.order = session.order.filter((u) => !members.includes(u));
+  session.order.splice(session.order.indexOf(firstOpen), 0, ...members);
+}
+
 function maybeRest(session, uid, setIndex) {
   const entry = session.entries[uid];
   const g = groupNum(entry.group);
@@ -440,6 +457,8 @@ function logSet(uid, idx, vals) {
   persist();
   haptic();
   maybeRest(session, uid, idx);
+  settleDone(session, uid);
+  persist();
   render();
   // On the exercise screen, move through the superset/circuit automatically, after a short beat
   // so the logged set registers before the next exercise slides in.
@@ -1042,7 +1061,8 @@ function screenExercise() {
   const prev = items[idx - 1];
   // After an automatic move within a circuit, back returns to the exercise just done.
   const back = (ui.backUid && ui.backUid !== item.uid && items.find((i) => i.uid === ui.backUid)) || prev;
-  const next = items[idx + 1];
+  const left = (i) => !session || setsLeft(session, i);
+  const next = items.slice(idx + 1).find(left) || items.slice(0, idx).find(left) || null;
   const aim = conditioning ? `${t.sets} × ${fmtTarget(metric, item.target)}${item.restSec ? `, rest ${fmtRest(item.restSec)}` : ''}`
     : t.weight == null ? 'Pick a working weight to set your baseline'
     : t.aim ? t.aim
@@ -1204,6 +1224,35 @@ function relabel(list, keyOf) {
     } else if (!run[0].restSec && run[0].soloRest) run[0].restSec = run[0].soloRest; // back on its own: its own rest again
     i = j;
   }
+}
+
+// ---------- One muscle's week: what worked it, and what to add ----------
+function openMuscleWork(d) {
+  ui.volSel = { m: d.m, g: d.g };
+  const g = d.g ? groupById(d.g) : null;
+  const muscles = g ? g.muscles : [d.m];
+  const name = g ? g.name : MUSCLES[d.m];
+  const ws = setsByPart(db).muscles;
+  const rx = { weekly: db.profile?.rx?.weekly || [10, 20], includePhysique: !!db.profile?.rx?.includePhysique };
+  const t = muscles.map((m) => volumeTarget(rx, m));
+  const r2 = (x) => Math.round(x * 2) / 2;
+  const v = r2(muscles.reduce((a, m) => a + (ws[m] || 0), 0));
+  const lo = t.reduce((a, x) => a + x[0], 0);
+  const hi = t.reduce((a, x) => a + x[1], 0);
+  const work = muscleWork(db, muscles);
+  // For a group, suggest work for the member furthest below its target.
+  const lead = g ? muscles.slice().sort((a, b) => (ws[a] || 0) / volumeTarget(rx, a)[0] - (ws[b] || 0) / volumeTarget(rx, b)[0])[0] : d.m;
+  const opts = addOptions(db, lead);
+  const session = db.activeSession && sessionFor(ui.day);
+  openSheet(`<h2>${esc(name)}</h2>
+    <p class="muted"><b class="num">${v}</b> sets in the last 7 days · target ${lo}–${hi}${v < lo ? ' · below' : v > hi ? ' · above' : ''}</p>
+    <h3 class="sheet-h">Worked by</h3>
+    ${work.length ? `<div class="list-group">${work.map((w) => `<button class="list-row" data-a="ex-info" data-id="${w.exerciseId}"><span class="grow"><b>${esc(db.exercises[w.exerciseId].name)}</b><span class="pick-sub">${r2(w.sets)} sets · last ${fmtDate(w.date)}</span></span>${icon('right', 'chev')}</button>`).join('')}</div>` : '<p class="muted small">Nothing logged for it in the last 7 days.</p>'}
+    <h3 class="sheet-h">Add more${g ? ` for ${esc(MUSCLES[lead].toLowerCase())}` : ''}</h3>
+    <div class="list-group">${opts.map(({ ex, day }) => `<div class="list-row add-opt"><span class="grow"><b>${esc(ex.name)}</b><span class="pick-sub">3 sets</span></span>
+      ${session ? `<button class="btn sm" data-a="vol-add-today" data-id="${ex.id}">Add today</button>` : ''}
+      ${day ? `<button class="btn sm" data-a="vol-add-plan" data-id="${ex.id}" data-day="${day}">Add to ${DAY_NAMES[day]}</button>` : ''}</div>`).join('') || '<p class="muted small pad">No other exercises for it at this gym.</p>'}</div>
+    <p class="muted small">Sets count once logged. "Add to" a day changes your weekly plan${session ? '; "Add today" is for this workout only' : ''}.</p>`);
 }
 
 // ---------- Weekly review ----------
@@ -1722,7 +1771,7 @@ function recoveryDetail(sel) {
     const h = Math.max(...g.muscles.map((m) => hoursToReady(m, fat[m] || 0)));
     const pains = g.muscles.flatMap((m) => painFor(m, null)).filter((r, i, arr) => arr.findIndex((x) => x.id === r.id) === i);
     const pm = g.parts ? setsByPart(db).parts[g.parts] : null;
-    return `<div class="rec-detail-head"><h4>${g.name}</h4></div>
+    return `<div class="rec-detail-head"><h4>${g.name}</h4><button class="btn sm" data-a="pain-report" data-pre="${sel.focus || g.muscles[0]}">Log pain</button></div>
       <div class="rec-stat"><b class="num">${pct}%</b><span><b>${pct >= 80 ? 'Fresh' : pct >= 50 ? 'Recovering' : 'Fatigued'}</b><span class="pick-sub">${h > 0 ? `Ready in about ${h < 20 ? `${Math.max(1, Math.round(h))} h` : `${Math.round(h / 24)} day${Math.round(h / 24) === 1 ? '' : 's'}`}` : 'Ready to train'}</span></span></div>
       <div class="field rec-goal"><span>Goal for ${g.name.toLowerCase()} ${helpBtn()}</span><p class="help-text" hidden>Changes the rep range and rest for every exercise that mainly works ${g.name.toLowerCase()}. Auto keeps your plan's settings.</p>
         <div class="segmented small-seg" role="radiogroup">${[['', 'Auto'], ...Object.entries(MGOALS).map(([k, v]) => [k, v.name])].map(([k, l]) => `<button class="${(db.muscleGoals?.[g.id] || '') === k ? 'on' : ''}" data-a="set-mgoal" data-g="${g.id}" data-v="${k}" role="radio">${l}</button>`).join('')}</div></div>
@@ -1771,7 +1820,9 @@ document.addEventListener('click', (e) => {
   const el = e.target.closest('.rec-map [data-m], .rec-map [data-j]');
   if (!el) return;
   const area = el.dataset.m || el.dataset.j;
-  ui.recSel = { area, side: null };
+  // A muscle opens its group (recovery, goal, members); a joint opens on its own.
+  const grp = el.dataset.m ? groupOfMuscle(area) : null;
+  ui.recSel = grp ? { group: grp.id, focus: area } : { area, side: null };
   haptic();
   refreshRecovery();
 });
@@ -3549,6 +3600,19 @@ const actions = {
     persist(); render(); toast(`Weights in ${d.v === 'kg' ? 'kilograms' : 'pounds'}.`);
   },
   'tour-replay': () => { tour.replay(); ui.setPage = null; ui.tab = 'today'; ui.day = defaultDay(); window.scrollTo(0, 0); render(); },
+  'vol-open': (d) => openMuscleWork(d),
+  'vol-add-plan': (d) => {
+    const ex = db.exercises[d.id];
+    const plan = db.plan[d.day];
+    if (!ex || !plan) return;
+    const compound = ex.category === 'compound';
+    const nextGroup = Math.max(0, ...plan.items.map((i) => parseInt(groupNum(i.group), 10) || 0)) + 1;
+    plan.items.push({ uid: `${d.day}-${Date.now()}`, exerciseId: ex.id, group: String(nextGroup), sets: 3, repMin: compound ? 6 : 10, repMax: compound ? 10 : 15, restSec: compound ? 150 : 90, note: '' });
+    applyGoals(db); persist(); render();
+    toast(`Added ${ex.name} to ${FULL_DAY[d.day]}s.`);
+    openMuscleWork(ui.volSel);
+  },
+  'vol-add-today': (d) => { addToSession(d.id); closeSheet(); render(); toast(`Added ${db.exercises[d.id].name} to today's workout.`); },
   'rv-open': () => openReview(),
   'rv-dismiss': () => { db.settings.reviewSeen = lastWeekStart(); persist(); render(); },
   'rv-apply': (d) => {
@@ -3587,6 +3651,7 @@ const actions = {
       x.done = true; logged.push(i);
     });
     if (!logged.length) return toast('Fill in weight and reps first, then log them all.');
+    settleDone(sx, d.uid);
     resumeSession(sx); persist(); haptic(); render();
     ui.logAllUndo = { uid: d.uid, idx: logged };
     toast(`Logged ${logged.length} set${logged.length === 1 ? '' : 's'} of ${ex.name}.`, { label: 'Undo', a: 'log-all-undo' });

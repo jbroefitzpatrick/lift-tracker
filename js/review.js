@@ -81,6 +81,39 @@ function dayFor(db, muscle, pending = {}) {
   return day;
 }
 
+// Exercises that worked these muscles in the last `days` days: sets (assisting counts half), last date.
+export function muscleWork(db, muscles, days = 7) {
+  const since = addDays(todayStr(), -(days - 1));
+  const out = {};
+  for (const s of db.sessions) {
+    if (s.date < since) continue;
+    for (const e of s.entries) {
+      const ex = db.exercises[e.exerciseId];
+      if (!ex || ['mobility', 'prehab'].includes(ex.pattern)) continue;
+      const n = e.sets.filter((x) => !x.pain && x.type !== 'w' && (x.reps > 0 || x.time > 0 || x.dist > 0)).length;
+      const w = muscles.some((m) => ex.primary.includes(m)) ? 1 : muscles.some((m) => ex.secondary.includes(m)) ? 0.5 : 0;
+      if (!n || !w) continue;
+      const o = (out[ex.id] ||= { exerciseId: ex.id, sets: 0, date: s.date });
+      o.sets += n * w;
+      if (s.date > o.date) o.date = s.date;
+    }
+  }
+  return Object.values(out).sort((a, b) => b.sets - a.sets || (a.date < b.date ? 1 : -1));
+}
+
+// Exercises to add for a muscle, each with the plan day it would fit best.
+export function addOptions(db, muscle, n = 4) {
+  const pref = (e) => ({ prefer: 0, avoid: 2 }[db.exPrefs?.[e.id]] ?? 1);
+  const ok = (e) => e && e.category !== 'conditioning' && isAvailable(db, e) && db.exPrefs?.[e.id] !== 'never';
+  const listed = (ADD_FOR[muscle] || []).map((id) => db.exercises[id]);
+  const more = Object.values(db.exercises).filter((e) => e.primary[0] === muscle);
+  const seen = new Set();
+  const pool = [...listed, ...more].filter((e) => ok(e) && !seen.has(e.id) && seen.add(e.id));
+  pool.sort((a, b) => pref(a) - pref(b) || inPlan(db, a.id) - inPlan(db, b.id));
+  const pending = {};
+  return pool.slice(0, n).map((e) => ({ ex: e, day: dayFor(db, muscle, pending) }));
+}
+
 export function lastWeekStart(today = todayStr()) { return addDays(mondayOf(today), -7); }
 
 export function weekReview(db, start = lastWeekStart()) {

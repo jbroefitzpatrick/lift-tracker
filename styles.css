@@ -1310,3 +1310,7 @@ button.day-line .ic { color: var(--muted); }
 .target-tile { width: 68px; scroll-snap-align: start; }
 .tile-art { width: 64px; height: 64px; }
 .tile-name { font-size: 0.75rem; color: var(--muted); text-align: center; line-height: 1.2; }
+/* Weekly-sets rows open that muscle's exercises. */
+button.vol-btn { width: 100%; border: 0; background: none; color: inherit; font: inherit; text-align: left; padding: 0; cursor: pointer; }
+.vol-more { margin: 6px 0 2px; }
+.add-opt .btn.sm { margin-left: 6px; }

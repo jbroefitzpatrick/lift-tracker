@@ -62,7 +62,8 @@ export function createExtras(ctx) {
     const rx = { weekly: db.profile?.rx?.weekly || [10, 20], includePhysique: !!db.profile?.rx?.includePhysique };
     const r = (x) => Math.round(x * 2) / 2;
     const bar = (v, lo, hi) => `<span class="fr-bar target" style="--lo:${(lo / hi) * 100}%"><i class="${v < lo ? 'low' : ''}" style="width:${Math.max(Math.min(100, (v / hi) * 100), 2)}%"></i></span>`;
-    const line = (name, v, lo, hi, cls = '', note = '') => `<div class="fresh-row vol ${cls}"><span class="fr-name">${name}${note}</span>${bar(v, lo, hi)}<span class="fr-pct"><b>${r(v)}</b> <span class="muted">/ ${lo}–${hi}</span></span></div>`;
+    // A row with a muscle (m) opens that muscle's exercises.
+    const line = (name, v, lo, hi, cls = '', note = '', m = '') => `<${m ? `button type="button" data-a="vol-open" data-m="${m}"` : 'div'} class="fresh-row vol ${cls} ${m ? 'vol-btn' : ''}"><span class="fr-name">${name}${note}</span>${bar(v, lo, hi)}<span class="fr-pct"><b>${r(v)}</b> <span class="muted">/ ${lo}–${hi}</span></span></${m ? 'button' : 'div'}>`;
     const rows = GROUPS.map((g) => {
       const tracked = g.muscles.filter((m) => TRACKED_MUSCLES.includes(m));
       if (!tracked.length) return '';
@@ -74,15 +75,17 @@ export function createExtras(ctx) {
       const pm = g.parts && parts[g.parts];
       const sub = [
         ...(g.muscles.length > 1 ? g.muscles.map((m) => (TRACKED_MUSCLES.includes(m)
-          ? line(MUSCLES[m], ws[m] || 0, ...volumeTarget(rx, m), 'sub')
+          ? line(MUSCLES[m], ws[m] || 0, ...volumeTarget(rx, m), 'sub', '', m)
           : `<div class="fresh-row vol sub"><span class="fr-name">${MUSCLES[m]}</span><span></span><span class="fr-pct"><b>${r(ws[m] || 0)}</b></span></div>`)) : []),
         ...(pm ? Object.entries(PARTS[g.parts]).map(([k, name]) => {
           const max = Math.max(1, ...Object.values(pm));
           return `<div class="fresh-row vol sub"><span class="fr-name">${name}</span><span class="fr-bar"><i style="width:${Math.max(2, ((pm[k] || 0) / max) * 100)}%"></i></span><span class="fr-pct"><b>${r(pm[k] || 0)}</b></span></div>`;
         }) : []),
       ];
-      const head = line(g.name, v, lo, hi, '', lowOne ? ` <span class="low-note">${MUSCLES[lowOne]} low</span>` : '');
-      return sub.length ? `<details class="vol-group"><summary>${head}</summary>${sub.join('')}${pm ? '<p class="muted small sub-note">Estimated from which exercises you did.</p>' : ''}</details>` : head;
+      const note = lowOne ? ` <span class="low-note">${MUSCLES[lowOne]} low</span>` : '';
+      if (!sub.length) return line(g.name, v, lo, hi, '', note, g.muscles[0]);
+      const head = line(g.name, v, lo, hi, '', note);
+      return `<details class="vol-group"><summary>${head}</summary>${sub.join('')}${pm ? '<p class="muted small sub-note">Estimated from which exercises you did.</p>' : ''}<button class="text-btn small-text vol-more" data-a="vol-open" data-g="${g.id}">Exercises for ${g.name.toLowerCase()}</button></details>`;
     }).join('');
     return `<div class="card"><div class="row between"><h3>Weekly sets</h3><button class="help-btn" data-a="help" aria-expanded="false" aria-label="What is this?">?</button></div>
       <p class="help-text" hidden>Hard sets in the last 7 days, counting half for assisting muscles, against your weekly target${db.profile ? '' : ' (default 10–20 per muscle)'}. The tick marks the low end. Tap a row with an arrow to see the muscles or parts inside it. ${ctx.refChips(['pelland2026', 'schoenfeld2017vol'])}</p>${rows}</div>`;
