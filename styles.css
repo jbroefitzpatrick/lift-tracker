@@ -1579,3 +1579,9 @@ a.list-row { color: inherit; text-decoration: none; }
 .cf-x { position: absolute; top: 4px; right: 4px; width: 26px; height: 26px; border-radius: 13px; border: 0; background: rgb(0 0 0 / 0.6); color: #fff; display: grid; place-items: center; padding: 0; }
 .cf-x svg { width: 14px; height: 14px; }
 .file-btn { display: flex; align-items: center; justify-content: center; }
+
+/* Leaderboard points and profiles */
+.ppl-row .num small, .big-pts small { font-size: 0.75rem; font-weight: 600; color: var(--muted); }
+.big-pts { font-size: 1.5rem; }
+.profile-week h3 { margin: 0; }
+.profile-week .row { margin-bottom: 8px; }

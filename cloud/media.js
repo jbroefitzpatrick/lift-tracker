@@ -4,7 +4,8 @@
 // The id is 128 random bits and only appears in posts shown to the people the post is shared with,
 // so the file URL itself is the permission (images and videos load in <img>/<video>, which can't
 // send a sign-in header). Deleting a post, or the account, deletes its files.
-// Limits: photos 3 MB (the phone resizes them first), videos 20 MB (about 15–30 seconds).
+// Limits: photos 3 MB (the phone resizes them first), videos 20 MB (about 15–30 seconds), and per
+// account 30 files or 150 MB a day (the free storage is shared by everyone).
 // Videos support Range requests, which Safari needs to play them.
 
 const TYPES = ['image/jpeg', 'image/png', 'image/webp', 'video/mp4', 'video/quicktime'];
@@ -22,6 +23,13 @@ export async function handleMedia(req, env, path, json, authUser) {
     const kind = type.startsWith('video/') ? 'video' : 'image';
     if (!buf.byteLength) return json({ error: 'Empty file.' }, 400);
     if (buf.byteLength > MAX[kind]) return json({ error: kind === 'video' ? 'Videos can be up to 20 MB (about 15–30 seconds). Trim it in Photos first.' : 'That photo is too large.' }, 413);
+    // Daily cap per account (table uploads).
+    if (env.DB) {
+      const day = new Date().toISOString().slice(0, 10);
+      const u = await env.DB.prepare('SELECT n, bytes FROM uploads WHERE user_id = ? AND day = ?').bind(user.id, day).first();
+      if (u && (u.n >= 30 || u.bytes + buf.byteLength > 150 * 1024 * 1024)) return json({ error: 'You reached the upload limit for today. Try again tomorrow.' }, 429);
+      await env.DB.prepare('INSERT INTO uploads (user_id, day, n, bytes) VALUES (?, ?, 1, ?) ON CONFLICT(user_id, day) DO UPDATE SET n = n + 1, bytes = bytes + excluded.bytes').bind(user.id, day, buf.byteLength).run();
+    }
     const id = hexId();
     await env.BACKUPS.put(`media/${user.id}/${id}`, buf, { metadata: { type, size: buf.byteLength, created: Date.now() } });
     return json({ id, type, kind });

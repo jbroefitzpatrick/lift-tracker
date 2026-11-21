@@ -3,7 +3,7 @@
 
 import { account, createAccount, signInWithPasskey, signInWithCode, addPasskey, signOut, passkeysSupported, deleteAccount } from './account.js';
 import { syncNow, syncState, resetSyncState, applyDocs, hasOwnData, peekRemote } from './sync.js';
-import { safetySnapshot } from './store.js';
+import { safetySnapshot, todayStr } from './store.js';
 import { pushStatus, enablePush, disablePush, testPush } from './push.js';
 
 export function createAccountUi(ctx) {
@@ -22,7 +22,7 @@ export function createAccountUi(ctx) {
   async function apply(docs, mode) {
     applying = true;
     try {
-      const today = new Date().toISOString().slice(0, 10);
+      const today = todayStr();
       let snapDay = '';
       try { snapDay = localStorage.getItem('lift.sync.snap') || ''; } catch {}
       if (snapDay !== today || mode === 'replace') {

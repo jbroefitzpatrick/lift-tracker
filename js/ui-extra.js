@@ -5,7 +5,7 @@ import { resetSyncState } from './sync.js';
 import { EX_INFO } from './exercise-info.js';
 import { bestRecords } from './records.js';
 import { activeGym, GEAR } from './gym.js';
-import { wt, toDisp, wUnit, BAR_CHOICES, PLATE_CHOICES, DB_STEP_CHOICES, MACHINE_STEP_CHOICES, fromDisp } from './units.js';
+import { wt, wtEst, toDisp, wUnit, BAR_CHOICES, PLATE_CHOICES, DB_STEP_CHOICES, MACHINE_STEP_CHOICES, fromDisp } from './units.js';
 import { MUSCLES } from './bank.js';
 import { TRACKED_MUSCLES, volumeTarget } from './builder.js';
 import {
@@ -48,7 +48,7 @@ export function createExtras(ctx) {
       </div>
     </div>
     ${rec ? `<div class="card"><h3>Personal records</h3>
-      ${rec.e1.v ? `<div class="rx-row"><span class="muted">Best est. max</span><b>${wt(Math.round(rec.e1.v))} <span class="muted small">(${toDisp(rec.e1.w)}×${rec.e1.r}, ${ctx.fmtDate(rec.e1.date)})</span></b></div>` : ''}
+      ${rec.e1.v ? `<div class="rx-row"><span class="muted">Best est. max</span><b>${wtEst(rec.e1.v)} <span class="muted small">(${toDisp(rec.e1.w)}×${rec.e1.r}, ${ctx.fmtDate(rec.e1.date)})</span></b></div>` : ''}
       <div class="rx-row"><span class="muted">Heaviest set</span><b>${wt(rec.heavy.v)} × ${rec.heavy.r}</b></div>
       <div class="rx-row"><span class="muted">Most reps</span><b>${rec.reps.v}${rec.reps.w ? ` @ ${wt(rec.reps.w)}` : ''}</b></div>
       ${rec.vol.v ? `<div class="rx-row"><span class="muted">Best workout volume</span><b>${Math.round(toDisp(rec.vol.v)).toLocaleString()} ${wUnit()}</b></div>` : ''}

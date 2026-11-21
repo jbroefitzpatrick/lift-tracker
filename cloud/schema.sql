@@ -158,3 +158,12 @@ CREATE TABLE IF NOT EXISTS comments (
   created INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS comments_owner ON comments (item_owner, created);
+
+-- Uploads per account per day (UTC), for the daily cap in media.js.
+CREATE TABLE IF NOT EXISTS uploads (
+  user_id TEXT NOT NULL,
+  day TEXT NOT NULL,
+  n INTEGER NOT NULL,
+  bytes INTEGER NOT NULL,
+  PRIMARY KEY (user_id, day)
+);

@@ -8,7 +8,7 @@ import { dayTotals, goalFor, targets as foodTargets } from './nutrition.js';
 import { workoutBurn } from './energy.js';
 import { icon } from './icons.js';
 import { blockInfo, focusFor } from './blocks.js';
-import { toDisp, wUnit, wt } from './units.js';
+import { toDisp, wUnit, wt, wtEst } from './units.js';
 import { GROUPS, groupById } from './groups.js';
 import { muscleIcon } from './body.js';
 import { DAY_NAMES, e1rm } from './engine.js';
@@ -179,7 +179,7 @@ export function createProgressScreens(A) {
     return `<button class="key-tile ${s.focus ? 'focus' : ''}" data-r="${A.bodyRegion(s.ex.primary?.[0])}" data-a="ex-info" data-id="${s.id}">
       <span class="key-label">${A.esc(s.label)}</span>
       <b class="key-name">${A.esc(s.ex.name)}</b>
-      <span class="key-val num">${toDisp(Math.round(s.now))}<small> ${wUnit()}</small></span>
+      <span class="key-val num">${Math.round(toDisp(s.now))}<small> ${wUnit()}</small></span>
       <span class="key-sub">${s.pct != null ? `${pctText(s.pct)} in 8 wk` : 'New'}${ratio ? ` · ${ratio.toFixed(2)}× BW` : ''}</span>
       ${sparkSvg(s.h, 'spark key-spark')}
     </button>`;
@@ -210,7 +210,7 @@ export function createProgressScreens(A) {
       <h2 class="group-title">By muscle group</h2>
       <div class="list-group">${groups.map(({ g, lifts }) => {
         const top = lifts[0]; const p = median(lifts.filter((x) => x.recent).map((x) => x.pct));
-        return `<button class="list-row" data-a="prog-sub" data-v="strength-${g.id}"><span class="grp-art">${muscleIcon(g.muscles[0])}</span><span class="grow"><b>${g.name}</b><span class="pick-sub">${A.esc(top.ex.name)} ${wt(Math.round(top.now))}</span></span>${p != null ? `<span class="small">${pctText(p)}</span>` : ''}${icon('right', 'chev')}</button>`;
+        return `<button class="list-row" data-a="prog-sub" data-v="strength-${g.id}"><span class="grp-art">${muscleIcon(g.muscles[0])}</span><span class="grow"><b>${g.name}</b><span class="pick-sub">${A.esc(top.ex.name)} ${wtEst(top.now)}</span></span>${p != null ? `<span class="small">${pctText(p)}</span>` : ''}${icon('right', 'chev')}</button>`;
       }).join('')}</div>`;
   }
 
@@ -224,7 +224,7 @@ export function createProgressScreens(A) {
     return `${A.subHeader(g.name, 'progress-back', 'Strength in the lifts that train it most')}
       ${big.length ? `<section class="card strength-hero"><h3>Biggest lifts</h3><div class="key-grid">${big.map((s) => keyTile({ ...s, label: s.ex.category === 'compound' ? 'Compound' : 'Accessory' }, bw)).join('')}</div></section>` : ''}
       ${rest.length ? `<details class="sub-details all-lifts" ${big.length ? '' : 'open'}><summary>All ${g.name.toLowerCase()} exercises (${rest.length})</summary>
-        <div class="list-group compact">${rest.map((s) => `<button class="list-row strength-row" data-a="ex-info" data-id="${s.id}"><span class="grow"><span>${A.esc(s.ex.name)}</span><span class="pick-sub">${wt(Math.round(s.now))}${s.pct != null ? ` · ${pctText(s.pct)}` : ''}${s.recent ? '' : ' · not lately'}</span></span>${sparkSvg(s.h)}</button>`).join('')}</div></details>` : ''}`;
+        <div class="list-group compact">${rest.map((s) => `<button class="list-row strength-row" data-a="ex-info" data-id="${s.id}"><span class="grow"><span>${A.esc(s.ex.name)}</span><span class="pick-sub">${wtEst(s.now)}${s.pct != null ? ` · ${pctText(s.pct)}` : ''}${s.recent ? '' : ' · not lately'}</span></span>${sparkSvg(s.h)}</button>`).join('')}</div></details>` : ''}`;
   }
 
   function latestBodyweight() {
@@ -319,7 +319,7 @@ export function createProgressScreens(A) {
       if (!el) return;
       const pts = hist.filter((h) => !h.isDeload && !h.excluded);
       if (bw) lineChart(el, { points: pts.map((h) => ({ x: h.date, values: [h.totalReps] })), series: [{ name: 'Total reps', cls: 's1' }], unit: 'reps' });
-      else lineChart(el, { points: pts.map((h) => ({ x: h.date, values: [toDisp(Math.round(h.best1rm)), toDisp(h.top.weight)] })), series: [{ name: 'Estimated max', cls: 's1' }, { name: 'Heaviest set', cls: 's2' }], unit: wUnit() });
+      else lineChart(el, { points: pts.map((h) => ({ x: h.date, values: [Math.round(toDisp(h.best1rm)), toDisp(h.top.weight)] })), series: [{ name: 'Estimated max', cls: 's1' }, { name: 'Heaviest set', cls: 's2' }], unit: wUnit() });
     });
     return `<header class="top"><button class="back" data-a="history-back" aria-label="Back">${icon('left')}</button><div><h1>${A.esc(ex.name)}</h1><p class="muted small">${CATEGORIES[ex.category]} · ${A.esc(A.muscleLine(ex))}</p></div></header>
       ${A.extras.exerciseInfo(ex)}

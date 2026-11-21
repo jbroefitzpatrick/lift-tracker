@@ -21,6 +21,8 @@ export function fromDisp(v) {
 }
 // "135 lb" / "61.25 kg"
 export const wt = (lb) => `${toDisp(lb)} ${unit}`;
+// Estimates (estimated max): whole pounds or kilograms, since more precision would be false.
+export const wtEst = (lb) => `${Math.round(toDisp(lb))} ${unit}`;
 // A kilogram amount as stored pounds (fixed precision so stored plates compare equal).
 export const lbOfKg = (kg) => +(kg / KG).toFixed(4);
 

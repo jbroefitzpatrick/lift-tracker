@@ -59,7 +59,8 @@ export function buildCard(db, name) {
   }));
   return {
     v: 1, name, today,
-    week: { start, end, done, planned, sets, cardioMin },
+    // workouts: every workout this week (not just planned ones); minutes: time training.
+    week: { start, end, done, planned, sets, cardioMin, workouts: inWeek.length, minutes: Math.round(inWeek.reduce((a, x) => a + Math.max(0, Math.min(240, ((x.finishedAt || 0) - (x.startedAt || 0) - (x.pausedMs || 0)) / 60000)), 0)) },
     streak,
     days: sessions.filter((s) => s.date >= addDays(today, -63)).map((s) => s.date),
     lifts,
@@ -68,10 +69,26 @@ export function buildCard(db, name) {
   };
 }
 
+// Weekly points, for the leaderboard: the work actually done, so a small plan finished doesn't
+// beat a bigger week. Each part is capped where more stops helping:
+// - 10 per workout, up to 6 (a seventh day adds little and raises injury risk);
+// - 1 per hard set, up to 120 (around 10–20 sets per muscle a week; past that, extra sets add
+//   little for growth or strength: pelland2026);
+// - 1 per 5 minutes of cardio, up to 60 (300 minutes, the top of the WHO range: who2020);
+// - 15 for finishing your own plan's week, so sticking to a plan still counts.
+export const POINTS = { workout: 10, maxWorkouts: 6, maxSets: 120, cardioPer: 5, maxCardio: 60, planBonus: 15 };
+export function weekPoints(w) {
+  const workouts = Math.min(POINTS.maxWorkouts, w.workouts ?? w.done ?? 0) * POINTS.workout;
+  const sets = Math.min(POINTS.maxSets, w.sets || 0);
+  const cardio = Math.min(POINTS.maxCardio, Math.floor((w.cardioMin || 0) / POINTS.cardioPer));
+  const bonus = w.planned && w.done >= w.planned ? POINTS.planBonus : 0;
+  return { total: workouts + sets + cardio + bonus, workouts, sets, cardio, bonus };
+}
+
 // This week's numbers, or zeros if the card is from an earlier week.
 export function weekOf(card, today = todayStr()) {
   const wk = card?.week;
-  if (!wk || today > wk.end) return { done: 0, planned: wk?.planned || 0, sets: 0, cardioMin: 0, stale: true };
+  if (!wk || today > wk.end) return { done: 0, planned: wk?.planned || 0, sets: 0, cardioMin: 0, workouts: 0, minutes: 0, stale: true };
   return wk;
 }
 

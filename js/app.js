@@ -1478,10 +1478,13 @@ function lockPage(on) {
 // In-app confirmation in place of the browser's confirm box (which shows the web address on iPhone).
 // Resolves true for the main button, false for Cancel or closing the sheet.
 let askPending = null;
+let askReturn = null; // the sheet that was open when asking, shown again on Cancel
+let lastSheetHtml = null;
 const AUTO_CONFIRM = /[?&]autoconfirm\b/.test(location.search); // automated tests only
 function ask(message, ok = 'OK', danger = false) {
   if (AUTO_CONFIRM) return Promise.resolve(true);
   if (askPending) { const r = askPending; askPending = null; r(false); }
+  askReturn = !$('#sheet').hidden ? lastSheetHtml : null;
   return new Promise((resolve) => {
     openSheet(`<p class="ask-text">${esc(message)}</p>
       <button class="btn ${danger ? 'danger-fill' : 'primary'} block big" data-a="ask-yes">${esc(ok)}</button>
@@ -1489,11 +1492,16 @@ function ask(message, ok = 'OK', danger = false) {
     askPending = resolve;
   });
 }
-function answerAsk(v) { const r = askPending; askPending = null; closeSheet(); r?.(v); }
+function answerAsk(v) {
+  const r = askPending; const back = askReturn; askPending = null; askReturn = null;
+  if (!v && back) openSheet(back); else closeSheet();
+  r?.(v);
+}
 
 // Set while a sheet slides away; a sheet opened meanwhile cancels the close.
 let sheetClosing = null;
 function openSheet(html) {
+  if (!html.includes('class="ask-text"')) lastSheetHtml = html;
   const sh = $('#sheet');
   const body = $('#sheet-body');
   if (sheetClosing) { clearTimeout(sheetClosing); sheetClosing = null; sh.hidden = true; }
@@ -1521,7 +1529,7 @@ function openSheet(html) {
 }
 function closeSheet() {
   const sh = $('#sheet');
-  if (askPending) { const r = askPending; askPending = null; r(false); }
+  if (askPending) { const r = askPending; askPending = null; askReturn = null; r(false); }
   if (sh.hidden || sheetClosing) return;
   sh.classList.remove('open');
   $('#main').removeAttribute('aria-hidden');
@@ -1956,7 +1964,7 @@ function screenKey() {
   if (ui.tab === 'body') return 'history:body';
   if (ui.tab === 'plan' && ui.planView && ui.planView !== 'week') return `plan:${ui.planView}`;
   if (ui.tab === 'settings' && ui.setPage) return `settings:${ui.setPage}`;
-  if (ui.tab === 'people' && ui.people?.client) return `people:${ui.people.edit ? 'edit' : 'client'}`;
+  if (ui.tab === 'people' && (ui.people?.client || ui.people?.profile)) return `people:${ui.people.profile ? `profile-${ui.people.profile}` : ui.people.edit ? 'edit' : 'client'}`;
   return ui.tab;
 }
 function navDir(from, to) {
@@ -2028,7 +2036,7 @@ function render() {
 // ---------- Events ----------
 
 const actions = {
-  tab: (d) => { ui.infoFrom = null; if (d.tab === 'today') ui.peek = false; if (!$('#sheet').hidden) closeSheet(); ui.summaryFresh = false; ui.selecting = false; ui.tab = d.tab === 'progress' ? 'history' : d.tab; if (d.tab === 'progress') ui.progSub = null; if (d.tab === 'plan') ui.planView = 'week'; if (d.tab === 'today') ui.summaryId = null; if (d.tab === 'history') ui.historyEx = null; if (d.tab === 'people') { if (ui.people) { ui.people.client = null; ui.people.edit = null; } people.refresh(); } window.scrollTo(0, 0); render(); },
+  tab: (d) => { ui.infoFrom = null; if (d.tab === 'today') ui.peek = false; if (!$('#sheet').hidden) closeSheet(); ui.summaryFresh = false; ui.selecting = false; ui.tab = d.tab === 'progress' ? 'history' : d.tab; if (d.tab === 'progress') ui.progSub = null; if (d.tab === 'plan') ui.planView = 'week'; if (d.tab === 'today') ui.summaryId = null; if (d.tab === 'history') ui.historyEx = null; if (d.tab === 'people') { if (ui.people) { ui.people.client = null; ui.people.edit = null; ui.people.profile = null; } people.refresh(); } window.scrollTo(0, 0); render(); },
   day: (d) => { ui.day = d.day; ui.tab = 'today'; ui.showCardio = false; ui.selecting = false; render(); },
   'open-set': (d) => openSetSheet(d.uid, +d.i),
   'leave-workout-view': () => { closeSheet(); ui.peek = true; render(); toast('Your workout keeps running. Tap "Back to workout" to return.'); },
