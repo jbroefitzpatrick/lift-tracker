@@ -99,6 +99,46 @@ export function createFocus(ctx) {
     return [...inPlan.sort((a, b) => b.score - a.score).slice(0, day ? 4 : 6), ...others.sort((a, b) => b.score - a.score || a.ex.name.localeCompare(b.ex.name)).slice(0, day ? 3 : 5)];
   }
 
+  // Overall mode: where the focus lifts land in the week. Every training day starts with at least
+  // one, and with more lifts than days each day takes two (upper, lower and full-body days), so the
+  // main lifts are practised twice a week. Frequency adds strength on top of volume (grgic2018freq,
+  // pelland2026), and a lift done first in the session gets the most effort. A second turn goes
+  // to the lifts done least so far; hinges (deadlifts) don't repeat, since they're the slowest to
+  // recover from. Lifts already on a day stay where they are.
+  function spreadFocus(list) {
+    const days = liftDays();
+    const ids = list.map((x) => x.id);
+    if (!ids.length || !days.length) return { map: {}, extra: [] };
+    const per = Math.max(1, Math.ceil(ids.length / days.length));
+    const cap = (d) => Math.min(dayLimit(d), per);
+    const map = Object.fromEntries(days.map((d) => [d, []]));
+    const count = (id) => days.filter((d) => map[d].includes(id)).length;
+    for (const id of ids) for (const sl of slotsOf(id)) if (map[sl.day] && map[sl.day].length < cap(sl.day) && !map[sl.day].includes(id)) map[sl.day].push(id);
+    // Picked lifts that aren't in the plan yet land where they were placed.
+    for (const x of list) if (x.place && !count(x.id) && map[x.place.day]) map[x.place.day].push(x.id);
+    const extra = [];
+    const fits = (id, d) => { const ex = ctx.db.exercises[id]; return /full|total/i.test(ctx.db.plan[d]?.name || '') || dayItems(d).some((i) => i.ex.primary.some((m) => ex.primary.includes(m))); };
+    for (const d of days) {
+      while (map[d].length < cap(d)) {
+        const hinge = (id) => /hinge/.test(ctx.db.exercises[id]?.pattern || '') || /deadlift/.test(id);
+        const cands = ids.filter((id) => !map[d].includes(id) && fits(id, d) && !(hinge(id) && count(id) >= 1)
+          && !map[d].some((o) => ctx.db.exercises[o]?.pattern && ctx.db.exercises[o].pattern === ctx.db.exercises[id]?.pattern))
+          .sort((a, b) => count(a) - count(b) || ids.indexOf(a) - ids.indexOf(b));
+        if (!cands.length) break;
+        const id = cands[0];
+        map[d].push(id);
+        if (dayItems(d).some((i) => i.exerciseId === id)) continue;
+        // Takes the place of a big lift for the same muscles that day (DB incline bench for bench press),
+        // so the day doesn't get longer; otherwise the most similar lift, or it's added first.
+        const ex = ctx.db.exercises[id];
+        const taken = new Set(extra.filter((e) => e.day === d && e.place.replaceUid).map((e) => e.place.replaceUid));
+        const same = dayItems(d).find((i) => i.ex.category === 'compound' && !ids.includes(i.exerciseId) && !taken.has(i.uid) && (i.ex.pattern === ex.pattern || i.ex.primary[0] === ex.primary[0]));
+        extra.push({ id, day: d, place: same ? { day: d, replaceUid: same.uid, replaces: same.ex.name } : placeFor(id, d) });
+      }
+    }
+    return { map, extra };
+  }
+
   function selectedRow(x, day) {
     const ex = ctx.db.exercises[x.id];
     if (!ex) return '';
@@ -117,6 +157,15 @@ export function createFocus(ctx) {
       <button class="chip search-chip" data-a="fx-search" data-day="${day || ''}">${icon('search')} Any exercise</button></div>`;
   }
 
+  function weekPreview() {
+    if (!st.general.length) return '';
+    const { map, extra } = spreadFocus(st.general);
+    const name = (id) => esc(ctx.db.exercises[id]?.name || id);
+    return `<h3 class="sheet-h">Your week</h3>
+      <div class="list-group fx-week">${liftDays().map((d) => `<div class="list-row"><span class="grow"><b>${FULL[d]} · ${esc(ctx.db.plan[d].name)}</b><span class="pick-sub">${(map[d] || []).map((id) => { const e = extra.find((x) => x.id === id && x.day === d); return e ? `<span class="accent-text">${name(id)} (${e.place.replaceUid ? `in place of ${esc(e.place.replaces)}` : 'added first'})</span>` : name(id); }).join(', ') || 'No focus lift'}</span></span></div>`).join('')}</div>
+      ${extra.length ? `<p class="muted small">So every day starts with a focus lift, ${extra.length === 1 ? 'one lift is' : 'some lifts are'} practised twice a week. ${ctx.refChips(['grgic2018freq'])}</p>` : ''}`;
+  }
+
   function body() {
     if (st.search) return searchBody();
     const seg = `<div class="segmented small-seg" role="radiogroup" aria-label="How to choose">
@@ -126,6 +175,7 @@ export function createFocus(ctx) {
     if (st.mode === 'general') {
       html = `<p class="muted small">Pick 2–4 lifts to push this block, from anywhere in your week.</p>
         ${st.general.map((x) => selectedRow(x, null)).join('') || '<p class="muted small pad">Nothing picked yet.</p>'}
+        ${weekPreview()}
         <h3 class="sheet-h">Suggested</h3>${chips(null)}`;
     } else {
       html = `<p class="muted small">Pick the lift each training day is built around. Upper, lower and full-body days can have two.</p>
@@ -195,10 +245,15 @@ export function createFocus(ctx) {
       const chosen = st.mode === 'day' ? liftDays().flatMap((d) => st.byDay[d] || []) : st.general;
       if (!chosen.length) return ctx.toast('Pick at least one lift.');
       const changes = [];
+      const spread = st.mode === 'day' ? { extra: [] } : spreadFocus(st.general);
       for (const x of chosen) {
         if (!x.place) continue;
         if (x.place.replaceUid) ctx.planSwap(x.place.day, x.place.replaceUid, x.id); else ctx.planAddTop(x.place.day, x.id);
         changes.push(`${db.exercises[x.id].name} ${x.place.replaceUid ? `replaces ${x.place.replaces}` : 'added'} on ${FULL[x.place.day]}`);
+      }
+      for (const e of spread.extra) {
+        if (e.place.replaceUid) ctx.planSwap(e.day, e.place.replaceUid, e.id); else ctx.planAddTop(e.day, e.id);
+        changes.push(`${db.exercises[e.id].name} ${e.place.replaceUid ? `replaces ${e.place.replaces}` : 'added'} on ${FULL[e.day]}`);
       }
       db.blocks.focus[st.index] = [...new Set(chosen.map((x) => x.id))];
       db.blocks.byDay ||= {};

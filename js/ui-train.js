@@ -4,7 +4,7 @@ import { icon } from './icons.js';
 import { DAY_KEYS, RECOVERY_GROUPS, resolveDay, weekOverride, groupOf } from './engine.js';
 import { todayStr, mondayOf, addDays, weekOrder } from './store.js';
 import { estimateMinutes } from './builder.js';
-import { composeWeek, adjustDay, splitDay, liftTemplates, doneTemplates, missedTemplates, todayKey, dayIndex } from './week.js';
+import { composeWeek, adjustDay, splitDay, liftTemplates, doneTemplates, missedTemplates, todayKey, dayIndex, shiftWeek, moveDay, skipDay, planSpread, previewSpread } from './week.js';
 import { dueChecks, record, notReady, learnSlowRecovery, RATINGS, groupSets } from './recovery.js';
 import { TEMPLATES, buildFinisher, condHistory, condTarget, fmtTarget } from './conditioning.js';
 import { RUN_KINDS, runKinds, scheduleRuns, goalWeek, paces, fmtClock, parseClock, weekRuns } from './running.js';
@@ -79,6 +79,50 @@ export function createTrain(ctx) {
       <p class="muted small">Weekly volume matters more than which day it lands on. ${ctx.refChips(['schoenfeld2016freq'])}</p>`);
   }
 
+  // ---------- Missed a day, or a day that won't work ----------
+  const list = (names) => (names.length < 3 ? names.join(' and ') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`);
+  const dayHasWorkout = (d) => resolveDay(ctx.db, d).some((i) => i.ex.category !== 'conditioning');
+  // A workout still ahead this week (today or later, not started or done).
+  const canTakeOff = (d) => dayIndex(d) >= dayIndex(todayKey()) && dayHasWorkout(d) && ctx.db.activeSession?.day !== d
+    && !ctx.db.sessions.some((x) => x.date >= mondayOf(todayStr()) && x.day === d && !x.freestyle);
+  function openMissed() {
+    const db = ctx.db;
+    const missed = missedTemplates(db);
+    if (!missed.length) return;
+    const shift = shiftWeek(JSON.parse(JSON.stringify(db)));
+    const what = missed.length === 1 ? `${FULL[missed[0].day]}'s ${esc(missed[0].name)}` : `${missed.length} workouts`;
+    const later = shift?.moves.slice(1).map((m) => `${esc(m.name)} ${SHORT[m.to]}`) || [];
+    ctx.openSheet(`<h2>Missed ${what}</h2>
+      <div class="list-group menu">
+        ${shift ? `<button class="list-row" data-a="wk-shift"><span class="grow"><b>Do it today</b><span class="pick-sub">${later.length ? `Then ${later.join(' · ')}` : 'The rest of the week stays as planned'}${shift.overflow.length ? `. ${esc(list(shift.overflow))}: main lifts join other days` : ''}</span></span>${icon('right', 'chev')}</button>` : ''}
+        <button class="list-row" data-a="wk-open"><span class="grow"><b>Fit it into my week</b><span class="pick-sub">Pick the days and time you have</span></span>${icon('right', 'chev')}</button>
+        <button class="list-row" data-a="wk-skip-missed"><span class="grow"><b>Skip it</b><span class="pick-sub">Carry on with the plan</span></span></button>
+      </div>
+      <p class="muted small">Changes this week only. Reset it any time in Plan.</p>`);
+  }
+
+  // A day this week that won't work: move it, spread its exercises over the other days, or skip it.
+  function openDayOff(day) {
+    const db = ctx.db;
+    const today = dayIndex(todayKey());
+    const free = weekOrder().filter((d) => d !== day && dayIndex(d) >= today && !dayHasWorkout(d));
+    const sp = previewSpread(db, day);
+    const byDay = {};
+    for (const p of sp?.placed || []) (byDay[p.to] ||= []).push(p.extra ? `${p.name} (+${p.extra} sets)` : p.name);
+    const short = (n) => esc(n.length > 2 ? `${n.slice(0, 2).join(', ')} +${n.length - 2} more` : list(n));
+    const spreadText = sp ? Object.entries(byDay).sort(([a], [b]) => dayIndex(a) - dayIndex(b)).map(([d, n]) => `${SHORT[d]}: ${short(n)}`).join(' · ') + (sp.dropped.length ? `. ${sp.dropped.length} ${sp.dropped.length === 1 ? 'accessory' : 'accessories'} left out to keep the time` : '') : '';
+    const name = esc(resolveDay(db, day).length ? (weekOverride(db, day)?.name || db.plan[day]?.name || 'Workout') : 'Workout');
+    ctx.openSheet(`<h2>Can't make it ${day === todayKey() ? 'today' : FULL[day]}?</h2>
+      <p class="muted small">${name}. Changes this week only.</p>
+      ${free.length ? `<div class="field"><span>Move it to</span><div class="chips">${free.map((d) => `<button class="chip" data-a="off-move" data-day="${day}" data-to="${d}">${d === todayKey() ? 'Today' : SHORT[d]}</button>`).join('')}</div></div>` : ''}
+      <div class="list-group menu">
+        ${sp ? `<button class="list-row" data-a="off-spread" data-day="${day}"><span class="grow"><b>Spread it over my other days</b><span class="pick-sub">${spreadText}</span></span>${icon('right', 'chev')}</button>` : ''}
+        <button class="list-row" data-a="off-skip" data-day="${day}"><span class="grow"><b>Skip it this week</b></span></button>
+      </div>
+      ${sp ? `<p class="muted small">Each exercise goes where it fits best: a day that already trains those muscles, not one with the same kind of big lift, and within the day's time. Weekly sets matter more than which day they're on. ${ctx.refChips(['schoenfeld2016freq'])}</p>` : ''}`);
+  }
+  const done = (msg) => { ctx.persist(); ctx.closeSheet(); ctx.render(); ctx.toast(`${msg} Reset in Plan to undo.`); };
+
   function refreshPlanner() { const el = $('#wk-body'); if (el) el.innerHTML = plannerBody(); }
 
   // Today: missed sessions, and early in the week a quick "how many days?" prompt.
@@ -91,7 +135,7 @@ export function createTrain(ctx) {
     if (missed.length && !planned) {
       // One line: what was missed, and a way to fit it in.
       const what = missed.length === 1 ? `${FULL[missed[0].day]}'s ${esc(missed[0].name)}` : `${missed.length} workouts`;
-      return `<div class="slim-banner review-card"><button class="grow banner-main" data-a="wk-open"><span class="dot" aria-hidden="true"></span><span><b>Missed ${what}</b> · fit ${missed.length > 1 ? 'them' : 'it'} in</span></button><button class="icon-btn subtle" data-a="wk-dismiss" aria-label="Dismiss">${icon('x')}</button></div>`;
+      return `<div class="slim-banner review-card"><button class="grow banner-main" data-a="missed-open"><span class="dot" aria-hidden="true"></span><span><b>Missed ${what}</b> · catch up</span></button><button class="icon-btn subtle" data-a="wk-dismiss" aria-label="Dismiss">${icon('x')}</button></div>`;
     }
     if (!planned && dayIndex(todayKey()) <= 1 && liftTemplates(db).length) {
       const left = 7 - dayIndex(todayKey());
@@ -323,6 +367,20 @@ export function createTrain(ctx) {
   // ---------- Actions ----------
 
   const actions = {
+    'missed-open': () => openMissed(),
+    'wk-shift': () => {
+      const r = shiftWeek(ctx.db);
+      if (!r) return;
+      ctx.db.week = r.week;
+      ctx.db.settings.weekPromptDismissed = `${r.week.start}:${todayStr()}`;
+      ctx.ui.day = todayKey();
+      done(`${r.moves[0].name} is today${r.moves.length > 1 ? ', the rest moved along' : ''}.`);
+    },
+    'wk-skip-missed': () => { for (const t of missedTemplates(ctx.db)) skipDay(ctx.db, t.day); done('Skipped.'); },
+    'day-off': (d) => openDayOff(d.day || ctx.ui.day),
+    'off-move': (d) => done(moveDay(ctx.db, d.day, d.to)),
+    'off-skip': (d) => done(skipDay(ctx.db, d.day)),
+    'off-spread': (d) => { const r = planSpread(ctx.db, d.day); if (!r) return ctx.toast('No other workouts left this week to spread it over.'); done(`Spread over ${r.targets.filter((t) => r.placed.some((p) => p.to === t)).map((t) => SHORT[t]).join(', ')}.`); },
     'wk-open': (d) => openPlanner(d.v ? +d.v : null),
     'wk-n': (d) => { st.avail = defaultAvail(+d.v); document.querySelectorAll('[data-a="wk-n"]').forEach((b) => b.classList.toggle('on', b.dataset.v === d.v)); refreshPlanner(); },
     'wk-apply': () => {
@@ -441,5 +499,5 @@ export function createTrain(ctx) {
     return true;
   }
 
-  return { weekPrompt, openPlanner, recoveryCheck, recoveryCards, recoveryReminder, condInfo, condPlaceholder, runCard, installHint, openShare, actions, onChange };
+  return { weekPrompt, openPlanner, openDayOff, dayHasWorkout, canTakeOff, recoveryCheck, recoveryCards, recoveryReminder, condInfo, condPlaceholder, runCard, installHint, openShare, actions, onChange };
 }

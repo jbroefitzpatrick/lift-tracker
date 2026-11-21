@@ -1605,6 +1605,7 @@ function openDayOptions() {
       ${canReopen() && db.lastFinish.reopen.active.day === day ? `<button class="list-row" data-a="resume-finished"><span class="grow">Resume finished workout</span>${icon('right', 'chev')}</button>` : ''}
       ${!db.activeSession ? `<button class="list-row" data-a="start-empty"><span class="grow">Empty workout</span>${icon('right', 'chev')}</button>` : ''}
       ${session ? `<button class="list-row" data-a="leave-workout-view"><span class="grow">Plan, food and progress</span>${icon('right', 'chev')}</button>` : ''}
+      ${!session && train.canTakeOff(day) ? `<button class="list-row" data-a="day-off" data-day="${day}"><span class="grow">Can't make it ${day === dayKeyOf(todayStr()) ? 'today' : `this ${FULL_DAY[day]}`}</span>${icon('right', 'chev')}</button>` : ''}
       <button class="list-row" data-a="wk-open"><span class="grow">Adjust week</span>${icon('right', 'chev')}</button>
       <button class="list-row" data-a="pain-report"><span class="grow">Log pain</span>${icon('right', 'chev')}</button>
       <button class="list-row" data-a="open-templates" data-day="${day}"><span class="grow">Conditioning and recovery</span>${icon('right', 'chev')}</button>
@@ -2666,8 +2667,10 @@ function planWeek() {
     const p = dayPlan(db, d);
     const lift = p?.items?.length && (mode === 'lift' || mode === 'both');
     const name = lift ? esc(p.name) : mode === 'cardio' ? 'Cardio' : 'Rest';
-    const sub = lift ? `${p.items.length} exercises · ~${estimateMinutes(p.items)} min${mode === 'both' ? ' + cardio' : ''}` : '';
-    return `<button class="list-row week-row ${d === today ? 'is-today' : ''}" data-a="plan-open-day" data-day="${d}"><span class="wd">${DAY_NAMES[d]}</span><span class="grow"><b>${name}</b>${sub ? `<span class="pick-sub">${sub}</span>` : ''}</span>${icon('right', 'chev')}</button>`;
+    const note = weekOverride(db, d)?.note;
+    const sub = lift ? `${p.items.length} exercises · ~${estimateMinutes(p.items)} min${mode === 'both' ? ' + cardio' : ''}` : note ? esc(note) : '';
+    const off = lift && train.canTakeOff(d) ? `data-swipe="day-off" data-swipe-label="Can't make it"` : '';
+    return `<button class="list-row week-row ${d === today ? 'is-today' : ''}" data-a="plan-open-day" data-day="${d}" ${off}><span class="wd">${DAY_NAMES[d]}</span><span class="grow"><b>${name}</b>${sub ? `<span class="pick-sub">${sub}</span>` : ''}</span>${icon('right', 'chev')}</button>`;
   }).join('');
   const b = blockInfo(db);
   const rv = weekReview(db);
@@ -3354,6 +3357,7 @@ const ctx = {
   isAvailable: (ex) => isAvailable(db, ex),
   focusFor: (index) => focusFor(db, index),
   planSwap: (day, uid, newId) => swapInPlan(day, uid, newId),
+  canTakeOff: (d) => train.canTakeOff(d),
   // A new main lift goes first in the day, with heavy-compound defaults.
   planAddTop(day, exId) {
     addToPlanDay(day, exId);

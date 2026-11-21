@@ -100,6 +100,7 @@ export function createPlanTools(ctx) {
     const has = !!db.plan[day];
     const row = (a, ic, label, extra = '', cls = '') => `<button class="list-row ${cls}" data-a="${a}" data-day="${day}" ${extra}>${icon(ic)}<span class="grow">${label}</span></button>`;
     ctx.openSheet(`<h2>${FULL[day]}</h2>
+      ${ctx.canTakeOff(day) ? `<div class="list-group menu">${row('day-off', 'calendar', "Can't make it this week")}</div><p class="muted small">Changes this week only. The options below change every week.</p>` : ''}
       <div class="list-group menu">
         ${has ? row('pt-move', 'swap', 'Move to another day') : ''}
         ${has ? row('pt-bulk', 'note', 'Edit all exercises') : ''}

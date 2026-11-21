@@ -43,10 +43,13 @@ export function doneTemplates(db, start = mondayOf(todayStr())) {
 }
 
 // Plan days already behind us this week with no workout logged.
+// Skipped on purpose, or moved to a later day this week, doesn't count as missed.
 export function missedTemplates(db, date = todayStr()) {
   const done = doneTemplates(db, mondayOf(date));
   const today = dayIndex(todayKey(date));
-  return liftTemplates(db).filter((t) => dayIndex(t.day) < today && !done.has(t.day));
+  const off = offDays(db, date);
+  const later = new Set(db.week?.start === mondayOf(date) ? Object.entries(db.week.days || {}).filter(([d]) => dayIndex(d) >= today).flatMap(([, v]) => v.from || []) : []);
+  return liftTemplates(db).filter((t) => dayIndex(t.day) < today && !done.has(t.day) && !off.includes(t.day) && !later.has(t.day));
 }
 
 const clone = (items) => items.map((i) => ({ ...i }));
@@ -146,13 +149,14 @@ function lagging(db, days) {
 
 // Build this week's overrides from availability. avail: { day: { on, minutes, gymId } }.
 // Days before `fromDay` keep whatever they had. Returns { week, summary: [lines] }.
-export function composeWeek(db, avail, fromDay = todayKey()) {
+export function composeWeek(db, avail, fromDay = todayKey(), { keepCardio = false } = {}) {
   const start = mondayOf(todayStr());
   const prev = db.week?.start === start ? db.week : null;
   const days = {};
   for (const d of weekOrder()) if (dayIndex(d) < dayIndex(fromDay) && prev?.days?.[d]) days[d] = prev.days[d];
   const done = doneTemplates(db, start);
-  const todo = liftTemplates(db).filter((t) => !done.has(t.day));
+  const off = offDays(db);
+  const todo = liftTemplates(db).filter((t) => !done.has(t.day) && !off.includes(t.day));
   const open = weekOrder().filter((d) => dayIndex(d) >= dayIndex(fromDay) && avail[d]?.on);
   const focus = focusFor(db, blockInfo(db).index) || [];
   const summary = [];
@@ -187,9 +191,9 @@ export function composeWeek(db, avail, fromDay = todayKey()) {
     if (dayIndex(d) < dayIndex(fromDay)) continue;
     const a = assigned[d];
     // Conditioning planned on this weekday stays with the weekday when you're training that day.
-    const cond = avail[d]?.on ? (db.plan[d]?.items || []).filter((i) => !isLiftItem(db, i)).map((i) => ({ ...i })) : [];
+    const cond = avail[d]?.on || keepCardio ? (db.plan[d]?.items || []).filter((i) => !isLiftItem(db, i)).map((i) => ({ ...i })) : [];
     if (!a) {
-      days[d] = { name: db.plan[d]?.name || 'Conditioning', mode: avail[d]?.on ? 'cardio' : 'rest', items: cond, minutes: avail[d]?.minutes || null };
+      days[d] = { name: db.plan[d]?.name || 'Conditioning', mode: avail[d]?.on || (keepCardio && cond.length) ? 'cardio' : 'rest', items: cond, minutes: avail[d]?.minutes || null };
       continue;
     }
     days[d] = { name: a.merged ? `${a.name} + ${a.merged} focus lift${a.merged > 1 ? 's' : ''}` : a.name, mode: cond.length ? 'both' : 'lift', from: a.from, base: a.base.map(({ ex, ...rest }) => rest), cond, minutes: avail[d].minutes, gymId: avail[d].gymId || null };
@@ -204,7 +208,7 @@ export function composeWeek(db, avail, fromDay = todayKey()) {
     const label = d[0].toUpperCase() + d.slice(1);
     if (g.notes.length || fit.notes.length) summary.push(`${label}: ${[...g.notes, ...fit.notes].join('; ')}`);
   }
-  const week = { start, avail, days };
+  const week = { start, avail, days, off };
   if (todo.length > open.length && open.length) summary.unshift(`${todo.length} sessions in ${open.length} day${open.length > 1 ? 's' : ''}: every focus lift still gets done once.`);
   if (!open.length) summary.unshift('No training days this week — the plan picks up again next Monday.');
   return { week, summary };
@@ -249,3 +253,158 @@ export function splitDay(db, day) {
 }
 
 export function clearWeek(db) { db.week = null; }
+
+// ---------- A day that doesn't work, or a missed day ----------
+// All of these change this week only (db.week); the plan stays as it is and "Reset" undoes them.
+// db.week.off lists template days the person chose to skip or spread, so they aren't "missed".
+
+const FULLD = { mon: 'Monday', tue: 'Tuesday', wed: 'Wednesday', thu: 'Thursday', fri: 'Friday', sat: 'Saturday', sun: 'Sunday' };
+export const offDays = (db, date = todayStr()) => (db.week?.start === mondayOf(date) ? db.week.off || [] : []);
+function ensureWeek(db, date = todayStr()) {
+  const start = mondayOf(date);
+  if (!db.week || db.week.start !== start) db.week = { start, avail: {}, days: {} };
+  db.week.days ||= {};
+  return db.week;
+}
+// This week's version of a day, made editable (its untrimmed items kept as base).
+function weekDay(db, day) {
+  const w = ensureWeek(db);
+  let o = w.days[day];
+  if (!o) {
+    const items = resolveDay(db, day, { template: true }).filter((it) => isLiftItem(db, it)).map(({ ex, ...rest }) => rest);
+    const cond = (db.plan[day]?.items || []).filter((i) => !isLiftItem(db, i)).map((i) => ({ ...i }));
+    o = { name: db.plan[day]?.name || 'Workout', mode: items.length ? (cond.length ? 'both' : 'lift') : cond.length ? 'cardio' : 'rest', from: items.length ? [day] : [], base: items, items: [...clone(items), ...cond], cond };
+    w.days[day] = o;
+  }
+  return o;
+}
+const liftItemsOf = (db, o) => (o?.items || []).filter((it) => isLiftItem(db, it));
+// Days from today on that still have a lifting workout to do this week.
+function openLiftDays(db, date = todayStr(), except = null) {
+  const today = dayIndex(todayKey(date));
+  const doneDays = new Set(db.sessions.filter((s) => s.date >= mondayOf(date) && s.date <= date && !s.freestyle).map((s) => s.day));
+  return weekOrder().filter((d) => d !== except && dayIndex(d) >= today && !doneDays.has(d) && (resolveDay(db, d).filter((it) => isLiftItem(db, it)).length));
+}
+
+// "Do it today": the missed workout today, and every workout after it moves by the same number of
+// days, so the rest days between sessions stay as planned. Workouts pushed past the end of the
+// week can't fit: their main lifts join the lightest remaining day (as in composeWeek).
+export function shiftWeek(db, date = todayStr()) {
+  const today = todayKey(date);
+  const missed = missedTemplates(db, date);
+  if (!missed.length) return null;
+  const delta = dayIndex(today) - dayIndex(missed[0].day);
+  const done = doneTemplates(db, mondayOf(date));
+  const off = offDays(db, date);
+  const todo = liftTemplates(db).filter((t) => !done.has(t.day) && !off.includes(t.day));
+  const order = weekOrder();
+  const targets = todo.map((t) => order[dayIndex(t.day) + delta]).filter(Boolean);
+  const prev = db.week?.start === mondayOf(date) ? db.week.avail || {} : {};
+  const avail = {};
+  for (const d of order) if (dayIndex(d) >= dayIndex(today)) avail[d] = { on: targets.includes(d), minutes: prev[d]?.minutes || null, gymId: prev[d]?.gymId || '' };
+  const res = composeWeek(db, avail, today, { keepCardio: true });
+  res.week.off = off;
+  res.moves = todo.slice(0, targets.length).map((t, i) => ({ from: t.day, to: targets[i], name: t.name }));
+  res.overflow = todo.slice(targets.length).map((t) => t.name);
+  // Days left without their workout say where it went.
+  for (const m of res.moves) {
+    const v = res.week.days[m.from];
+    if (m.from !== m.to && !v?.from?.length) res.week.days[m.from] = { ...(v || { name: m.name, items: [] }), mode: v?.items?.length ? 'cardio' : 'rest', note: `Moved to ${FULLD[m.to]}` };
+  }
+  return res;
+}
+
+// Move one day's workout to another day this week (one without a workout of its own).
+export function moveDay(db, day, to) {
+  const src = weekDay(db, day);
+  const dst = weekDay(db, to);
+  const lift = liftItemsOf(db, src);
+  const cond = (dst.items || []).filter((i) => !isLiftItem(db, i));
+  db.week.days[to] = { ...dst, name: src.name, mode: cond.length ? 'both' : 'lift', from: [...new Set([...(src.from || [day])])], base: clone(src.base || lift), items: [...clone(lift), ...cond] };
+  const keep = (src.items || []).filter((i) => !isLiftItem(db, i));
+  db.week.days[day] = { ...src, mode: keep.length ? 'cardio' : 'rest', from: [], base: [], items: keep, note: `Moved to ${FULLD[to]}` };
+  return `${src.name} moved to ${FULLD[to]}.`;
+}
+
+// Skip one day's workout this week.
+export function skipDay(db, day) {
+  const src = weekDay(db, day);
+  db.week.days[day] = { ...src, mode: 'rest', from: [], base: [], items: [], note: 'Skipped this week' };
+  db.week.off = [...new Set([...(db.week.off || []), ...(src.from || [day])])];
+  return `${src.name} skipped this week.`;
+}
+
+// Spread one day's exercises over the other workouts left this week, each where it fits best:
+// - the same exercise elsewhere: that one gets the extra sets;
+// - otherwise the day that already trains those muscles (a lower-body lift joins the lower-body day),
+//   but not a day that already has the same kind of big lift (two squats in one session);
+// - not the day before or after another hard session for the same muscles;
+// - accessories that would push a day well past its time are left out this week.
+// Focus lifts and other compounds are placed first, so they get the best spots.
+export function planSpread(db, day, date = todayStr()) {
+  const snapshot = JSON.stringify(db.week || null);
+  const src = weekDay(db, day);
+  const items = liftItemsOf(db, src).map((it) => ({ ...it, ex: db.exercises[it.exerciseId] })).filter((it) => it.ex);
+  const targets = openLiftDays(db, date, day);
+  const focus = focusFor(db, blockInfo(db).index) || [];
+  const budget = (d) => db.week.days[d]?.minutes || db.week.avail?.[d]?.minutes || +db.profile?.sessionMin || 60;
+  const result = { placed: [], dropped: [], targets };
+  if (!targets.length) { db.week = JSON.parse(snapshot); return null; }
+  for (const d of targets) weekDay(db, d);
+  const ordered = items.sort((a, b) => prio(db, a, focus) - prio(db, b, focus));
+  const lifts = (d) => liftItemsOf(db, db.week.days[d]).map((x) => ({ ...x, ex: db.exercises[x.exerciseId] })).filter((x) => x.ex);
+  const near = (d, k) => weekOrder()[dayIndex(d) + k];
+  for (const it of ordered) {
+    const compound = it.ex.category === 'compound';
+    let best = null;
+    for (const d of targets) {
+      const L = lifts(d);
+      const same = L.find((x) => x.exerciseId === it.exerciseId);
+      let score = same ? 50 : 0;
+      score += Math.min(9, L.filter((x) => x.ex.primary.some((m) => it.ex.primary.includes(m))).length * 3);
+      if (compound && !same && L.some((x) => x.ex.category === 'compound' && x.ex.pattern && x.ex.pattern === it.ex.pattern)) score -= 8;
+      for (const k of [-1, 1]) {
+        const nd = near(d, k);
+        if (!nd || nd === day) continue;
+        const nl = (db.week.days[nd] ? liftItemsOf(db, db.week.days[nd]) : resolveDay(db, nd).filter((x) => isLiftItem(db, x)));
+        if (compound && nl.some((x) => db.exercises[x.exerciseId]?.category === 'compound' && db.exercises[x.exerciseId]?.primary?.[0] === it.ex.primary[0])) score -= 3;
+      }
+      const over = estimateMinutes([...L, it]) - budget(d);
+      if (over > 10) score -= compound ? 3 : 8;
+      score -= L.length * 0.5;
+      if (!best || score > best.score) best = { d, score, same, over };
+    }
+    if (!compound && !best.same && best.over > 10) { result.dropped.push(it.ex.name); continue; }
+    const o = db.week.days[best.d];
+    if (best.same) {
+      const tgt = o.items.find((x) => x.exerciseId === it.exerciseId);
+      const add = Math.min(2, it.sets);
+      tgt.sets = Math.min(tgt.maxSets || 6, tgt.sets + add);
+      result.placed.push({ name: it.ex.name, to: best.d, extra: add });
+    } else {
+      const { ex, ...rest } = it;
+      const moved = { ...rest, uid: `${it.uid}-w`, group: `m${it.uid}` };
+      const firstAcc = o.items.findIndex((x) => isLiftItem(db, x) && db.exercises[x.exerciseId]?.category !== 'compound');
+      const condAt = o.items.findIndex((x) => !isLiftItem(db, x));
+      const at = compound ? (firstAcc < 0 ? (condAt < 0 ? o.items.length : condAt) : firstAcc) : (condAt < 0 ? o.items.length : condAt);
+      o.items.splice(at, 0, moved);
+      result.placed.push({ name: it.ex.name, to: best.d });
+    }
+    o.items = [...relabelGroups(o.items.filter((x) => isLiftItem(db, x))), ...o.items.filter((x) => !isLiftItem(db, x))];
+    o.base = clone(liftItemsOf(db, o));
+    o.mode = o.items.some((x) => !isLiftItem(db, x)) ? 'both' : 'lift';
+    if (!o.from.includes(day)) o.from = [...o.from, ...(src.from || [day]).filter((f) => !o.from.includes(f))];
+  }
+  const to = [...new Set(result.placed.map((p) => p.to))].sort((a, b) => dayIndex(a) - dayIndex(b));
+  db.week.days[day] = { ...src, mode: 'rest', from: [], base: [], items: [], note: `Spread over ${to.map((d) => FULLD[d].slice(0, 3)).join(', ')}` };
+  db.week.off = [...new Set([...(db.week.off || []), ...(src.from || [day])])];
+  return result;
+}
+
+// What spreading would do, without changing anything.
+export function previewSpread(db, day, date = todayStr()) {
+  const saved = JSON.stringify(db.week || null);
+  const r = planSpread(db, day, date);
+  db.week = JSON.parse(saved);
+  return r;
+}
