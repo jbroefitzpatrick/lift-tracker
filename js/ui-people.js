@@ -4,7 +4,8 @@
 
 import { icon } from './icons.js';
 import { account, api } from './account.js';
-import { buildCard, weekOf, progressOf, contestScore, contestEnd } from './card.js';
+import { buildCard, weekOf, progressOf, contestScore, contestEnd, recentRecords } from './card.js';
+import { cloudConfig } from './cloud.js';
 import { todayStr, addDays, mondayOf, weekOrder, safetySnapshot } from './store.js';
 import { wt } from './units.js';
 import { APP_URL } from './ui-train.js';
@@ -174,7 +175,7 @@ export function createPeople(ctx) {
     } else {
       const score = (w) => (w.planned ? w.done / w.planned : w.done / 4);
       rows = ids.map((id) => ({ id, w: weekOf(cardOf(id)), c: cardOf(id) })).sort((a, b) => score(b.w) - score(a.w) || b.w.sets - a.w.sets)
-        .map((r, i) => row(r.id, i, `${r.w.done}${r.w.planned ? `/${r.w.planned}` : ''}`, `${r.w.done === 1 && !r.w.planned ? 'workout' : 'workouts'} · ${r.w.sets} sets${r.c?.streak ? ` · ${r.c.streak} wk streak` : ''}`));
+        .map((r, i) => row(r.id, i, `${r.w.done}${r.w.planned ? `/${r.w.planned}` : ''}`, `${r.w.sets} sets this week${r.c?.streak ? ` · ${r.c.streak}-week streak` : ''}`));
     }
     return `<section class="card ppl-board">
       <div class="row between"><h3>Leaderboard</h3><span>${ctx.refChips(['zhang2016', 'festinger1954'])}</span></div>
@@ -215,24 +216,126 @@ export function createPeople(ctx) {
   }
 
   // ---------- Feed ----------
-  function feed() {
+  // Posts people shared on purpose, plus each friend's records and workouts from their card.
+  // Records from one person on one day are grouped. Every item can be liked and commented on.
+  const mediaUrl = (owner, m) => `${cloudConfig().url.replace(/\/+$/, '')}/v2/media/${owner}/${m.id}`;
+  const when = (t) => { const d = typeof t === 'number' ? new Date(t).toISOString().slice(0, 10) : t; return ago(d); };
+  function feedItems() {
     const since = addDays(todayStr(), -14);
     const items = [];
+    for (const p of data.posts || []) items.push({ owner: p.user.id, key: `p:${p.id}`, sort: p.created, post: p });
     for (const id of [me(), ...friends().map((l) => l.user.id)]) {
       const c = cardOf(id);
       if (!c) continue;
-      for (const r of c.records || []) if (r.date >= since) items.push({ id, key: `r:${r.id}`, date: r.date, text: `New best on ${r.ex}${r.pct ? `, up ${r.pct}%` : ''}` });
-      for (const w of c.workouts || []) if (w.date >= since) items.push({ id, key: `w:${w.id}`, date: w.date, text: `Finished ${w.name} · ${w.sets} sets${w.prs ? ` · ${w.prs} ${w.prs === 1 ? 'record' : 'records'}` : ''}` });
+      const byDay = {};
+      for (const r of c.records || []) if (r.date >= since) (byDay[r.date] ||= []).push(r);
+      for (const [date, rs] of Object.entries(byDay)) {
+        items.push({ owner: id, key: rs.length === 1 ? `r:${rs[0].id}` : `rg:${date}`, sort: Date.parse(`${date}T20:00:00`),
+          text: rs.length === 1 ? `New best on ${rs[0].ex}${rs[0].pct ? `, up ${rs[0].pct}%` : ''}` : `${rs.length} new bests: ${rs.map((r) => `${r.ex}${r.pct ? ` +${r.pct}%` : ''}`).join(', ')}` });
+      }
+      for (const w of c.workouts || []) if (w.date >= since) items.push({ owner: id, key: `w:${w.id}`, sort: Date.parse(`${w.date}T19:00:00`), text: `Finished ${w.name} · ${w.sets} sets` });
     }
-    if (!items.length) return '';
-    items.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : a.key.startsWith('r') ? -1 : 1));
-    return `<section class="card"><h3>Recent</h3><div class="feed">${items.slice(0, 15).map((it) => {
-      const who = data.cheers?.[`${it.id}:${it.key}`] || [];
-      const mine = who.some((x) => x.id === me());
-      const self = it.id === me();
-      return `<div class="feed-item"><div class="grow"><b>${esc(nameOf(it.id))}</b> <span class="small">${esc(it.text)}</span><span class="pick-sub">${ago(it.date)}${who.length ? ` · ${who.length} ${who.length === 1 ? 'cheer' : 'cheers'}${self ? ` from ${esc(who.map((x) => x.name).join(', '))}` : ''}` : ''}</span></div>
-        ${self ? '' : `<button class="mini ${mine ? 'on' : ''}" data-a="ppl-cheer" data-o="${it.id}" data-i="${esc(it.key)}" aria-pressed="${mine}">${mine ? 'Cheered' : 'Cheer'}</button>`}</div>`;
-    }).join('')}</div></section>`;
+    return items.sort((x, y) => y.sort - x.sort);
+  }
+  function postBody(p) {
+    const d = p.data || {};
+    let metric = '';
+    if (p.kind === 'record') metric = `<div class="post-metric"><span class="pm-label">New best · ${esc(d.name || '')}</span><b class="num">${d.weight ? `${wt(d.weight)} × ${d.reps}` : d.pct ? `+${d.pct}%` : ''}</b>${d.weight && d.e1rm ? `<span class="pm-sub">Est. max ${wt(d.e1rm)}${d.pct ? ` · up ${d.pct}%` : ''}</span>` : ''}</div>`;
+    else if (p.kind === 'progress') metric = `<div class="post-metric"><span class="pm-label">${esc(d.name || '')} · ${d.weeks || 8} weeks</span><b class="num">${d.pct > 0 ? '+' : ''}${d.pct}%</b>${d.now ? `<span class="pm-sub">Est. max now ${wt(d.now)}</span>` : ''}</div>`;
+    else if (p.kind === 'workout') metric = `<div class="post-metric"><span class="pm-label">Workout · ${esc(d.date ? ctx.fmtDate(d.date) : '')}</span><b>${esc(d.name || 'Workout')}</b><span class="pm-sub">${d.sets || 0} sets${d.minutes ? ` · ${d.minutes} min` : ''}${d.prs ? ` · ${d.prs} ${d.prs === 1 ? 'record' : 'records'}` : ''}</span></div>`;
+    const media = (p.media || []).map((m) => (m.kind === 'video'
+      ? `<video class="post-media" src="${mediaUrl(p.user.id, m)}" controls playsinline preload="metadata"></video>`
+      : `<img class="post-media" src="${mediaUrl(p.user.id, m)}" alt="Photo from ${esc(p.user.name)}" loading="lazy">`)).join('');
+    return `${p.text ? `<p class="post-text">${esc(p.text)}</p>` : ''}${metric}${media ? `<div class="post-media-wrap n${(p.media || []).length}">${media}</div>` : ''}`;
+  }
+  function feedItem(it) {
+    const who = data.cheers?.[`${it.owner}:${it.key}`] || [];
+    const liked = who.some((x) => x.id === me());
+    const nComments = (data.comments || []).filter((c) => c.owner === it.owner && c.item === it.key).length;
+    const p = it.post;
+    const to = p?.audience === 'one' ? (p.user.id === me() ? ` · to ${esc(nameOf(p.to))}` : ' · to you') : '';
+    return `<article class="feed-post">
+      <div class="fp-head"><b>${esc(nameOf(it.owner))}</b><span class="pick-sub">${p ? when(p.created) : when(new Date(it.sort).toISOString().slice(0, 10))}${to}</span></div>
+      ${p ? postBody(p) : `<p class="post-text">${esc(it.text)}</p>`}
+      <div class="fp-actions">
+        <button class="fp-btn ${liked ? 'on' : ''}" data-a="ppl-cheer" data-o="${it.owner}" data-i="${esc(it.key)}" aria-pressed="${liked}">${liked ? 'Liked' : 'Like'}${who.length ? ` · ${who.length}` : ''}</button>
+        <button class="fp-btn" data-a="ppl-comments" data-o="${it.owner}" data-i="${esc(it.key)}">Comment${nComments ? ` · ${nComments}` : ''}</button>
+        ${p && p.user.id === me() ? `<button class="fp-btn subtle" data-a="ppl-post-del" data-id="${p.id}">Delete</button>` : ''}
+      </div>
+    </article>`;
+  }
+  function feed() {
+    const items = feedItems();
+    const n = pv().feedN || 8;
+    return `<section class="card feed-card"><div class="row between"><h3>Recent</h3><button class="btn sm primary" data-a="ppl-compose">Share</button></div>
+      ${items.length ? items.slice(0, n).map(feedItem).join('') : '<p class="muted small">Nothing yet. Share a new best, a workout or a photo.</p>'}
+      ${items.length > n ? '<button class="btn plain block" data-a="ppl-more">Show more</button>' : ''}</section>`;
+  }
+
+  // Comments on one feed item.
+  function commentsSheet(owner, item) {
+    const list = (data.comments || []).filter((c) => c.owner === owner && c.item === item);
+    ctx.openSheet(`<h2>Comments</h2>
+      ${list.length ? `<div class="thread">${list.map((c) => `<div class="msg ${c.user.id === me() ? 'mine' : ''}"><span class="pick-sub">${esc(c.user.id === me() ? 'You' : c.user.name)} · ${when(c.created)}</span><p>${esc(c.text)}</p>${c.user.id === me() || owner === me() ? `<button class="text-link small-link" data-a="ppl-comment-del" data-id="${c.id}" data-o="${owner}" data-i="${esc(item)}">Delete</button>` : ''}</div>`).join('')}</div>` : '<p class="muted small">No comments yet.</p>'}
+      <div class="field"><textarea id="ppl-comment" rows="2" maxlength="500" placeholder="Add a comment"></textarea></div>
+      <button class="btn primary block" data-a="ppl-comment-send" data-o="${owner}" data-i="${esc(item)}">Send</button>`);
+  }
+
+  // ---------- Sharing: a record with its weight, a workout, a lift's progress, or a photo ----------
+  function shareChoices() {
+    const db = ctx.db;
+    const records = recentRecords(db).slice(0, 8);
+    const workouts = [...db.sessions].reverse().slice(0, 8).map((x) => ({ id: x.id, date: x.date, name: x.freestyle ? 'Workout' : db.plan[x.day]?.name || 'Workout', sets: x.entries.reduce((a, e) => a + e.sets.filter((y) => y.done !== false && y.type !== 'w').length, 0), minutes: x.finishedAt && x.startedAt ? Math.round((x.finishedAt - x.startedAt - (x.pausedMs || 0)) / 60000) : null, prs: x.prs?.length || 0 }));
+    const card = buildCard(db, account()?.user?.name || '');
+    const prog = progressOf(card).lifts.slice(0, 8).map((l) => ({ ...l, now: Math.max(...(card.lifts[l.id]?.pts || [[0, 0]]).slice(-2).map((p) => p[1])) }));
+    return { records, workouts, prog };
+  }
+  function composeSheet() {
+    const c = pv().compose;
+    const ch = shareChoices();
+    const chip = (k, l, n) => `<button class="chip ${c.kind === k ? 'on' : ''}" data-a="ppl-c-kind" data-v="${k}" ${n === 0 ? 'disabled' : ''}>${l}</button>`;
+    const pick = (list, label) => `<div class="list-group pick-list">${list.map((x, i) => `<button class="list-row ${c.ref === i ? 'picked' : ''}" data-a="ppl-c-ref" data-v="${i}" aria-pressed="${c.ref === i}"><span class="grow">${label(x)}</span>${c.ref === i ? icon('check', 'chev') : ''}</button>`).join('')}</div>`;
+    let body = '';
+    if (c.kind === 'record') body = ch.records.length ? pick(ch.records, (r) => `<b>${esc(r.name)}</b><span class="pick-sub">${wt(r.weight)} × ${r.reps} · ${ctx.fmtDate(r.date)}${r.pct ? ` · up ${r.pct}%` : ''}</span>`) : '<p class="muted small">No new bests in the last few weeks yet.</p>';
+    if (c.kind === 'workout') body = pick(ch.workouts, (w) => `<b>${esc(w.name)}</b><span class="pick-sub">${ctx.fmtDate(w.date)} · ${w.sets} sets${w.prs ? ` · ${w.prs} records` : ''}</span>`);
+    if (c.kind === 'progress') body = ch.prog.length ? pick(ch.prog, (l) => `<b>${esc(l.name)}</b><span class="pick-sub">${l.pct > 0 ? '+' : ''}${l.pct.toFixed(1)}% over about 8 weeks</span>`) : '<p class="muted small">Log a few weeks of a lift to share its progress.</p>';
+    const weightToggle = c.kind === 'record' || c.kind === 'progress' ? `<label class="list-row toggle"><span class="grow">Show the weight<span class="pick-sub">Off shows only the percentage</span></span><input type="checkbox" data-a="ppl-c-weight" ${c.showWeight ? 'checked' : ''}></label>` : '';
+    const files = (c.files || []).map((f, i) => `<div class="cf-thumb">${f.kind === 'video' ? `<video src="${f.url}" muted playsinline></video>` : `<img src="${f.url}" alt="">`}<button class="cf-x" data-a="ppl-c-file-del" data-v="${i}" aria-label="Remove">${icon('x')}</button></div>`).join('');
+    ctx.openSheet(`<h2>Share</h2>
+      <div class="chips wrap">${chip('record', 'New best', ch.records.length)}${chip('workout', 'Workout', ch.workouts.length)}${chip('progress', 'Progress', ch.prog.length)}${chip('note', 'Photo or note')}</div>
+      ${body}
+      ${weightToggle ? `<div class="list-group">${weightToggle}</div>` : ''}
+      <div class="field"><textarea id="ppl-c-text" rows="2" maxlength="1000" placeholder="Say something (optional)">${esc(c.text || '')}</textarea></div>
+      <div class="cf-files">${files}${(c.files || []).length < 4 && !(c.files || []).some((f) => f.kind === 'video') ? '<label class="btn block file-btn">Add photo or video<input id="ppl-c-file" type="file" accept="image/*,video/*" hidden></label>' : ''}</div>
+      <div class="field"><span>Who sees it</span><div class="chips wrap"><button class="chip ${!c.to ? 'on' : ''}" data-a="ppl-c-to" data-v="">All friends</button>${friends().map((l) => `<button class="chip ${c.to === l.user.id ? 'on' : ''}" data-a="ppl-c-to" data-v="${l.user.id}">${esc(l.user.name)}</button>`).join('')}</div></div>
+      <button class="btn primary block big" data-a="ppl-c-post">Post</button>`);
+  }
+  function openCompose(init = {}) {
+    for (const f of pv().compose?.files || []) URL.revokeObjectURL(f.url);
+    pv().compose = { kind: 'record', ref: 0, showWeight: true, to: '', text: '', files: [], ...init };
+    const ch = shareChoices();
+    if (pv().compose.kind === 'record' && !ch.records.length) pv().compose.kind = ch.workouts.length ? 'workout' : 'note';
+    composeSheet();
+  }
+  // Photos are resized on the phone (longest side 1600 px, JPEG) before upload; videos go as they are.
+  async function prepareFile(file) {
+    if (file.type.startsWith('video/')) {
+      if (file.size > 20 * 1024 * 1024) throw new Error('Videos can be up to 20 MB (about 15–30 seconds). Trim it in Photos first.');
+      return { kind: 'video', blob: file, type: file.type === 'video/quicktime' ? 'video/quicktime' : 'video/mp4' };
+    }
+    const bmp = await createImageBitmap(file);
+    const k = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+    const cv = document.createElement('canvas');
+    cv.width = Math.round(bmp.width * k); cv.height = Math.round(bmp.height * k);
+    cv.getContext('2d').drawImage(bmp, 0, 0, cv.width, cv.height);
+    const blob = await new Promise((r) => cv.toBlob(r, 'image/jpeg', 0.82));
+    return { kind: 'image', blob, type: 'image/jpeg' };
+  }
+  async function upload(f) {
+    const res = await fetch(`${cloudConfig().url.replace(/\/+$/, '')}/v2/media/upload`, { method: 'POST', headers: { 'Content-Type': f.type, Authorization: `Bearer ${account()?.token || ''}` }, body: f.blob });
+    const out = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(out.error || 'Upload failed.');
+    return { id: out.id, kind: out.kind };
   }
 
   function clientsCard() {
@@ -547,6 +650,46 @@ export function createPeople(ctx) {
       try { await api('/v2/social/cheer', { owner: d.o, item: d.i, on: onNow }, { auth: true }); } catch (e) { ctx.toast(e.message); refresh(); }
     },
     'ppl-thread': (d) => threadSheet(d.id),
+    'ppl-more': () => { pv().feedN = (pv().feedN || 8) + 10; ctx.render(); },
+    'ppl-comments': (d) => commentsSheet(d.o, d.i),
+    'ppl-comment-send': async (d) => {
+      const el = document.getElementById('ppl-comment'); const text = el?.value.trim();
+      if (!text) return;
+      try { await api('/v2/social/comment', { owner: d.o, item: d.i, text }, { auth: true }); await refresh(); commentsSheet(d.o, d.i); } catch (e) { ctx.toast(e.message); }
+    },
+    'ppl-comment-del': async (d) => { try { await api('/v2/social/comment/delete', { id: d.id }, { auth: true }); await refresh(); commentsSheet(d.o, d.i); } catch (e) { ctx.toast(e.message); } },
+    'ppl-post-del': async (d) => {
+      if (!(await ctx.ask('Delete this post? Its photos, likes and comments go too.', 'Delete', true))) return;
+      try { await api('/v2/social/post/delete', { id: d.id }, { auth: true }); await refresh(); ctx.toast('Deleted.'); } catch (e) { ctx.toast(e.message); }
+    },
+    'ppl-compose': () => openCompose(),
+    'ppl-share-pr': (d) => {
+      const i = recentRecords(ctx.db).findIndex((r) => r.sessionId === d.sid);
+      openCompose({ kind: 'record', ref: Math.max(0, i) });
+    },
+    'ppl-c-kind': (d) => { const c = pv().compose; c.text = document.getElementById('ppl-c-text')?.value || c.text; c.kind = d.v; c.ref = 0; composeSheet(); },
+    'ppl-c-ref': (d) => { const c = pv().compose; c.text = document.getElementById('ppl-c-text')?.value || c.text; c.ref = +d.v; composeSheet(); },
+    'ppl-c-weight': (d, el) => { pv().compose.showWeight = el.checked; },
+    'ppl-c-to': (d) => { const c = pv().compose; c.text = document.getElementById('ppl-c-text')?.value || c.text; c.to = d.v; composeSheet(); },
+    'ppl-c-file-del': (d) => { const c = pv().compose; c.text = document.getElementById('ppl-c-text')?.value || c.text; const [f] = c.files.splice(+d.v, 1); if (f) URL.revokeObjectURL(f.url); composeSheet(); },
+    'ppl-c-post': async (d, el) => {
+      const c = pv().compose;
+      c.text = document.getElementById('ppl-c-text')?.value || '';
+      const ch = shareChoices();
+      let payload = {};
+      if (c.kind === 'record') { const r = ch.records[c.ref]; if (!r) return ctx.toast('Pick a record.'); payload = { exId: r.exId, name: r.name, date: r.date, pct: r.pct, ...(c.showWeight ? { weight: r.weight, reps: r.reps, e1rm: r.e1rm } : {}) }; }
+      if (c.kind === 'workout') { const w = ch.workouts[c.ref]; if (!w) return ctx.toast('Pick a workout.'); payload = { name: w.name, date: w.date, sets: w.sets, minutes: w.minutes, prs: w.prs }; }
+      if (c.kind === 'progress') { const p = ch.prog[c.ref]; if (!p) return ctx.toast('Pick a lift.'); payload = { exId: p.id, name: p.name, pct: Math.round(p.pct * 10) / 10, weeks: 8, ...(c.showWeight ? { now: Math.round(p.now) } : {}) }; }
+      if (c.kind === 'note' && !c.text.trim() && !c.files.length) return ctx.toast('Add a photo or a few words.');
+      el.disabled = true; el.textContent = c.files.length ? 'Uploading…' : 'Posting…';
+      try {
+        const media = [];
+        for (const f of c.files) media.push(await upload(f));
+        await api('/v2/social/post', { kind: c.kind, data: payload, text: c.text, media, to: c.to || undefined }, { auth: true });
+        for (const f of c.files) URL.revokeObjectURL(f.url);
+        pv().compose = null; ctx.closeSheet(); await refresh(); ctx.toast(c.to ? `Shared with ${nameOf(c.to)}.` : 'Shared with your friends.');
+      } catch (e) { el.disabled = false; el.textContent = 'Post'; ctx.toast(e.message); }
+    },
     'ppl-send': async (d) => {
       const el = document.getElementById('ppl-msg'); const text = el?.value.trim();
       if (!text) return;
@@ -635,6 +778,14 @@ export function createPeople(ctx) {
   };
 
   // Typing in the plan editor and the exercise search.
+  // A photo or video picked in the composer.
+  document.addEventListener('change', async (e) => {
+    if (e.target.id !== 'ppl-c-file' || !e.target.files?.[0]) return;
+    const c = pv().compose; if (!c) return;
+    c.text = document.getElementById('ppl-c-text')?.value || c.text;
+    try { const f = await prepareFile(e.target.files[0]); f.url = URL.createObjectURL(f.blob); c.files.push(f); composeSheet(); } catch (err) { ctx.toast(err.message || 'That file could not be used.'); }
+  });
+
   function onInput(e) {
     const el = e.target;
     if (el.dataset?.ed) {

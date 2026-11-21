@@ -31,6 +31,19 @@ export function createFood(ctx) {
     // Two snacks: number them so they can be told apart.
     return name === 'Snack' && list.filter((x) => x === 'Snack').length > 1 ? `Snack ${list.slice(0, m).filter((x) => x === 'Snack').length}` : name;
   }
+  // The meal for this time of day: each meal has a usual hour (breakfast 8, lunch 12:30, dinner
+  // 18:30, snacks in between or 21); the nearest one wins.
+  function mealForNow(count, now = new Date()) {
+    const names = DEFAULT_MEALS[count] || [];
+    const base = { Breakfast: 8, Lunch: 12.5, Dinner: 18.5, 'First meal': 9, 'Second meal': 17, Meals: 12 };
+    const hours = names.map((n, i) => base[n] ?? null);
+    hours.forEach((h, i) => { if (h == null) { const prev = hours.slice(0, i).reverse().find((x) => x != null); const next = hours.slice(i + 1).find((x) => x != null); hours[i] = prev != null && next != null ? (prev + next) / 2 : prev != null ? prev + 2.5 : 10; } });
+    const h = now.getHours() + now.getMinutes() / 60;
+    let best = 1; let bestD = Infinity;
+    hours.forEach((x, i) => { const dd = Math.abs(h - x); if (dd < bestD) { bestD = dd; best = i + 1; } });
+    return names.length ? best : 1;
+  }
+
   function renameMeal(m) {
     ctx.openSheet(`<h2>Rename ${esc(mealName(m))}</h2>
       <div class="field"><input id="meal-rename" type="text" maxlength="24" value="${esc(mealName(m))}" autocomplete="off"></div>
@@ -63,7 +76,7 @@ export function createFood(ctx) {
       </section>`;
     }).join('');
     // New food goes to the first meal that's still empty, else the last one.
-    const nextMeal = meals.find((m) => !entries.some((x) => Math.min(x.meal, t.meals) === m)) || t.meals;
+    const nextMeal = d === todayStr() ? mealForNow(t.meals) : meals.find((m) => !entries.some((x) => Math.min(x.meal, t.meals) === m)) || t.meals;
     const macro = (label, val, target, cls) => {
       const p = target ? Math.min(100, (val / target) * 100) : 0;
       return `<div class="macro ${cls}"><div class="row between"><span>${label}</span><span class="tnum small">${r0(val)}<span class="muted">/${r0(target)} g</span></span></div>

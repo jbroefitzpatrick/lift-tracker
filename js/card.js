@@ -107,3 +107,25 @@ export function contestScore(card, c, today = todayStr()) {
   return { value: Math.round((Math.max(...during) / Math.max(...base) - 1) * 1000) / 10, unit: '%' };
 }
 export const contestEnd = (c) => (c.start ? addDays(c.start, c.days - 1) : null);
+
+// Recent records with the set that made them (for sharing a specific one, weight included).
+export function recentRecords(db, days = 45) {
+  const since = addDays(todayStr(), -days);
+  const sessions = [...(db.sessions || [])].sort((a, b) => (a.date < b.date ? -1 : 1));
+  const best = {};
+  const out = [];
+  for (const s of sessions) {
+    for (const e of s.entries) {
+      const ex = db.exercises?.[e.exerciseId];
+      if (!ex || ex.category === 'conditioning' || ex.noLoad || e.metric) continue;
+      const good = goodSets(e).filter((x) => x.weight > 0);
+      if (!good.length) continue;
+      const top = good.reduce((a, x) => (e1rm(x.weight, x.reps) > e1rm(a.weight, a.reps) ? x : a));
+      const est = e1rm(top.weight, top.reps);
+      const prev = best[e.exerciseId];
+      if (prev && est > prev + 0.5 && s.date >= since && !s.isDeload) out.push({ sessionId: s.id, exId: e.exerciseId, name: ex.name, date: s.date, weight: top.weight, reps: top.reps, e1rm: Math.round(est), pct: Math.round((est / prev - 1) * 1000) / 10 });
+      best[e.exerciseId] = Math.max(prev || 0, est);
+    }
+  }
+  return out.reverse();
+}

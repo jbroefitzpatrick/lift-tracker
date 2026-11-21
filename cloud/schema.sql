@@ -133,3 +133,28 @@ CREATE TABLE IF NOT EXISTS contest_done (
   id TEXT PRIMARY KEY,
   done INTEGER NOT NULL
 );
+
+-- Posts: something shared on purpose (a record with its weight, a workout, progress, a photo).
+CREATE TABLE IF NOT EXISTS posts (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  kind TEXT NOT NULL,           -- 'record' | 'workout' | 'progress' | 'note'
+  data TEXT,                    -- JSON: what's shown (exercise, weight, reps, change...)
+  media TEXT,                   -- JSON [{ id, kind: 'image' | 'video' }] (files in KV, media.js)
+  text TEXT,
+  audience TEXT NOT NULL,       -- 'friends' | 'one'
+  to_user TEXT,                 -- audience 'one': who it's for
+  created INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS posts_user ON posts (user_id, created);
+CREATE INDEX IF NOT EXISTS posts_to ON posts (to_user, created);
+-- Comments on posts and on feed items (records and workouts).
+CREATE TABLE IF NOT EXISTS comments (
+  id TEXT PRIMARY KEY,
+  item_owner TEXT NOT NULL,
+  item TEXT NOT NULL,           -- 'p:<post id>', 'r:<record>', 'w:<workout>'
+  user_id TEXT NOT NULL,
+  text TEXT NOT NULL,
+  created INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS comments_owner ON comments (item_owner, created);

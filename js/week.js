@@ -49,7 +49,10 @@ export function missedTemplates(db, date = todayStr()) {
   const today = dayIndex(todayKey(date));
   const off = offDays(db, date);
   const later = new Set(db.week?.start === mondayOf(date) ? Object.entries(db.week.days || {}).filter(([d]) => dayIndex(d) >= today).flatMap(([, v]) => v.from || []) : []);
-  return liftTemplates(db).filter((t) => dayIndex(t.day) < today && !done.has(t.day) && !off.includes(t.day) && !later.has(t.day));
+  // Days before the plan was made (settings.planSince) weren't missed.
+  const since = db.settings?.planSince || '';
+  return liftTemplates(db).filter((t) => dayIndex(t.day) < today && !done.has(t.day) && !off.includes(t.day) && !later.has(t.day)
+    && addDays(mondayOf(date), dayIndex(t.day)) >= since);
 }
 
 const clone = (items) => items.map((i) => ({ ...i }));

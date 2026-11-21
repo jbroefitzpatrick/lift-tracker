@@ -8,6 +8,7 @@
 // Either side can end a link at any time; the client can change what's shared at any time.
 
 import { pushTo } from './push.js';
+import { deleteMedia } from './media.js';
 
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const now = () => Date.now();
@@ -66,6 +67,14 @@ export async function handleSocial(path, body, user, env, json) {
       const m = await env.DB.prepare(`SELECT * FROM messages WHERE link_id IN (${inList(linkIds.length)}) ORDER BY created DESC LIMIT 200`).bind(...linkIds).all();
       messages = (m.results || []).map((x) => ({ id: x.id, link: x.link_id, from: x.from_user, session: x.session_id, text: x.text, created: x.created }));
     }
+    // Posts: friends' posts to all friends, posts sent to me, and my own (last 60 days).
+    const friendIds = [me, ...links.filter((l) => l.kind === 'friend').map((l) => l.user.id)];
+    const ps = await env.DB.prepare(`SELECT p.*, u.name AS user_name FROM posts p JOIN users u ON u.id = p.user_id WHERE p.created > ? AND ((p.user_id IN (${inList(friendIds.length)}) AND p.audience = 'friends') OR p.to_user = ? OR p.user_id = ?) ORDER BY p.created DESC LIMIT 60`).bind(now() - 60 * 86400000, ...friendIds, me, me).all();
+    const posts = (ps.results || []).map((p) => ({ id: p.id, user: { id: p.user_id, name: p.user_name }, kind: p.kind, data: JSON.parse(p.data || '{}'), media: JSON.parse(p.media || '[]'), text: p.text, audience: p.audience, to: p.to_user, created: p.created }));
+    const visiblePosts = new Set(posts.map((p) => `p:${p.id}`));
+    const cm = await env.DB.prepare(`SELECT c.*, u.name AS user_name FROM comments c JOIN users u ON u.id = c.user_id WHERE c.item_owner IN (${inList(ids.length)}) AND c.created > ? ORDER BY c.created ASC LIMIT 600`).bind(...ids, now() - 60 * 86400000).all();
+    const comments = (cm.results || []).filter((c) => !c.item.startsWith('p:') || visiblePosts.has(c.item))
+      .map((c) => ({ id: c.id, owner: c.item_owner, item: c.item, user: { id: c.user_id, name: c.user_name }, text: c.text, created: c.created }));
     const inv = await env.DB.prepare('SELECT code, kind, created FROM invites WHERE user_id = ? AND created > ? ORDER BY created DESC').bind(me, now() - INVITE_DAYS * 86400000).all();
     return json({
       me: { id: me, name: user.name },
@@ -73,6 +82,7 @@ export async function handleSocial(path, body, user, env, json) {
       contests: (ct.results || []).map((c) => ({ id: c.id, a: c.a, b: c.b, kind: c.kind, ex: c.ex, exName: c.ex_name, days: c.days, start: c.start, status: c.status, created: c.created })),
       proposals: (pr.results || []).map((p) => ({ id: p.id, coach: p.coach, client: p.client, data: JSON.parse(p.data), note: p.note, status: p.status, created: p.created, decided: p.decided })),
       messages,
+      posts, comments,
       invites: (inv.results || []).map((i) => ({ code: i.code, kind: i.kind, created: i.created })),
     });
   }
@@ -151,7 +161,69 @@ export async function handleSocial(path, body, user, env, json) {
     const item = String(body.item || '').slice(0, 120);
     if (owner !== me && !(await linkBetween(env, me, owner, 'friend')) && !(await linkBetween(env, me, owner, 'coach'))) return json({ error: 'Not connected.' }, 403);
     if (body.on === false) await env.DB.prepare('DELETE FROM cheers WHERE owner = ? AND item = ? AND from_user = ?').bind(owner, item, me).run();
-    else await env.DB.prepare('INSERT OR IGNORE INTO cheers (owner, item, from_user, created) VALUES (?, ?, ?, ?)').bind(owner, item, me, now()).run();
+    else {
+      await env.DB.prepare('INSERT OR IGNORE INTO cheers (owner, item, from_user, created) VALUES (?, ?, ?, ?)').bind(owner, item, me, now()).run();
+      if (owner !== me) await pushTo(env, owner, { title: `${user.name} liked your ${item.startsWith('p:') ? 'post' : item.startsWith('w:') ? 'workout' : 'new best'}`, body: '', tag: `like-${item}`, url: './?open=people' });
+    }
+    return json({ ok: true });
+  }
+
+  // ---------- Posts and comments ----------
+  // A post shares something specific (a record with its weight, a workout, a lift's progress, or a
+  // photo and a few words) with all friends or one friend. Comments work on posts and on the
+  // automatic feed items (records and workouts from each person's card).
+  async function canSee(owner, item) {
+    if (owner === me) return true;
+    if (item.startsWith('p:')) {
+      const p = await env.DB.prepare('SELECT * FROM posts WHERE id = ? AND user_id = ?').bind(item.slice(2), owner).first();
+      if (!p) return false;
+      if (p.audience === 'one') return p.to_user === me;
+      return !!(await linkBetween(env, me, owner, 'friend'));
+    }
+    return !!(await linkBetween(env, me, owner, 'friend')) || !!(await linkBetween(env, me, owner, 'coach'));
+  }
+  if (path === '/v2/social/post') {
+    const kind = ['record', 'workout', 'progress', 'note'].includes(body.kind) ? body.kind : null;
+    if (!kind) return json({ error: 'Unknown post type.' }, 400);
+    const to = body.to ? String(body.to) : null;
+    if (to && !(await linkBetween(env, me, to, 'friend'))) return json({ error: 'You can share with friends only.' }, 403);
+    const data = JSON.stringify(body.data || {});
+    if (data.length > 4000) return json({ error: 'Too large.' }, 400);
+    const media = (Array.isArray(body.media) ? body.media : []).filter((x) => /^[0-9a-f]{32}$/.test(x?.id || '') && ['image', 'video'].includes(x.kind)).slice(0, 4).map((x) => ({ id: x.id, kind: x.kind }));
+    const text = String(body.text || '').trim().slice(0, 1000);
+    if (kind === 'note' && !text && !media.length) return json({ error: 'Add a photo or a few words.' }, 400);
+    const id = rid();
+    await env.DB.prepare('INSERT INTO posts (id, user_id, kind, data, media, text, audience, to_user, created) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind(id, me, kind, data, JSON.stringify(media), text, to ? 'one' : 'friends', to, now()).run();
+    if (to) await pushTo(env, to, { title: `${user.name} shared ${kind === 'record' ? 'a new best' : kind === 'workout' ? 'a workout' : kind === 'progress' ? 'their progress' : 'something'} with you`, body: text.slice(0, 140), tag: `post-${id}`, url: './?open=people' });
+    return json({ ok: true, id });
+  }
+  if (path === '/v2/social/post/delete') {
+    const p = await env.DB.prepare('SELECT * FROM posts WHERE id = ? AND user_id = ?').bind(String(body.id || ''), me).first();
+    if (!p) return json({ error: 'Not found.' }, 404);
+    await deleteMedia(env, me, JSON.parse(p.media || '[]').map((m) => m.id));
+    await env.DB.batch([
+      env.DB.prepare('DELETE FROM comments WHERE item = ? AND item_owner = ?').bind(`p:${p.id}`, me),
+      env.DB.prepare('DELETE FROM cheers WHERE item = ? AND owner = ?').bind(`p:${p.id}`, me),
+      env.DB.prepare('DELETE FROM posts WHERE id = ?').bind(p.id),
+    ]);
+    return json({ ok: true });
+  }
+  if (path === '/v2/social/comment') {
+    const owner = String(body.owner || '');
+    const item = String(body.item || '').slice(0, 120);
+    const text = String(body.text || '').trim().slice(0, 500);
+    if (!text) return json({ error: 'Write something first.' }, 400);
+    if (!(await canSee(owner, item))) return json({ error: 'Not connected.' }, 403);
+    const id = rid();
+    await env.DB.prepare('INSERT INTO comments (id, item_owner, item, user_id, text, created) VALUES (?, ?, ?, ?, ?, ?)').bind(id, owner, item, me, text, now()).run();
+    if (owner !== me) await pushTo(env, owner, { title: `${user.name} commented`, body: text.slice(0, 140), tag: `comment-${item}`, url: './?open=people' });
+    return json({ ok: true, id });
+  }
+  if (path === '/v2/social/comment/delete') {
+    const c = await env.DB.prepare('SELECT * FROM comments WHERE id = ?').bind(String(body.id || '')).first();
+    if (!c || (c.user_id !== me && c.item_owner !== me)) return json({ error: 'Not found.' }, 404);
+    await env.DB.prepare('DELETE FROM comments WHERE id = ?').bind(c.id).run();
     return json({ ok: true });
   }
 

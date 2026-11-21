@@ -14,6 +14,7 @@
 
 import { handleSocial } from './social.js';
 import { handlePush } from './push.js';
+import { handleMedia, deleteMedia } from './media.js';
 
 const enc = new TextEncoder();
 const b64u = {
@@ -124,6 +125,8 @@ const rpIdFor = (origin) => { try { return new URL(origin).hostname; } catch { r
 // ---------- Routes ----------
 export async function handleV2(req, env, url, json, allowedOrigins, accessOk) {
   const path = url.pathname;
+  // Photos and videos: raw file bodies and plain GETs, handled before reading JSON.
+  if (path.startsWith('/v2/media/')) return handleMedia(req, env, path, json, authUser);
   const body = req.method === 'POST' ? await req.json().catch(() => ({})) : {};
   const origin = req.headers.get('Origin') || '';
   const origins = allowedOrigins;
@@ -287,9 +290,12 @@ export async function handleV2(req, env, url, json, allowedOrigins, accessOk) {
         ...(links.results || []).map((l) => env.DB.prepare('DELETE FROM messages WHERE link_id = ?').bind(l.id)),
         env.DB.prepare('DELETE FROM links WHERE a = ? OR b = ?').bind(id, id),
         env.DB.prepare('DELETE FROM push_subs WHERE user_id = ?').bind(id),
+        env.DB.prepare('DELETE FROM posts WHERE user_id = ?').bind(id),
+        env.DB.prepare('DELETE FROM comments WHERE user_id = ? OR item_owner = ?').bind(id, id),
         env.DB.prepare('DELETE FROM users WHERE id = ?').bind(id),
       ];
       await env.DB.batch(stmts);
+      await deleteMedia(env, id);
       return json({ ok: true });
     }
     // Notifications (push.js).

@@ -280,13 +280,21 @@ export function createProgressScreens(A) {
       ${A.freshnessCard()}
       <div class="list-group"><button class="list-row" data-a="open-recovery"><span class="grow"><b>Recovery</b><span class="pick-sub">How ready each muscle is</span></span>${icon('right', 'chev')}</button><button class="list-row" data-a="rv-open"><span class="grow"><b>Last week's review</b><span class="pick-sub">Suggestions for your plan</span></span>${icon('right', 'chev')}</button></div>
       ${A.extras.volumeCard()}`;
-    if (which === 'workouts') return `${A.subHeader('Workouts', 'progress-back')}
-      ${recent.length ? `<div class="card"><h3>Recent workouts</h3>${recent.map((s) => `
+    if (which === 'workouts') {
+      const all = [...A.db.sessions].reverse();
+      const row = (s) => `
         <button class="list-row" data-a="summary" data-id="${s.id}">
           <span class="grow"><b>${s.freestyle ? 'Freestyle' : A.esc(A.db.plan[s.day]?.name || DAY_NAMES[s.day])}${s.isDeload ? ' · deload' : ''}</b><span class="pick-sub">${A.fmtDate(s.date)} · ${Math.round(workoutBurn(A.db, s).minutes)} min · ~${Math.round(workoutBurn(A.db, s).active)} kcal</span></span>
           ${s.prs?.length ? `<span class="pill good">${s.prs.length} PR${s.prs.length > 1 ? 's' : ''}</span>` : (() => { const up = s.results.filter((r) => r.status === 'progressed').length; return up ? `<span class="muted small">${up} up</span>` : ''; })()}${icon('right', 'chev')}
-        </button>`).join('')}</div>` : '<p class="muted small pad">No workouts yet.</p>'}
-      ${A.cardioHistory()}`;
+        </button>`;
+      const months = [];
+      for (const s of all) { const m = s.date.slice(0, 7); const last = months[months.length - 1]; if (last?.m === m) last.list.push(s); else months.push({ m, list: [s] }); }
+      const label = (m) => parseDate(`${m}-01`).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+      const section = (g) => `<h3 class="month-h">${label(g.m)} <span class="muted small">${g.list.length} ${g.list.length === 1 ? 'workout' : 'workouts'}</span></h3><div class="list-group">${g.list.map(row).join('')}</div>`;
+      return `${A.subHeader('Workouts', 'progress-back')}
+        ${months.length ? section(months[0]) + (months.length > 1 ? `<details class="more-hist"><summary>Show earlier months</summary>${months.slice(1).map(section).join('')}</details>` : '') : '<p class="muted small pad">No workouts yet.</p>'}
+        ${A.cardioHistory()}`;
+    }
     return `${A.subHeader('Exercises', 'progress-back')}
       ${seen.size ? `<div class="card"><div class="row between"><h3>By exercise</h3><button class="link-btn" data-a="browse-bank">Exercise library</button></div>${seen.size > 6 ? '<input class="search list-filter" type="search" placeholder="Search your exercises" data-filter="#by-ex" autocomplete="off" enterkeyhint="search">' : ''}<div id="by-ex">${[...seen.entries()].map(([id, date]) => `
         <button class="list-row" data-a="history-ex" data-id="${id}">

@@ -53,7 +53,8 @@ export function createBuilderScreens(A) {
 
   function openBuilder() {
     const base = defaultProfile(A.db);
-    const draft = A.db.profile ? { ...base, ...JSON.parse(JSON.stringify(A.db.profile)) } : base;
+    // First time: no guessed age, height or weight (they drive calorie and protein targets).
+    const draft = A.db.profile ? { ...base, ...JSON.parse(JSON.stringify(A.db.profile)) } : { ...base, age: '', heightIn: '', weightLb: A.latestBodyweight() || '' };
     delete draft.rx;
     draft.equipment = [...activeGym(A.db).equipment]; // the builder works with the active gym's equipment
     A.ui.b = { step: 0, draft, liftEdited: !!A.db.profile, cardioEdited: !!A.db.profile, splitEdited: !!A.db.profile };
@@ -111,10 +112,10 @@ export function createBuilderScreens(A) {
       body = `
         <div class="card">
           <div class="grid2">
-            <div class="field"><span>Age</span><input type="text" inputmode="numeric" data-b="age" value="${A.esc(p.age)}"></div>
-            <div class="field"><span>Weight (${wUnit()})</span><input type="text" inputmode="decimal" data-b="weightLb" value="${A.esc(p.weightLb === '' || p.weightLb == null ? '' : toDisp(p.weightLb))}"></div>
-            <div class="field"><span>Height (ft)</span><input type="text" inputmode="numeric" data-b="heightFt" value="${Math.floor((p.heightIn || 0) / 12)}"></div>
-            <div class="field"><span>Height (in)</span><input type="text" inputmode="numeric" data-b="heightInch" value="${(p.heightIn || 0) % 12}"></div>
+            <div class="field"><span>Age</span><input type="text" inputmode="numeric" data-b="age" value="${A.esc(p.age)}" placeholder="e.g. 30"></div>
+            <div class="field"><span>Weight (${wUnit()})</span><input type="text" inputmode="decimal" data-b="weightLb" value="${A.esc(p.weightLb === '' || p.weightLb == null ? '' : toDisp(p.weightLb))}" placeholder="${wUnit() === 'kg' ? 'e.g. 80' : 'e.g. 175'}"></div>
+            <div class="field"><span>Height (ft)</span><input type="text" inputmode="numeric" data-b="heightFt" value="${p.heightIn ? Math.floor(p.heightIn / 12) : ''}" placeholder="e.g. 5"></div>
+            <div class="field"><span>Height (in)</span><input type="text" inputmode="numeric" data-b="heightInch" value="${p.heightIn ? p.heightIn % 12 : ''}" placeholder="e.g. 9"></div>
           </div>
           <div class="field"><span>Sex ${helpBtn()}</span><p class="help-text" hidden>Optional. Only used to interpret body fat %.</p>${bChips('sex', { '': 'Prefer not to say', male: 'Male', female: 'Female' }, p.sex)}</div>
           <div class="field"><span>Body fat % ${helpBtn()}</span><p class="help-text" hidden>Optional. If you know it, calorie and protein targets use your lean mass.</p><input type="text" inputmode="decimal" data-b="bodyFat" value="${A.esc(p.bodyFat)}" placeholder="e.g. 18"></div>
@@ -302,6 +303,7 @@ export function createBuilderScreens(A) {
     A.db.settings.dayModes = out.dayModes;
     A.db.settings.deloadEvery = rx.deloadEvery;
     A.db.settings.welcomed = true;
+    A.db.settings.planSince = A.todayStrNow();
     A.db.profile = {
       ...p, builtAt: Date.now(),
       rx: {
@@ -331,7 +333,7 @@ export function createBuilderScreens(A) {
     if (k === 'heightFt' || k === 'heightInch') {
       const ft = parseInt(A.$('[data-b="heightFt"]').value, 10) || 0;
       const inch = parseInt(A.$('[data-b="heightInch"]').value, 10) || 0;
-      p.heightIn = ft * 12 + inch;
+      p.heightIn = ft * 12 + inch || '';
     } else if (k === 'bodyFat') p.bodyFat = el.value.trim();
     else {
       const v = parseFloat(el.value);

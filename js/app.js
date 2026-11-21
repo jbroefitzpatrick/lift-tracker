@@ -32,8 +32,10 @@ import { createExtras } from './ui-extra.js';
 import { createCloud } from './ui-cloud.js';
 import { createAccountUi } from './ui-account.js';
 import { createPeople } from './ui-people.js';
+import { moveDay } from './week.js';
 import { scheduleRest, cancelRest } from './push.js';
 import { account } from './account.js';
+import { cloudReady } from './cloud.js';
 import { workoutBurn, cardioBurn, workoutMinutes } from './energy.js';
 import { createPain } from './ui-pain.js';
 import { LEVELS as PAIN_LEVELS, JOINTS, activePain, areaLabel } from './pain.js';
@@ -71,6 +73,9 @@ import { createBuilderScreens } from './screen-builder.js';
 // ---------- Split modules: live access to app state ----------
 const A = {
   get $() { return $; },
+  todayStrNow: () => todayStr(),
+  get peopleOn() { return peopleOn; },
+  latestBodyweight: () => { const l = [...(db.bodyweight || [])].sort((a, b) => a.date.localeCompare(b.date)); return l.length ? l[l.length - 1].weight : null; },
   get bodyRegion() { return bodyRegion; },
   get cardioHistory() { return cardioHistory; },
   get db() { return db; }, set db(v) { db = v; },
@@ -725,12 +730,22 @@ const QB_GOALS = {
   general: { label: 'Get fit overall', goals: { strength: 3, hypertrophy: 3, physique: 0, stamina: 2, endurance: 3, fatLoss: 1 } },
 };
 const QB_EQUIP = { gym: { label: 'Full gym', eq: ['barbell', 'dumbbell', 'machine', 'cable', 'bodyweight'] }, db: { label: 'Dumbbells', eq: ['dumbbell', 'bodyweight'] }, bw: { label: 'Bodyweight', eq: ['bodyweight'] } };
+// Plan builder, step 1: age, weight and height set the calorie and protein targets, so they're needed.
+function aboutYouOk() {
+  const p = ui.b.draft;
+  const missing = [!(+p.age >= 13 && +p.age <= 100) && 'age', !(+p.weightLb > 60) && 'weight', !(+p.heightIn >= 48) && 'height'].filter(Boolean);
+  if (missing.length) toast(`Add your ${missing.join(', ').replace(/, ([^,]*)$/, ' and $1')} to continue.`);
+  return !missing.length;
+}
+
 function openQuickBuild() {
-  const q = (ui.qb ||= { goal: 'muscle', days: 3, equip: 'gym' });
+  const q = (ui.qb ||= { goal: 'muscle', exp: 'beginner', days: 3, equip: 'gym' });
+  q.exp ||= 'beginner';
   const seg = (k, opts) => `<div class="segmented small-seg wrap-seg" role="radiogroup">${opts.map(([v, l]) => `<button class="${String(q[k]) === String(v) ? 'on' : ''}" data-a="qb-set" data-k="${k}" data-v="${v}" role="radio" aria-checked="${String(q[k]) === String(v)}">${l}</button>`).join('')}</div>`;
   openSheet(`<h2>Build my plan</h2>
-    <p class="muted small">Three questions. Everything can be fine-tuned later.</p>
+    <p class="muted small">Four quick questions. Everything can be fine-tuned later.</p>
     <div class="field"><span>Main goal</span>${seg('goal', Object.entries(QB_GOALS).map(([k, v]) => [k, v.label]))}</div>
+    <div class="field"><span>Lifting experience</span>${seg('exp', [['beginner', 'New to it'], ['intermediate', '1–3 years'], ['advanced', '3+ years']])}</div>
     <div class="field"><span>Days a week</span>${seg('days', [2, 3, 4, 5, 6].map((n) => [n, n]))}</div>
     <div class="field"><span>Where you train</span>${seg('equip', Object.entries(QB_EQUIP).map(([k, v]) => [k, v.label]))}</div>
     <button class="btn primary block big" data-a="qb-go">Create my plan</button>
@@ -1223,7 +1238,7 @@ function cardioSection(day, title, defaultOpen = true) {
   return `<section class="card cardio">
     ${head}
     <p class="muted small">${isToday ? '' : 'Projected from your plan. '}${ctx.mode === 'lift' || ctx.mode === 'both' ? 'After today\'s lifting: ' : ''}${fatigueSummary(ctx.fresh)}${nextLine}</p>
-    ${logged.map((c) => `<div class="list-row logged"><span class="grow"><b>${esc(CARDIO[c.cardioId]?.name || c.cardioId)}</b> · ${c.minutes} min${c.distance ? ` · ${c.distance} mi` : ''}${c.cardioId !== 'conditioning' && !c.fromWorkout ? ` · ~${Math.round(cardioBurn(db, c, CARDIO[c.cardioId]).active)} kcal` : ''}</span>
+    ${logged.map((c) => `<div class="list-row logged"><span class="grow"><b>${esc(CARDIO[c.cardioId]?.name || String(c.cardioId || 'Cardio').replace(/[-_]+/g, ' ').replace(/^./, (x) => x.toUpperCase()))}</b> · ${c.minutes} min${c.distance ? ` · ${c.distance} mi` : ''}${c.cardioId !== 'conditioning' && !c.fromWorkout ? ` · ~${Math.round(cardioBurn(db, c, CARDIO[c.cardioId]).active)} kcal` : ''}</span>
       <button class="mini" data-a="cardio-del" data-id="${c.id}" aria-label="Delete">${icon('x')}</button></div>`).join('')}
     ${weeklyCardioLine()}
     <h4 class="sub-h">Suggested</h4>
@@ -1565,6 +1580,9 @@ function pickRow(ex, why) {
 // Sort key for exercise preferences: preferred first, avoided last.
 const prefRank = (db, id) => ({ prefer: 0, avoid: 2 }[db.exPrefs?.[id]] ?? 1);
 
+// The lifts most programs are built on, roughly in the order people learn them.
+const COMMON_LIFTS = ['back-squat', 'bench-press', 'deadlift', 'ohp', 'bb-row', 'lat-pulldown', 'pullup', 'rdl', 'leg-press', 'db-bench', 'db-shoulder-press', 'db-row', 'goblet-squat', 'hip-thrust', 'walking-lunge', 'db-curl', 'cable-pushdown', 'db-lat-raise', 'leg-extension', 'lying-ham-curl', 'plank'];
+
 function renderPickerList() {
   const el = $('#pk-list');
   if (!el) return;
@@ -1594,6 +1612,16 @@ function renderPickerList() {
     if (sugg.length) {
       html += `<h3 class="sect">Most similar</h3>${sugg.map((x) => pickRow(x.ex, x.samePattern ? 'Same movement' : 'Similar muscles')).join('')}`;
     }
+  }
+  // Browsing without a search: what you've done lately, then the lifts most people start with.
+  const shown = new Set();
+  if (!picker.currentId && !q && picker.cat === 'all' && picker.muscle === 'all') {
+    const recent = [];
+    for (const s2 of [...db.sessions].reverse()) for (const e of s2.entries) if (!recent.includes(e.exerciseId) && db.exercises[e.exerciseId] && match(db.exercises[e.exerciseId])) recent.push(e.exerciseId);
+    const r = recent.slice(0, 6);
+    if (r.length) { html += `<h3 class="sect">Recent</h3>${r.map((id) => pickRow(db.exercises[id])).join('')}`; r.forEach((id) => shown.add(id)); }
+    const common = COMMON_LIFTS.filter((id) => db.exercises[id] && !shown.has(id) && match(db.exercises[id])).slice(0, 12);
+    if (common.length) { html += `<h3 class="sect">Common lifts</h3>${common.map((id) => pickRow(db.exercises[id])).join('')}`; }
   }
   // Group the full list by main (first) primary muscle; compounds first within each group.
   const groups = {};
@@ -1707,9 +1735,23 @@ function screenSettings() {
   const p = db.profile;
   // Settings: a short list of pages, like iPhone Settings.
   const pages = {
-    training: { title: 'Training', html: `    <h2 class="group-title">Week and blocks</h2>
-    <div class="card">
+    training: { title: 'Training', html: `    <div class="card">
       <div class="field"><span>Week starts on</span><select data-a="week-start" aria-label="Week starts on">${['mon', 'sun', 'sat', 'tue', 'wed', 'thu', 'fri'].map((d) => `<option value="${d}" ${(db.settings.weekStart || 'mon') === d ? 'selected' : ''}>${FULL_DAY[d]}</option>`).join('')}</select></div>
+      <div class="field"><span>Exercise variety</span>
+        <div class="segmented small-seg" role="radiogroup" aria-label="Exercise variety">${Object.entries(VARIETY).map(([k, v]) => `<button class="${(s.variety || 'low') === k ? 'on' : ''}" data-a="set-variety" data-v="${k}" role="radio" aria-checked="${(s.variety || 'low') === k}">${v.name}</button>`).join('')}</div>
+        <p class="muted small">${VARIETY[s.variety || 'low'].desc} ${refChips(['kassiano2022', 'bazvalle2019'])}</p></div>
+      <label class="toggle"><input type="checkbox" data-a="set-extra" data-k="warmupRoutine" ${s.warmupRoutine ? 'checked' : ''}><span>Warm-up routine before lifting</span></label>
+      <label class="toggle"><input type="checkbox" data-a="set-extra" data-k="cooldownRoutine" ${s.cooldownRoutine ? 'checked' : ''}><span>Cool-down stretch after lifting</span></label>
+      <label class="toggle"><input type="checkbox" data-a="sound" ${s.sound ? 'checked' : ''}><span>Beep when rest ends</span></label>
+    </div>
+    <h2 class="group-title">Progression</h2>
+    <div class="card">
+      <div class="field"><span>For your focus lifts ${helpBtn()}</span><p class="help-text" hidden>How your focus lifts move forward. Every other lift adds reps, then weight. You can also pick a progression for any single lift from its options.</p>
+        ${progressionList(PROGRESSIONS[s.progression] ? s.progression : 'double', recommendProgression(db.profile), 'set-progression')}</div>
+    </div>
+    <details class="adv-settings"><summary>Advanced</summary>
+    <h2 class="group-title">Blocks and deloads</h2>
+    <div class="card">
       <div class="field"><span>Block length (deload in the last week)</span>
         <div class="row stepper-row"><button class="step" data-a="deload-weeks" data-v="-1" aria-label="Shorter block" ${s.deloadEvery <= 3 ? 'disabled' : ''}>−</button><b class="tnum">${s.deloadEvery} weeks</b><button class="step" data-a="deload-weeks" data-v="1" aria-label="Longer block" ${s.deloadEvery >= 8 ? 'disabled' : ''}>+</button></div></div>
       <label class="toggle"><input type="checkbox" data-a="deload-off" ${s.deloadOff ? 'checked' : ''}><span>No scheduled deloads (deload when you choose, from day options)</span></label>
@@ -1720,28 +1762,17 @@ function screenSettings() {
       <div class="field"><span>Current week of program · week ${wi.cyclePos} of ${wi.cycleLen} in this block${wi.isDeload ? ' (deload)' : ''}</span>
         <div class="row">${stepper('set-week', wi.week, 1)}<button class="btn" data-a="set-week">Set</button></div></div>
     </div>
-    <h2 class="group-title">Progression</h2>
+    <h2 class="group-title">Core</h2>
     <div class="card">
-      <div class="field"><span>For your focus lifts ${helpBtn()}</span><p class="help-text" hidden>How your focus lifts move forward. Every other lift adds reps, then weight. You can also pick a progression for any single lift from its options.</p>
-        ${progressionList(PROGRESSIONS[s.progression] ? s.progression : 'double', recommendProgression(db.profile), 'set-progression')}</div>
-    </div>
-    <h2 class="group-title">Warm-ups and core</h2>
-    <div class="card">
-      <label class="toggle"><input type="checkbox" data-a="set-extra" data-k="warmupRoutine" ${s.warmupRoutine ? 'checked' : ''}><span>Warm-up routine before lifting</span></label>
-      <label class="toggle"><input type="checkbox" data-a="set-extra" data-k="cooldownRoutine" ${s.cooldownRoutine ? 'checked' : ''}><span>Cool-down stretch after lifting</span></label>
       <div class="field"><span>Core</span>
         <div class="segmented small-seg wrap-seg" role="radiogroup" aria-label="Core placement">${Object.entries(CORE_PLACEMENTS).map(([k, v]) => `<button class="${(s.corePlacement || 'end') === k ? 'on' : ''}" data-a="set-core" data-v="${k}" role="radio" aria-checked="${(s.corePlacement || 'end') === k}">${v.name}</button>`).join('')}</div>
         <p class="muted small">${CORE_PLACEMENTS[s.corePlacement || 'end'].desc} ${refChips(['mcgill2010', 'hibbs2008', 'granata2008'])}</p></div>
     </div>
-    <h2 class="group-title">Exercises and logging</h2>
+    <h2 class="group-title">Logging</h2>
     <div class="card">
-      <div class="field"><span>Exercise variety</span>
-        <div class="segmented small-seg" role="radiogroup" aria-label="Exercise variety">${Object.entries(VARIETY).map(([k, v]) => `<button class="${(s.variety || 'low') === k ? 'on' : ''}" data-a="set-variety" data-v="${k}" role="radio" aria-checked="${(s.variety || 'low') === k}">${v.name}</button>`).join('')}</div>
-        <p class="muted small">${VARIETY[s.variety || 'low'].desc} ${refChips(['kassiano2022', 'bazvalle2019'])}</p></div>
       <label class="toggle"><input type="checkbox" data-a="set-warmups" ${s.warmups ? 'checked' : ''}><span>Warm-up sets on the first big lift</span></label>
       <label class="toggle"><input type="checkbox" data-a="set-autoadvance" ${s.autoAdvance !== false ? 'checked' : ''}><span>Auto-advance in supersets</span></label>
       <label class="toggle"><input type="checkbox" data-a="set-ramp" ${s.rampEffort ? 'checked' : ''}><span>Ramp effort through each block (reps in reserve 3 → 1)</span></label>
-      <label class="toggle"><input type="checkbox" data-a="sound" ${s.sound ? 'checked' : ''}><span>Beep when rest ends</span></label>
       ${legacy ? `<details class="sub-details"><summary>Sample-plan options</summary>
         <div class="field"><span>Thursday row compound</span><div class="row between"><b>${esc(db.exercises[ROW_ROTATION[s.rowRotation % 3]].name)}</b><button class="mini" data-a="rotate-yes">Rotate now</button></div></div>
         <label class="toggle"><input type="checkbox" data-a="race" ${s.raceBlock ? 'checked' : ''}><span>Race block (deadlift moves to Monday, RDL on Friday, no glute ham raises)</span></label>
@@ -1750,7 +1781,8 @@ function screenSettings() {
         <div class="grid2">${Object.entries(TYPES).map(([k, v]) => `<div class="field"><span>${v} (${wUnit()})</span><input type="text" inputmode="decimal" data-a="def-inc" data-k="${k}" value="${toDisp(s.defaultIncrements[k])}"></div>`).join('')}</div>
         <button class="btn block" data-a="apply-inc">Apply to all existing exercises</button>
       </details>
-    </div>` },
+    </div>
+    </details>` },
     gym: { title: 'Gym', html: `    ${extras.gymCard()}` },
     appearance: { title: 'Appearance and units', html: `
     <h2 class="group-title">Weight units</h2>
@@ -1761,7 +1793,7 @@ function screenSettings() {
       <p class="muted small">Text follows your iPhone's text size (Settings → Display & Brightness → Text Size).</p>
     </div>` },
     account: { title: 'Account and sync', html: acctUi.page() },
-    backup: { title: 'Backup and data', html: `    ${cloud.card()}
+    backup: { title: 'Backup and data', html: `    ${backupTop()}
     ${extras.dataCard()}
     <h2 class="group-title">Reset</h2>
     <div class="list-group">
@@ -1797,6 +1829,15 @@ function screenSettings() {
 }
 
 // ---------- Feature modules ----------
+
+// Backup: an account is the way to keep a copy now; the older encrypted cloud backup (with its
+// server address and access key) stays for people already using it, folded away for everyone else.
+function backupTop() {
+  const top = account()
+    ? `<div class="card"><b>Synced to your account</b><p class="small muted">${esc(acctUi.summary())}. Your plan, workouts, food and body data are kept on the server and on every phone you sign in on.</p><button class="btn block" data-a="settings-page" data-v="account">Account and sync</button></div>`
+    : '<div class="card"><b>Back up with an account</b><p class="small">An account keeps a copy of your data on the server and syncs it to your other phones. Sign in with Face ID; no password.</p><button class="btn primary block" data-a="settings-page" data-v="account">Create an account</button></div>';
+  return top + (cloudReady() ? cloud.card() : `<details class="adv-settings"><summary>Encrypted cloud backup</summary>${cloud.card()}</details>`);
+}
 
 function refChips(ids) {
   return (ids || []).map((id) => REFS[id] ? `<button class="ref" data-a="ref-sheet" data-ids="${ids.join(',')}">${refNum(id)}</button>` : '').join('');
@@ -2346,17 +2387,17 @@ const actions = {
   'quick-build': () => openQuickBuild(),
   'qb-set': (d) => { ui.qb[d.k] = d.k === 'days' ? +d.v : d.v; openQuickBuild(); },
   'qb-full': () => { closeSheet(); openBuilder(); },
+  'plan-first-today': (d) => { moveDay(db, d.day, dayKeyOf(todayStr())); persist(); ui.day = dayKeyOf(todayStr()); render(); toast(`${db.plan[d.day]?.name || 'Workout'} is today. Your other days stay the same.`); },
   'qb-go': () => {
     const q = ui.qb;
     const g = QB_GOALS[q.goal];
-    const draft = { ...defaultProfile(db), goals: { ...g.goals }, weightGoal: g.weightGoal || null, liftDays: q.days, equipment: [...QB_EQUIP[q.equip].eq], routines: ['warm'] };
+    const draft = { ...defaultProfile(db), goals: { ...g.goals }, weightGoal: g.weightGoal || null, liftDays: q.days, equipment: [...QB_EQUIP[q.equip].eq], routines: ['warm'], experience: q.exp || 'beginner' };
     ui.b = { step: 4, draft, liftEdited: true, cardioEdited: false, splitEdited: false, quick: true };
     const { p, rx } = builderState();
     try { ui.b.out = generatePlan(db, p, rx, p.liftDays, p.cardioDays, p.split); } catch (e) { ui.b = null; return toast(e.message || 'Could not build that plan.'); }
     closeSheet();
     applyBuilt();
-    ui.tab = 'today'; ui.day = defaultDay(); render();
-    toast('Your plan is ready. Fine-tune it any time in Plan.');
+    ui.tab = 'today'; ui.day = defaultDay(); render(); // Train shows the workout, or 'Your plan is ready'
   },
   'base-find': (d) => openBaseFind(d.uid),
   'base-set': (d) => {
@@ -2694,11 +2735,15 @@ const actions = {
   },
   'open-builder': () => openBuilder(),
   // The sample plan (no longer offered at first run; kept for "Load the sample plan" and tests).
-  'welcome-sample': () => { db.plan = defaultPlan(); db.settings.dayModes = { mon: 'lift', tue: 'lift', wed: 'lift', thu: 'lift', fri: 'lift', sat: 'rest', sun: 'rest' }; db.settings.welcomed = true; applyCore(db, 'end'); persist(); render(); },
+  'welcome-sample': () => { db.plan = defaultPlan(); db.settings.dayModes = { mon: 'lift', tue: 'lift', wed: 'lift', thu: 'lift', fri: 'lift', sat: 'rest', sun: 'rest' }; db.settings.welcomed = true; db.settings.planSince = todayStr(); applyCore(db, 'end'); persist(); render(); },
   'b-exit': () => { ui.b = null; ui.tab = 'plan'; render(); },
-  'b-next': () => { ui.b.step = Math.min(B_STEPS.length - 1, ui.b.step + 1); window.scrollTo(0, 0); render(); },
+  'b-next': () => {
+    if (ui.b.step === 0 && !aboutYouOk()) return;
+    ui.b.step = Math.min(B_STEPS.length - 1, ui.b.step + 1); window.scrollTo(0, 0); render();
+  },
   'b-back': () => { ui.b.step = Math.max(0, ui.b.step - 1); window.scrollTo(0, 0); render(); },
-  'b-step': (d) => { ui.b.step = +d.v; window.scrollTo(0, 0); render(); },
+  'b-step': (d) => {
+    if (ui.b.step === 0 && +d.v > 0 && !aboutYouOk()) return; ui.b.step = +d.v; window.scrollTo(0, 0); render(); },
   'b-set': (d) => {
     const p = ui.b.draft;
     if (d.multi) {
@@ -2920,6 +2965,7 @@ const actions = {
   'reset-plan': async () => {
     if (!(await ask('Replace your plan with the sample plan (5 days: upper, lower, push, pull, legs)? History and targets are kept.', 'Load sample plan'))) return;
     safetySnapshot(db, 'Before loading the sample plan');
+    db.settings.planSince = todayStr();
     db.plan = defaultPlan(); db.settings.dayModes = { mon: 'lift', tue: 'lift', wed: 'lift', thu: 'lift', fri: 'lift', sat: 'rest', sun: 'rest' }; persist(); render(); toast('Sample plan loaded.');
   },
 };

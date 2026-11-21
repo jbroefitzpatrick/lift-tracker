@@ -107,6 +107,21 @@ export function createWorkoutScreens(A) {
       : muscleIcon(ex.primary[0] || 'chest');
   }
 
+  // A plan made today on a day without lifting: the first workout, and the option to do it now.
+  function planReadyCard() {
+    const order = weekOrder();
+    const t = order.indexOf(dayKeyOf(todayStr()));
+    const lifts = order.filter((d) => A.db.plan[d]?.items?.some((i) => A.db.exercises[i.exerciseId]?.category !== 'conditioning') && ['lift', 'both'].includes(A.db.settings.dayModes?.[d] || 'lift'));
+    const next = lifts.find((d) => order.indexOf(d) > t) || lifts[0];
+    if (!next) return '';
+    const thisWeek = order.indexOf(next) > t;
+    return `<section class="start-card">
+        <h2>Your plan is ready</h2>
+        <button class="start-opt primary" data-a="plan-first-today" data-day="${next}"><b>Do ${A.esc(A.db.plan[next].name)} today</b><span>Your first workout is ${thisWeek ? '' : 'next '}${A.FULL_DAY[next]}. Start now instead; the rest of the week stays the same.</span></button>
+        <button class="start-opt" data-a="tab" data-tab="plan"><b>See your week</b><span>${lifts.length} lifting days. Change days, exercises or time any time.</span></button>
+      </section>`;
+  }
+
   // No plan yet (a new install): two ways to start, nothing else.
   function startScreen() {
     const first = !A.db.settings.welcomed;
@@ -114,7 +129,7 @@ export function createWorkoutScreens(A) {
         <button class="icon-btn" data-a="open-settings" aria-label="Settings">${icon('gear')}</button></header>
       <section class="start-card">
         <h2>${first ? 'How would you like to start?' : 'Ready when you are'}</h2>
-        <button class="start-opt primary" data-a="quick-build"><b>Build my plan</b><span>Three questions: your goal, days a week and equipment. Change anything later.</span></button>
+        <button class="start-opt primary" data-a="quick-build"><b>Build my plan</b><span>Four quick questions: goal, experience, days a week and equipment. Change anything later.</span></button>
         <button class="start-opt" data-a="start-empty"><b>Start a workout</b><span>Add exercises as you go. Lift learns your weights from what you log.</span></button>
       </section>
       ${first ? '<p class="muted small center pad">Use Lift on another phone? <button class="text-link" data-a="open-settings" data-page="account">Sign in to sync</button></p>' : ''}`;
@@ -135,7 +150,7 @@ export function createWorkoutScreens(A) {
     const dateLabel = parseDate(dateOfDay(day)).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
     const subtitle = [
       dateLabel,
-      A.db.settings.deloadOff ? `Week ${wi.week}` : `Week ${wi.cyclePos} of ${wi.cycleLen}${wi.isDeload ? ' (deload)' : ''}`,
+      !Object.keys(A.db.plan || {}).length ? '' : A.db.settings.deloadOff ? `Week ${wi.week}` : `Week ${wi.cyclePos} of ${wi.cycleLen}${wi.isDeload ? ' (deload)' : ''}`,
       ph ? `${PHASE_TYPES[ph.phase.type].label}, week ${ph.weekInPhase}` : '',
     ].filter(Boolean).join(' · ');
     let html = `
@@ -151,7 +166,9 @@ export function createWorkoutScreens(A) {
     if (!session) html += A.pain.todayCard(); // during a workout, pain shows on the exercises it affects
     // None while a workout is open: that screen is for logging.
     if (!session && day === dayKeyOf(todayStr())) html += A.doneTodayCard(day);
-    if (!session) html += [A.train.recoveryCheck(), A.reviewCard(), A.skippedPrompt(day), A.train.weekPrompt(), A.extras.backupBanner(), A.db.settings.welcomed ? A.train.installHint() : ''].filter(Boolean).slice(0, 1).join('');
+    // The day a plan is made: nothing but the plan (no check-ins, reviews or reminders yet).
+    const planDay0 = A.db.settings.planSince === todayStr() && day === dayKeyOf(todayStr());
+    if (!session && !planDay0) html += [A.train.recoveryCheck(), A.reviewCard(), A.skippedPrompt(day), A.train.weekPrompt(), A.extras.backupBanner(), A.db.settings.welcomed ? A.train.installHint() : ''].filter(Boolean).slice(0, 1).join('');
     html += A.blockCheckinBanner();
     if (needsRotationPrompt(A.db)) {
       const nextId = nextRowCompound(A.db);
@@ -170,6 +187,7 @@ export function createWorkoutScreens(A) {
     // Cardio-only and rest days (an unfinished workout still shows so it can be finished).
     const condOnly = !session && mode !== 'rest' && resolveDay(A.db, day).some((i) => i.ex.category === 'conditioning');
     if (!session && !condOnly && (!dayPlan(A.db, day) || mode === 'cardio' || mode === 'rest')) {
+      if (planDay0) return html + planReadyCard();
       html += A.train.recoveryCards(day, []);
       html += A.train.recoveryReminder(day, mode);
       html += `<p class="muted small pad">${mode === 'rest' ? 'Rest day. Light recovery work is optional.' : 'Cardio day.'}</p>`;
@@ -336,7 +354,7 @@ export function createWorkoutScreens(A) {
       const done = e ? e.sets.filter((s) => s.done).length : 0;
       const linked = groups.find((g) => g.items.includes(i))?.linked;
       return `<button class="coming-row" data-a="ex-go" data-uid="${i.uid}"><span class="thumb sm">${thumb(i.ex)}</span>
-        <span class="grow"><b>${A.esc(i.ex.name)}</b><span class="pick-sub">${done ? `${done} of ${total} ${i.ex.category === 'conditioning' ? 'rounds' : 'sets'}` : `${total} ${i.ex.category === 'conditioning' ? 'rounds' : 'sets'}`}${linked ? ' · linked' : ''}</span></span>${icon('right', 'chev')}</button>`;
+        <span class="grow"><b>${A.esc(i.ex.name)}</b><span class="pick-sub">${done ? `${done} of ${total} ${i.ex.category === 'conditioning' ? 'rounds' : 'sets'}` : `${total} ${i.ex.category === 'conditioning' ? (total === 1 ? 'round' : 'rounds') : (total === 1 ? 'set' : 'sets')}`}${linked ? ' · linked' : ''}</span></span>${icon('right', 'chev')}</button>`;
     };
     return `<section class="coming-up" aria-label="Coming up">
       <div class="row between"><h3>${upcoming.length ? 'Coming up' : skipped.length ? 'Still to do' : 'Last exercise'}</h3><button class="link-btn" data-a="ex-close">Whole workout</button></div>
@@ -637,7 +655,7 @@ export function createWorkoutScreens(A) {
         <div class="stat"><b data-count="${Math.round(toDisp(vol))}">${Math.round(toDisp(vol)).toLocaleString()}</b><span>${wUnit()} volume</span></div>
         <button class="stat" data-a="energy-why" aria-label="About ${Math.round(workoutBurn(A.db, s).active)} active calories"><b>~${Math.round(workoutBurn(A.db, s).active)}</b><span>active kcal</span></button>
       </div>
-      ${prs.length ? `<div class="card pr-card ${A.ui.summaryFresh ? 'celebrate' : ''}"><h3>${prs.length === 1 ? 'New record' : `${prs.length} new records`}</h3>${prs.map((p) => `<p class="small"><b>${A.esc(p.name)}</b> — ${A.esc(p.text)}</p>`).join('')}</div>` : ''}
+      ${prs.length ? `<div class="card pr-card ${A.ui.summaryFresh ? 'celebrate' : ''}"><h3>${prs.length === 1 ? 'New record' : `${prs.length} new records`}</h3>${prs.map((p) => `<p class="small"><b>${A.esc(p.name)}</b> — ${A.esc(p.text)}</p>`).join('')}${A.peopleOn() && prs.some((p) => p.type === 'e1rm' || p.type === 'reps') ? `<button class="btn block" data-a="ppl-share-pr" data-sid="${s.id}">Share with friends</button>` : ''}</div>` : ''}
       ${s.isDeload ? '<p class="muted small pad">Deload workouts don\'t change targets.</p>' : res.length ? `<div class="card"><h3>Next time${progressed.length ? ` · <span class="up-count">${progressed.length} up</span>` : ''}</h3>${[...progressed, ...res.filter((r) => !progressed.includes(r) && !stalled.includes(r)), ...stalled].map(row).join('')}</div>` : ''}
       ${adj.length ? `<div class="card"><h3>Plan adjustments from your check-ins</h3>${adj.map((a) => `<p class="small">${A.esc(a.text)}</p>`).join('')}</div>` : ''}
       ${A.ui.summaryFresh ? A.extras.summaryBackupCard() : ''}
