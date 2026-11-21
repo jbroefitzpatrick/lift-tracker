@@ -1415,3 +1415,70 @@ details.sess summary { display: flex; align-items: center; list-style: none; cur
 details.sess summary::-webkit-details-marker { display: none; }
 .sess-sets { margin: 8px 0; padding-left: 18px; font-size: 0.875rem; }
 .sess-sets li { margin: 4px 0; }
+
+/* Reps-only moves (bands, rollouts, drills): no weight column */
+.set-head.lift.no-load, .set-row.lift.no-load { grid-template-columns: 34px minmax(58px, 1fr) 1fr 48px; }
+
+/* Strength: key lift tiles */
+.strength-hero h3 { margin: 0; }
+.strength-hero .row { margin-bottom: 10px; }
+.key-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.key-tile { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-height: 132px; padding: 12px 12px 34px; border: 0; border-radius: 14px; background: var(--surface-2); color: var(--text); text-align: left; font: inherit; overflow: hidden; }
+.key-tile.focus { box-shadow: inset 0 0 0 1.5px var(--accent); }
+.key-label { font-size: 0.6875rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+.key-tile.focus .key-label { color: var(--accent); }
+.key-name { font-size: 0.875rem; font-weight: 600; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.key-val { font-size: 1.625rem; font-weight: 700; margin-top: 4px; }
+.key-val small { font-size: 0.8125rem; font-weight: 600; color: var(--muted); }
+.key-sub { font-size: 0.75rem; color: var(--muted); }
+.key-sub .up { color: var(--good); font-weight: 600; } .key-sub .down { color: var(--warn); font-weight: 600; }
+.key-spark { position: absolute; left: 0; right: 0; bottom: 6px; width: 100%; height: 24px; opacity: 0.8; }
+.strength-hero .up, .list-row .up { color: var(--good); font-weight: 600; }
+.strength-hero .down, .list-row .down { color: var(--warn); font-weight: 600; }
+.all-lifts summary { padding: 12px 4px; font-weight: 600; }
+.list-group.compact .list-row { min-height: 52px; }
+.list-group.compact .list-row .grow > span:first-child { font-size: 0.9375rem; }
+.grp-art { width: 40px; height: 40px; flex: none; border-radius: 10px; background: var(--surface-2); overflow: hidden; display: grid; place-items: center; margin-right: 12px; }
+.grp-art svg { width: 100%; height: 100%; }
+
+/* ---------- Color accents (settings.colorStyle) ---------- */
+:root { --ember: #ff9a5a; --ember-soft: rgb(255 154 90 / 0.15); --glow-a: rgb(122 162 255 / 0.16); --glow-b: rgb(45 212 191 / 0.09); --glow-line: rgb(122 162 255 / 0.22); }
+:root[data-theme="light"] { --ember: #d4561c; --ember-soft: rgb(212 86 28 / 0.1); --glow-a: rgb(47 95 208 / 0.09); --glow-b: rgb(13 148 136 / 0.07); --glow-line: rgb(47 95 208 / 0.18); }
+@media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) { --ember: #d4561c; --ember-soft: rgb(212 86 28 / 0.1); --glow-a: rgb(47 95 208 / 0.09); --glow-b: rgb(13 148 136 / 0.07); --glow-line: rgb(47 95 208 / 0.18); } }
+
+/* A: ember for achievements (records, streaks, focus lifts, the workouts ring) */
+.c-ember .pill.good { background: var(--ember-soft); color: var(--ember); }
+.c-ember .pr-card, .c-ember .pr-card.celebrate { border-color: color-mix(in srgb, var(--ember) 45%, var(--line)); }
+.c-ember .pr-card h3, .c-ember .pr-card .pr-title { color: var(--ember); }
+.c-ember .key-tile.focus { box-shadow: inset 0 0 0 1.5px var(--ember); }
+.c-ember .key-tile.focus .key-label { color: var(--ember); }
+.c-ember .r-lift .ring-fg { stroke: var(--ember); } .c-ember .r-lift .ring-bg { stroke: var(--ember-soft); }
+.c-ember .ppl-row.me .rank { background: var(--ember); color: #1a0d05; }
+.c-ember .tab-badge { background: var(--ember); }
+
+/* B: a soft glow on each screen's main card, and behind the active tab */
+.c-wash .week-rings, .c-wash .strength-hero, .c-wash .ppl-board, .c-wash .done-card, .c-wash .rv-card, .c-wash .wk-summary, .c-wash .ppl-empty {
+  background: radial-gradient(120% 90% at 0% 0%, var(--glow-a), transparent 60%), radial-gradient(90% 80% at 100% 0%, var(--glow-b), transparent 60%), var(--surface);
+  border-color: var(--glow-line);
+}
+.c-wash .food-hero { background: radial-gradient(70% 60% at 50% 35%, var(--glow-a), transparent 70%); border-radius: var(--radius); padding: 12px 0; }
+.c-wash .tab.on svg { background: var(--accent-soft); border-radius: 10px; padding: 3px 10px; width: 46px; box-sizing: border-box; height: 30px; margin-bottom: -4px; }
+
+/* C: color by body region (push, pull, legs, core) */
+.c-region .mus.on[data-m="chest"], .c-region .mus.on[data-m="front-delts"], .c-region .mus.on[data-m="side-delts"], .c-region .mus.on[data-m="triceps"] { fill: var(--push) !important; }
+.c-region .mus.on[data-m="lats"], .c-region .mus.on[data-m="upper-back"], .c-region .mus.on[data-m="traps"], .c-region .mus.on[data-m="rear-delts"], .c-region .mus.on[data-m="biceps"], .c-region .mus.on[data-m="forearms"] { fill: var(--pull) !important; }
+.c-region .mus.on[data-m="quads"], .c-region .mus.on[data-m="hamstrings"], .c-region .mus.on[data-m="glutes"], .c-region .mus.on[data-m="calves"], .c-region .mus.on[data-m="adductors"], .c-region .mus.on[data-m="abductors"], .c-region .mus.on[data-m="hip-flexors"] { fill: var(--legs) !important; }
+.c-region .mus.on[data-m="abs"], .c-region .mus.on[data-m="obliques"], .c-region .mus.on[data-m="lower-back"] { fill: var(--core) !important; }
+.c-region .key-tile[data-r="push"] { box-shadow: inset 3px 0 0 var(--push); } .c-region .key-tile[data-r="push"] .key-label { color: var(--push); }
+.c-region .key-tile[data-r="pull"] { box-shadow: inset 3px 0 0 var(--pull); } .c-region .key-tile[data-r="pull"] .key-label { color: var(--pull); }
+.c-region .key-tile[data-r="legs"] { box-shadow: inset 3px 0 0 var(--legs); } .c-region .key-tile[data-r="legs"] .key-label { color: var(--legs); }
+.c-region .key-tile[data-r="core"] { box-shadow: inset 3px 0 0 var(--core); } .c-region .key-tile[data-r="core"] .key-label { color: var(--core); }
+
+/* D: progress that glows (rings, strength lines, finished sets) */
+.c-flow .r-lift .ring-fg { stroke: url(#g-lift); } .c-flow .r-cardio .ring-fg { stroke: url(#g-cardio); } .c-flow .r-protein .ring-fg { stroke: url(#g-protein); }
+.c-flow .ring .ring-fg, .c-flow .kcal-ring .arc { filter: drop-shadow(0 0 4px rgb(56 189 248 / 0.4)); }
+.c-flow .kcal-ring .arc { stroke: url(#g-lift); }
+.c-flow .spark polyline { stroke: url(#g-line); filter: drop-shadow(0 0 3px rgb(45 212 191 / 0.5)); }
+.c-flow .set-row.lift.done .check { background: linear-gradient(135deg, var(--good), #2dd4bf); border-color: transparent; }
+.c-flow .wb-progress > *, .c-flow .c-fill.me { background: linear-gradient(90deg, #7aa2ff, #2dd4bf); }
+.key-grid > .key-tile:last-child:nth-child(odd) { grid-column: span 2; }

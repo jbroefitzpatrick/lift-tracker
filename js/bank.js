@@ -348,7 +348,7 @@ const RAW = [
   ['stir-the-pot', 'Stir the pot', 'A', 'bodyweight', 'anti-extension', 'abs', 'obliques'],
   ['plank-shoulder-tap', 'Plank shoulder taps', 'A', 'bodyweight', 'anti-rotation', 'abs obliques', 'front-delts'],
   ['decline-crunch', 'Decline crunch', 'A', 'bodyweight', 'core-flexion', 'abs', 'obliques'],
-  ['barbell-rollout', 'Barbell rollout', 'A', 'barbell-upper', 'anti-extension', 'abs', 'lats obliques'],
+  ['barbell-rollout', 'Barbell rollout', 'A', 'bodyweight', 'anti-extension', 'abs', 'lats obliques'],
   ['overhead-carry', 'Overhead carry', 'A', 'dumbbell', 'carry', 'front-delts abs', 'traps obliques', 'distance'],
   ['body-saw', 'Body saw', 'A', 'bodyweight', 'anti-extension', 'abs', 'front-delts'],
   ['side-plank-dip', 'Side plank hip dip', 'A', 'bodyweight', 'anti-lateral', 'obliques', 'abs'],
@@ -651,8 +651,14 @@ export function sideNote(ex) {
 
 const split = (s) => (s ? s.split(' ') : []);
 
+// Moves where added weight isn't part of the exercise: the resistance is a band, a wheel or ball, a
+// suspension strap or the body's own leverage, or it's a jump or a warm-up drill. These log reps only.
+// (Pushups, dips, pull-ups, back extensions, sit-ups, crunches and glute bridges keep "added weight",
+// since vests, belts and plates are common there.)
+export const NO_LOAD = new Set(['ab-wheel', 'barbell-rollout', 'ball-rollout', 'body-saw', 'stir-the-pot', 'ball-pike', 'dead-bug', 'bird-dog', 'mcgill-curl-up', 'plank-shoulder-tap', 'side-plank-dip', 'superman', 'v-up', 'toes-to-bar', 'bicycle-crunch', 'reverse-crunch', 'leg-raise', 'hanging-knee-raise', 'hanging-oblique-raise', 'hanging-leg-raise', 'vertical-leg-raise', 'band-face-pull', 'band-assisted-pullup', 'band-lat-raise', 'band-lat-pulldown', 'band-row', 'band-good-morning', 'band-curl', 'band-pushdown', 'band-pull-through', 'band-hip-thrust', 'band-leg-curl', 'band-pallof', 'band-woodchop', 'band-seated-abduction', 'band-pull-apart', 'band-external-rotation', 'band-dislocate', 'band-row-light', 'banded-squat', 'lateral-band-walk', 'tke', 'suspension-pushup', 'suspension-row', 'hspu', 'pike-pushup', 'incline-pushup', 'decline-pushup', 'deficit-pushup', 'diamond-pushup', 'pushup-rotation', 'negative-pullup', 'scap-pushup', 'scap-pull', 'inverted-row', 'nordic-curl', 'reverse-nordic', 'ball-ham-curl', 'slider-leg-curl', 'air-squat', 'bodyweight-lunge', 'step-up-bw', 'bw-split-squat', 'bw-calf-raise', 'side-lying-abduction', 'side-lying-adduction', 'clamshell', 'fire-hydrant', 'glute-bridge-march', 'single-leg-glute-bridge', 'box-jump', 'broad-jump', 'squat-jump', 'lateral-bound', 'tuck-jump', 'skater-jump', 'pogo-hop', 'burpee', 'mountain-climber', 'jumping-jack', 'high-knees', 'jump-rope', 'leg-swing', 'arm-circle', 'chin-tuck', 'ankle-rock', 'wall-slide', 'prone-ytw', 'knee-hug-walk', 'hip-circle', 'open-book', 'inchworm', 'arm-swing', 'shoulder-car', 'hip-car', 'reach-open', 'spiderman-lunge', 'lateral-lunge-stretch', 'hip-airplane', 'leg-cradle', 'toy-soldier', 'tspine-extension', 'wrist-rock', 'hip-flexor-rock', 'adductor-rockback', 'calf-raise-slow', 'stretch-9090', 'stretch-thread', 'stretch-catcow', 'stretch-wgs', 'butt-kick', 'a-skip', 'carioca', 'neck-circle', 'ankle-circle']);
+
 export const BANK = Object.fromEntries(RAW.map(([id, name, cat, type, pattern, primary, secondary, metric]) => [id, {
-  id, name, type, pattern, metric: metric || 'reps', needs: split(NEEDS[id]), modes: modesOf(id, metric),
+  id, name, type, pattern, metric: metric || 'reps', needs: split(NEEDS[id]), modes: modesOf(id, metric), noLoad: NO_LOAD.has(id) || undefined,
   category: cat === 'C' ? 'compound' : cat === 'X' ? 'conditioning' : 'accessory',
   primary: split(primary),
   secondary: split(secondary),
@@ -674,6 +680,9 @@ export function syncBank(exercises, defaultIncrements) {
       Object.assign(ex, { category: b.category, pattern: b.pattern, metric: b.metric, primary: [...b.primary], secondary: [...b.secondary] });
     }
     if (ex) { ex.needs = [...b.needs]; ex.modes = [...b.modes]; } // equipment and measures always follow the bank
+    const cur = exercises[b.id];
+    // Reps only, no weight: always follows the bank, and these are bodyweight moves.
+    if (b.noLoad) { cur.noLoad = true; cur.type = 'bodyweight'; } else delete cur.noLoad;
   }
   for (const ex of Object.values(exercises)) {
     ex.category ||= 'accessory';

@@ -146,7 +146,21 @@ function applyTheme() {
   else root.setAttribute('data-theme', t);
   const dark = t === 'dark' || (t === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
   $('meta[name="theme-color"]').setAttribute('content', dark ? '#0c0e12' : '#f5f6f8');
+  // Color accents: ember for achievements and a glow on each screen's main card (default),
+  // or settings.colorStyle with any of ember, wash, region, flow ('' for none).
+  const style = String(db.settings.colorStyle ?? 'ember wash').split(/\s+/).filter(Boolean);
+  for (const c of [...document.body.classList]) if (c.startsWith('c-')) document.body.classList.remove(c);
+  for (const c of style) document.body.classList.add(`c-${c}`);
+  if (style.includes('flow') && !document.getElementById('color-defs')) {
+    document.body.insertAdjacentHTML('beforeend', `<svg id="color-defs" width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+      <linearGradient id="g-lift" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7aa2ff"/><stop offset="1" stop-color="#2dd4bf"/></linearGradient>
+      <linearGradient id="g-cardio" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fb923c"/><stop offset="1" stop-color="#facc15"/></linearGradient>
+      <linearGradient id="g-protein" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4ade80"/><stop offset="1" stop-color="#2dd4bf"/></linearGradient>
+      <linearGradient id="g-line" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#7aa2ff"/><stop offset="1" stop-color="#2dd4bf"/></linearGradient></defs></svg>`);
+  }
 }
+// Body region of a muscle (push, pull, legs or core), for the region color accents.
+const bodyRegion = (m) => REGION[m] || 'legs';
 
 // ---------- Audio (rest timer) ----------
 
@@ -1185,6 +1199,7 @@ const SET_TYPES = { w: ['W', 'Warm-up'], d: ['D', 'Drop set'], f: ['F', 'To fail
 
 function setHead(conditioning, fields, ex) {
   if (conditioning) return `<div class="set-head" aria-hidden="true"><span>Round</span><span>${fields[0][1]}${sideNote(ex) ? ` ${sideNote(ex)}` : ''}</span><span>${fields[1][1]}</span><span></span></div>`;
+  if (ex.noLoad) return '<div class="set-head lift no-load" aria-hidden="true"><span>Set</span><span>Previous</span><span>Reps</span><span></span></div>';
   return `<div class="set-head lift" aria-hidden="true"><span>Set</span><span>Previous</span><span>${ex.type === 'bodyweight' ? `+ ${wUnit()}` : ex.type === 'dumbbell' ? `${wUnit()} each` : wUnit()}</span><span>Reps</span><span></span></div>`;
 }
 
@@ -1197,12 +1212,12 @@ function liftRows(item, sets, ended, t, ex) {
     const disabled = ended && !s.done && !s.pain;
     const pw = last?.weights?.[i];
     const pr = last?.reps?.[i];
-    const prev = pr != null ? `${ex.type === 'bodyweight' && !pw ? 'BW' : pw} × ${pr}` : '';
+    const prev = pr != null ? (ex.noLoad ? `${pr} reps` : `${ex.type === 'bodyweight' && !pw ? 'BW' : pw} × ${pr}`) : '';
     const ty = SET_TYPES[s.type];
-    return `<div class="set-row lift ${s.done ? 'done' : ''} ${s.pain ? 'pain' : ''} ${disabled ? 'disabled' : ''}" data-swipe="del-set" data-uid="${item.uid}" data-i="${i}" data-swipe-label="Delete">
+    return `<div class="set-row lift ${ex.noLoad ? 'no-load' : ''} ${s.done ? 'done' : ''} ${s.pain ? 'pain' : ''} ${disabled ? 'disabled' : ''}" data-swipe="del-set" data-uid="${item.uid}" data-i="${i}" data-swipe-label="Delete">
       <button class="set-badge ${ty ? `ty-${s.type}` : ''}" data-a="open-set" data-uid="${item.uid}" data-i="${i}" aria-label="Set ${i + 1}${ty ? `, ${ty[1]}` : ''}. Options: type, effort, pain">${ty ? ty[0] : i + 1}</button>
       ${prev ? `<button class="prev" data-a="copy-prev" data-uid="${item.uid}" data-i="${i}" data-w="${pw ?? 0}" data-r="${pr}" ${s.done || disabled ? 'disabled' : ''} aria-label="Last time ${prev}${per ? ` ${sideNote(ex)}` : ''}. Tap to use these numbers">${prev}${per}</button>` : `<span class="prev none" aria-label="No previous set">—${per}</span>`}
-      <input class="cell" type="text" inputmode="decimal" data-set="${item.uid}:${i}:weight" value="${toDisp(s.weight) ?? ''}" placeholder="—" aria-label="Set ${i + 1} weight in ${wUnit() === 'kg' ? 'kilograms' : 'pounds'}" ${disabled ? 'disabled' : ''}>
+      ${ex.noLoad ? '' : `<input class="cell" type="text" inputmode="decimal" data-set="${item.uid}:${i}:weight" value="${toDisp(s.weight) ?? ''}" placeholder="—" aria-label="Set ${i + 1} weight in ${wUnit() === 'kg' ? 'kilograms' : 'pounds'}" ${disabled ? 'disabled' : ''}>`}
       <input class="cell" type="text" inputmode="numeric" data-set="${item.uid}:${i}:reps" value="${s.reps ?? ''}" aria-label="Set ${i + 1} reps" ${disabled ? 'disabled' : ''}>
       <button class="check" data-a="check-inline" data-uid="${item.uid}" data-i="${i}" ${disabled || s.pain ? 'disabled' : ''} aria-pressed="${s.done}" aria-label="${s.done ? 'Undo' : 'Complete'} set ${i + 1}">${icon('check')}</button>
     </div>${s.rir != null || s.pain ? `<p class="set-extra">${s.pain ? 'Pain flagged' : `${s.rir} reps in reserve`}</p>` : ''}`;
@@ -1277,30 +1292,110 @@ function openMuscleWork(d) {
     <p class="muted small">Sets count once logged. "Add to" a day changes your weekly plan${session ? '; "Add today" is for this workout only' : ''}.</p>`);
 }
 
-// ---------- Strength: estimated max per lift over time ----------
-function strengthPage() {
-  const focus = new Set(focusFor(db, blockInfo(db).index) || []);
-  const rows = [];
-  const seen = new Set(db.sessions.flatMap((s) => s.entries.map((e) => e.exerciseId)));
-  for (const id of seen) {
-    const ex = db.exercises[id];
-    if (!ex || ex.category === 'conditioning' || ex.type === 'bodyweight') continue;
-    const h = exerciseHistory(id).filter((x) => !x.isDeload && !x.excluded);
-    if (!h.length) continue;
-    const first = h[0].best1rm; const now = Math.max(...h.slice(-3).map((x) => x.best1rm)); const best = Math.max(...h.map((x) => x.best1rm));
-    rows.push({ ex, h, first, now, best, focus: focus.has(id), compound: ex.category === 'compound' });
+// ---------- Strength: key lifts first, then by muscle group ----------
+// The big barbell lifts are the usual yardsticks of strength (NSCA; powerlifting's squat, bench and
+// deadlift). Each slot takes the closest lift the person actually does, so someone who leg-presses
+// instead of squatting still sees a lower-body number. Block focus lifts always show.
+const KEY_SLOTS = [
+  { id: 'squat', name: 'Squat', ids: ['back-squat', 'front-squat', 'safety-bar-squat', 'pause-squat', 'box-squat', 'zercher-squat', 'hack-squat', 'smith-squat', 'pendulum-squat', 'belt-squat', 'leg-press', 'v-squat', 'goblet-squat', 'db-squat'] },
+  { id: 'bench', name: 'Bench', ids: ['bench-press', 'close-grip-bench', 'incline-bench', 'db-bench', 'db-incline-bench', 'smith-bench', 'floor-press', 'machine-chest-press', 'plate-chest-press', 'incline-machine-press'] },
+  { id: 'deadlift', name: 'Deadlift', ids: ['deadlift', 'sumo-deadlift', 'trap-bar-deadlift', 'deficit-deadlift', 'snatch-grip-deadlift', 'rdl', 'stiff-leg-deadlift', 'trap-bar-rdl', 'db-deadlift', 'db-rdl', 'kb-deadlift', 'hip-thrust'] },
+  { id: 'press', name: 'Overhead press', ids: ['ohp', 'seated-ohp', 'push-press', 'z-press', 'db-shoulder-press', 'smith-ohp', 'machine-shoulder-press', 'arnold-press', 'landmine-press'] },
+  { id: 'pull', name: 'Pull', ids: ['bb-row', 'pendlay-row', 't-bar-row', 'yates-row', 'chest-supported-tbar', 'db-row', 'iso-row', 'machine-row', 'cable-row', 'lat-pulldown', 'machine-pulldown'] },
+];
+
+// Per lift: estimated max now (best of the last three workouts), eight weeks ago, all-time best.
+function liftStats(id) {
+  const ex = db.exercises[id];
+  if (!ex || ex.category === 'conditioning' || ex.type === 'bodyweight' || ex.noLoad) return null;
+  const h = exerciseHistory(id).filter((x) => !x.isDeload && !x.excluded && x.best1rm > 0);
+  if (!h.length) return null;
+  const now = Math.max(...h.slice(-3).map((x) => x.best1rm));
+  const cut = addDays(todayStr(), -56);
+  const then = [...h].reverse().find((x) => x.date <= cut) || h[0];
+  const best = Math.max(...h.map((x) => x.best1rm));
+  const pct = h.length > 1 && then !== h[h.length - 1] ? Math.round(((now - then.best1rm) / then.best1rm) * 1000) / 10 : null;
+  const recent = h[h.length - 1].date >= addDays(todayStr(), -84);
+  return { id, ex, h, now, best, pct, since: then.date, recent };
+}
+function sparkSvg(h, cls = 'spark') {
+  const pts = h.slice(-12).map((x) => x.best1rm);
+  if (pts.length < 2) return '';
+  const lo = Math.min(...pts); const hi = Math.max(...pts); const span = hi - lo || 1;
+  const d = pts.map((v, i) => `${((i / (pts.length - 1)) * 96 + 2).toFixed(1)},${(26 - ((v - lo) / span) * 22).toFixed(1)}`).join(' ');
+  return `<svg class="${cls}" viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true"><polyline points="${d}"/></svg>`;
+}
+const pctText = (p) => (p == null ? '' : `<span class="${p >= 0 ? 'up' : 'down'}">${p >= 0 ? '+' : ''}${p}%</span>`);
+function keyLifts() {
+  const focus = focusFor(db, blockInfo(db).index) || [];
+  const out = []; const used = new Set();
+  for (const id of focus) { const s = liftStats(id); if (s && !used.has(id)) { out.push({ ...s, label: 'Focus', focus: true }); used.add(id); } }
+  for (const slot of KEY_SLOTS) {
+    if (out.some((x) => slot.ids.includes(x.id))) continue;
+    const s = slot.ids.map(liftStats).find((x) => x && x.recent);
+    if (s && !used.has(s.id)) { out.push({ ...s, label: slot.name }); used.add(s.id); }
   }
-  rows.sort((a, b) => b.focus - a.focus || b.compound - a.compound || b.h.length - a.h.length);
-  const spark = (h) => {
-    const pts = h.slice(-12).map((x) => x.best1rm);
-    if (pts.length < 2) return '';
-    const lo = Math.min(...pts); const hi = Math.max(...pts); const span = hi - lo || 1;
-    const d = pts.map((v, i) => `${((i / (pts.length - 1)) * 96 + 2).toFixed(1)},${(26 - ((v - lo) / span) * 22).toFixed(1)}`).join(' ');
-    return `<svg class="spark" viewBox="0 0 100 30" aria-hidden="true"><polyline points="${d}"/></svg>`;
-  };
-  const pct = (r) => (r.h.length > 1 && r.first ? Math.round(((r.now - r.first) / r.first) * 100) : null);
+  // Doesn't do the classic lifts: their most-trained compound lifts instead.
+  if (out.length < 4) {
+    const seen = [...new Set(db.sessions.flatMap((x) => x.entries.map((e) => e.exerciseId)))];
+    const more = seen.map(liftStats).filter((x) => x && x.recent && !used.has(x.id) && x.ex.category === 'compound').sort((a, b) => b.h.length - a.h.length);
+    for (const s of more.slice(0, 4 - out.length)) { out.push({ ...s, label: 'Main lift' }); used.add(s.id); }
+  }
+  return out.slice(0, 6);
+}
+function keyTile(s, bw) {
+  const ratio = bw && s.ex.type !== 'dumbbell' && s.ex.type !== 'machine' && s.ex.type !== 'cable' ? s.now / bw : null;
+  return `<button class="key-tile ${s.focus ? 'focus' : ''}" data-r="${bodyRegion(s.ex.primary?.[0])}" data-a="ex-info" data-id="${s.id}">
+    <span class="key-label">${esc(s.label)}</span>
+    <b class="key-name">${esc(s.ex.name)}</b>
+    <span class="key-val num">${toDisp(Math.round(s.now))}<small> ${wUnit()}</small></span>
+    <span class="key-sub">${s.pct != null ? `${pctText(s.pct)} in 8 wk` : 'New'}${ratio ? ` · ${ratio.toFixed(2)}× BW` : ''}</span>
+    ${sparkSvg(s.h, 'spark key-spark')}
+  </button>`;
+}
+const median = (v) => { const a = v.filter((x) => x != null).sort((x, y) => x - y); if (!a.length) return null; const m = a.length % 2 ? a[(a.length - 1) / 2] : (a[a.length / 2 - 1] + a[a.length / 2]) / 2; return Math.round(m * 10) / 10; };
+// Lifts that train a group (primary muscle in it).
+function groupLifts(g) {
+  const seen = [...new Set(db.sessions.flatMap((x) => x.entries.map((e) => e.exerciseId)))];
+  return seen.map((id) => db.exercises[id]?.primary?.some((m) => g.muscles.includes(m)) ? liftStats(id) : null).filter(Boolean)
+    .sort((a, b) => (b.ex.category === 'compound') - (a.ex.category === 'compound') || b.recent - a.recent || b.now - a.now);
+}
+
+function strengthPage() {
+  const keys = keyLifts();
+  const bw = latestBodyweight();
+  const overall = median(keys.map((k) => k.pct));
+  const prs8 = db.sessions.filter((s) => s.date >= addDays(todayStr(), -56)).reduce((a, s) => a + (s.prs || []).filter((p) => p.type === 'e1rm').length, 0);
+  const groups = GROUPS.map((g) => ({ g, lifts: groupLifts(g) })).filter((x) => x.lifts.length);
+  if (!keys.length && !groups.length) return `${subHeader('Strength', 'progress-back')}<p class="muted small pad">Log a few workouts with weights and your lifts show up here.</p>`;
   return `${subHeader('Strength', 'progress-back', 'Estimated one-rep max from your best set each workout')}
-    ${rows.length ? `<div class="list-group">${rows.slice(0, 30).map((r) => { const p = pct(r); return `<button class="list-row strength-row" data-a="ex-info" data-id="${r.ex.id}"><span class="grow"><b>${esc(r.ex.name)}</b><span class="pick-sub">${wt(Math.round(r.now))}${p != null ? ` · <span class="${p >= 0 ? 'up' : 'down'}">${p >= 0 ? '+' : ''}${p}%</span> since ${fmtDate(r.h[0].date)}` : ''}${r.best > r.now + 0.5 ? ` · best ${wt(Math.round(r.best))}` : ''}</span></span>${spark(r.h)}${icon('right', 'chev')}</button>`; }).join('')}</div>` : '<p class="muted small pad">Log a few workouts and your lifts show up here.</p>'}`;
+    ${keys.length ? `<section class="card strength-hero">
+      <div class="row between"><h3>Key lifts</h3>${overall != null ? `<span class="small">Overall ${pctText(overall)} in 8 weeks</span>` : ''}</div>
+      <div class="key-grid">${keys.map((k) => keyTile(k, bw)).join('')}</div>
+      ${prs8 ? `<p class="muted small">${prs8} new ${prs8 === 1 ? 'best' : 'bests'} in the last 8 weeks.</p>` : ''}
+    </section>` : ''}
+    <h2 class="group-title">By muscle group</h2>
+    <div class="list-group">${groups.map(({ g, lifts }) => {
+      const top = lifts[0]; const p = median(lifts.filter((x) => x.recent).map((x) => x.pct));
+      return `<button class="list-row" data-a="prog-sub" data-v="strength-${g.id}"><span class="grp-art">${muscleIcon(g.muscles[0])}</span><span class="grow"><b>${g.name}</b><span class="pick-sub">${esc(top.ex.name)} ${wt(Math.round(top.now))}</span></span>${p != null ? `<span class="small">${pctText(p)}</span>` : ''}${icon('right', 'chev')}</button>`;
+    }).join('')}</div>`;
+}
+
+function strengthGroupPage(gid) {
+  const g = groupById(gid);
+  if (!g) return strengthPage();
+  const lifts = groupLifts(g);
+  const bw = latestBodyweight();
+  const big = lifts.filter((x) => x.recent).slice(0, 3);
+  const rest = lifts.filter((x) => !big.includes(x));
+  return `${subHeader(g.name, 'progress-back', 'Strength in the lifts that train it most')}
+    ${big.length ? `<section class="card strength-hero"><h3>Biggest lifts</h3><div class="key-grid">${big.map((s) => keyTile({ ...s, label: s.ex.category === 'compound' ? 'Compound' : 'Accessory' }, bw)).join('')}</div></section>` : ''}
+    ${rest.length ? `<details class="sub-details all-lifts" ${big.length ? '' : 'open'}><summary>All ${g.name.toLowerCase()} exercises (${rest.length})</summary>
+      <div class="list-group compact">${rest.map((s) => `<button class="list-row strength-row" data-a="ex-info" data-id="${s.id}"><span class="grow"><span>${esc(s.ex.name)}</span><span class="pick-sub">${wt(Math.round(s.now))}${s.pct != null ? ` · ${pctText(s.pct)}` : ''}${s.recent ? '' : ' · not lately'}</span></span>${sparkSvg(s.h)}</button>`).join('')}</div></details>` : ''}`;
+}
+function latestBodyweight() {
+  const list = [...(db.bodyweight || [])].sort((a, b) => a.date.localeCompare(b.date));
+  return list.length ? list[list.length - 1].weight : +db.profile?.weightLb || null;
 }
 
 // ---------- Train: today's finished workout ----------
@@ -2025,7 +2120,7 @@ function openSetSheet(uid, idx) {
   openSheet(`
     <h2>${esc(ex.name)}</h2>
     <p class="muted small">Set ${idx + 1} of ${entry.sets.length} · range ${entry.repMin}–${entry.repMax}</p>
-    <div class="field"><span>${weightLabel}</span>${stepper('f-weight', toDisp(s.weight), wUnit() === 'kg' ? 2.5 : step)}</div>
+    <div class="field" ${ex.noLoad ? 'hidden' : ''}><span>${weightLabel}</span>${stepper('f-weight', toDisp(s.weight), wUnit() === 'kg' ? 2.5 : step)}</div>
     <div class="field"><span>Reps</span>${stepper('f-reps', s.reps, 1)}</div>
     <div class="field"><span>Set type</span>
       <div class="chips" id="set-types">${[['', 'Normal'], ...Object.entries(SET_TYPES).map(([k, v]) => [k, v[1]])].map(([k, l]) => `<button class="chip ${(s.type || '') === k ? 'on' : ''}" data-a="set-type" data-uid="${uid}" data-i="${idx}" data-v="${k}">${l}</button>`).join('')}</div>
@@ -2438,6 +2533,7 @@ function screenHistory() {
 
 function progressPage(which) {
   if (which === 'strength') return strengthPage();
+  if (which?.startsWith('strength-')) return strengthGroupPage(which.slice(9));
   const seen = new Map();
   for (const s of [...db.sessions].reverse()) for (const e of s.entries) if (!seen.has(e.exerciseId)) seen.set(e.exerciseId, s.date);
   const recent = [...db.sessions].reverse().slice(0, 40);
@@ -3347,7 +3443,7 @@ function navDir(from, to) {
     const order = sessionFor(ui.day)?.order || todayItems(ui.day).map((i) => i.uid);
     return order.indexOf(tb) < order.indexOf(fb) ? 'back' : 'forward';
   }
-  if (fa === ta) return fb === undefined ? 'forward' : 'back';
+  if (fa === ta) return fb === undefined || (tb && tb.startsWith(`${fb}-`)) ? 'forward' : 'back';
   if (PUSHED.includes(ta) && !PUSHED.includes(fa)) return 'forward';
   if (PUSHED.includes(fa) && !PUSHED.includes(ta)) return 'back';
   return 'fade';
@@ -3625,7 +3721,7 @@ const actions = {
   },
   'settings-page': (d) => { ui.setPage = d.v; window.scrollTo(0, 0); render(); },
   'prog-sub': (d) => { ui.progSub = d.v; window.scrollTo(0, 0); render(); },
-  'progress-back': () => { if (ui.tab === 'body') ui.tab = 'history'; ui.progSub = null; window.scrollTo(0, 0); render(); },
+  'progress-back': () => { if (ui.tab === 'body') ui.tab = 'history'; ui.progSub = ui.progSub?.startsWith('strength-') ? 'strength' : null; window.scrollTo(0, 0); render(); },
   'plan-open-day': (d) => { ui.planDay = d.day; ui.planView = 'day'; window.scrollTo(0, 0); render(); },
   'plan-back': () => { ui.planView = 'week'; window.scrollTo(0, 0); render(); },
   'progress-view': (d) => { ui.tab = d.v; ui.historyEx = null; window.scrollTo(0, 0); render(); },

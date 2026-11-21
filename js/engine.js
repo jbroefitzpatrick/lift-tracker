@@ -142,7 +142,7 @@ export function getState(db, exId) {
   const ex = db.exercises[exId];
   const st = db.state[exId] || {};
   return {
-    targetWeight: st.targetWeight !== undefined ? st.targetWeight : ex?.startWeight ?? null,
+    targetWeight: ex?.noLoad ? 0 : st.targetWeight !== undefined ? st.targetWeight : ex?.startWeight ?? null, // reps-only moves carry no weight
     targetReps: st.targetReps ?? null,
     targetTotal: st.targetTotal ?? null,
     tm: st.tm ?? null, // training max, for percentage cycles
