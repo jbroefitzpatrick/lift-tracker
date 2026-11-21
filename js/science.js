@@ -369,4 +369,14 @@ export const REFS = {
     finding: 'Expert coaches typically deload for 5–7 days every 4–6 weeks, mainly by cutting volume and effort. Practice-based, not trial evidence.',
     url: 'https://doi.org/10.3389/fspor.2022.1073223',
   },
+  zhang2016: {
+    cite: 'Zhang J, Brackbill D, Yang S, Becker J, Herbert N, Centola D (2016). Support or competition? How online social networks increase physical activity: a randomized controlled trial. Prev Med Rep 4:453-458.',
+    finding: 'In an 11-week trial, people placed in small competitive groups with a leaderboard attended about 90% more exercise classes than controls; social support alone did not help.',
+    url: 'https://doi.org/10.1016/j.pmedr.2016.08.008',
+  },
+  festinger1954: {
+    cite: 'Festinger L (1954). A theory of social comparison processes. Hum Relat 7(2):117-140.',
+    finding: 'People judge their abilities by comparing with others, and comparisons with similar others are the most informative and motivating. Comparing progress rather than absolute strength keeps peers of different sizes and levels comparable.',
+    url: 'https://doi.org/10.1177/001872675400700202',
+  },
 };

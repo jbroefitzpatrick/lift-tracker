@@ -31,6 +31,8 @@ import { createYear } from './ui-year.js';
 import { createExtras } from './ui-extra.js';
 import { createCloud } from './ui-cloud.js';
 import { createAccountUi } from './ui-account.js';
+import { createPeople } from './ui-people.js';
+import { account } from './account.js';
 import { workoutBurn, cardioBurn, workoutMinutes } from './energy.js';
 import { createPain } from './ui-pain.js';
 import { LEVELS as PAIN_LEVELS, JOINTS, activePain, areaLabel } from './pain.js';
@@ -1037,7 +1039,7 @@ function weekRingsCard() {
     <div class="ring-row">
       ${big('r-lift', w.planned ? w.lifts / w.planned : 0, w.lifts, w.planned ? `of ${w.planned} planned` : 'this week', 'Workouts')}
       ${big('r-cardio', w.cardioTarget ? w.cardioMin / w.cardioTarget : 0, w.cardioMin, w.cardioTarget ? `of ${w.cardioTarget} min` : 'minutes', 'Cardio')}
-      ${big('r-protein', w.protein != null ? w.protein / w.pTarget : 0, w.protein != null ? Math.round(w.protein) : '—', w.protein != null ? `of ${w.pTarget} g a day` : 'log food to see', 'Protein')}
+      ${foodOn() ? big('r-protein', w.protein != null ? w.protein / w.pTarget : 0, w.protein != null ? Math.round(w.protein) : '—', w.protein != null ? `of ${w.pTarget} g a day` : 'log food to see', 'Protein') : ''}
     </div>
 
   </section>`;
@@ -3209,6 +3211,7 @@ function screenSettings() {
     <div class="list-group">
       ${row('settings-page', 'backup', 'Backup and data', lastBk ? `Last backup ${lastBk}` : 'No backup yet')}
       ${row('health-setup', '', 'Apple Health', 'Send workout calories to Health')}
+      <label class="list-row toggle-row"><span class="grow"><b>Food tracking</b><span class="pick-sub">${foodOn() ? 'Food tab, calorie and protein targets' : 'Off. Turn on to show the Food tab'}</span></span><input type="checkbox" switch data-a="set-food" ${foodOn() ? 'checked' : ''} aria-label="Food tracking"></label>
       ${row('settings-page', 'appearance', 'Appearance and units', `${{ dark: 'Dark', light: 'Light', system: 'Match iPhone' }[s.theme] || ''} · ${wUnit()}`)}
       ${row('open-share', '', 'Share the app', '')}
       ${row('tour-replay', '', 'Show the tour again', '')}
@@ -3284,7 +3287,9 @@ const year = createYear(ctx);
 const extras = createExtras(ctx);
 const cloud = createCloud(ctx);
 const acctUi = createAccountUi(ctx);
-afterPersist = () => acctUi.schedule();
+const people = createPeople(ctx);
+ctx.people = people;
+afterPersist = () => { acctUi.schedule(); people.schedule(); };
 const pain = createPain(ctx);
 const train = createTrain(ctx);
 const focusUi = createFocus(ctx);
@@ -3300,9 +3305,17 @@ const TABS = [
   ['plan', 'Plan', '<path d="M4 10h16M7 3v4M17 3v4M5 6h14a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1z"/>'],
   ['food', 'Food', '<path d="M7 3v8a2 2 0 0 0 4 0V3M9 11v10M17 3c-2 0-3 3-3 6s1 4 3 4v8"/>'],
   ['progress', 'Progress', '<path d="M4 19V5M4 19h16M8 15l3-4 3 2 5-6"/>'],
+  ['people', 'People', '<circle cx="9" cy="8" r="3.2"/><path d="M3.5 19.5c.6-3.3 2.9-5.2 5.5-5.2s4.9 1.9 5.5 5.2"/><circle cx="17" cy="9" r="2.6"/><path d="M15.8 14.3c2.3-.2 4.1 1.4 4.7 4.4"/>'],
 ];
+// People needs an account, so it shows only when signed in.
+const peopleOn = () => !!account()?.token;
+// Food is hidden when food tracking is off (Food tab, bottom; back on from Settings).
+const foodOn = () => db.settings.foodTracking !== false;
+function visibleTabs() {
+  return TABS.filter(([k]) => (k !== 'food' || foodOn()) && (k !== 'people' || peopleOn()));
+}
 const GEAR = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6a7 7 0 0 0 0 2.4l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.07-.4.1-.8.1-1.2z"/></svg>';
-const MAIN_SCREENS = ['today', 'plan', 'food', 'history', 'body'];
+const MAIN_SCREENS = ['today', 'plan', 'food', 'history', 'body', 'people'];
 
 function progressTabs() {
   const t = ui.tab === 'body' ? 'body' : 'history';
@@ -3324,6 +3337,7 @@ function screenKey() {
   if (ui.tab === 'body') return 'history:body';
   if (ui.tab === 'plan' && ui.planView && ui.planView !== 'week') return `plan:${ui.planView}`;
   if (ui.tab === 'settings' && ui.setPage) return `settings:${ui.setPage}`;
+  if (ui.tab === 'people' && ui.people?.client) return `people:${ui.people.edit ? 'edit' : 'client'}`;
   return ui.tab;
 }
 function navDir(from, to) {
@@ -3354,9 +3368,11 @@ function animateIn(main, dir) {
 function render() {
   if (!db) return;
   const screens = {
-    today: screenToday, summary: screenSummary, history: screenHistory, body: screenBody, food: () => food.screen(),
+    today: screenToday, summary: screenSummary, history: screenHistory, body: screenBody, food: () => food.screen(), people: () => people.screen(),
     plan: screenPlan, settings: screenSettings, builder: screenBuilder, 'edit-session': screenEditSession, exercise: screenExercise,
   };
+  // A tab that was switched off (food tracking, or signed out of People) falls back to Train.
+  if ((ui.tab === 'food' && !foodOn()) || (ui.tab === 'people' && !peopleOn())) ui.tab = 'today';
   // Workout view: once a workout starts, Train and the exercise screen drop the tab bar and extras.
   if (!db.activeSession) ui.peek = false;
   const inWorkout = !!db.activeSession && ['today', 'exercise'].includes(ui.tab) && !ui.peek;
@@ -3379,13 +3395,13 @@ function render() {
   // Settings is reached from a gear in the header of each main screen.
   const header = $('#main header.top');
   const subPage = (ui.tab === 'plan' && ui.planView && ui.planView !== 'week') || (ui.tab === 'history' && (ui.historyEx || ui.progSub)) || ui.tab === 'body';
-  if (header && MAIN_SCREENS.includes(ui.tab) && !['today', 'food'].includes(ui.tab) && !subPage) {
+  if (header && MAIN_SCREENS.includes(ui.tab) && !['today', 'food', 'people'].includes(ui.tab) && !subPage) {
     header.insertAdjacentHTML('beforeend', `<button class="icon-btn" data-a="open-settings" aria-label="Settings">${GEAR}</button>`);
   }
   const active = { exercise: 'today', summary: ui.summaryFresh ? 'today' : 'progress', builder: 'plan', 'edit-session': 'progress', history: 'progress', body: 'progress', settings: ui.prevTab === 'history' || ui.prevTab === 'body' ? 'progress' : ui.prevTab }[ui.tab] || ui.tab;
-  $('#tabs').innerHTML = TABS.map(([k, label, icon]) => `
+  $('#tabs').innerHTML = visibleTabs().map(([k, label, icon]) => `
     <button class="tab ${k === active ? 'on' : ''}" data-a="tab" data-tab="${k}" aria-current="${k === active ? 'page' : 'false'}">
-      <svg viewBox="0 0 24 24" aria-hidden="true">${icon}</svg><span>${label}</span>
+      <svg viewBox="0 0 24 24" aria-hidden="true">${icon}</svg><span>${label}</span>${k === 'people' && people.pendingCount() ? `<span class="tab-badge" aria-label="${people.pendingCount()} new">${people.pendingCount()}</span>` : ''}
     </button>`).join('');
   renderRest();
 }
@@ -3393,7 +3409,7 @@ function render() {
 // ---------- Events ----------
 
 const actions = {
-  tab: (d) => { ui.infoFrom = null; if (d.tab === 'today') ui.peek = false; if (!$('#sheet').hidden) closeSheet(); ui.summaryFresh = false; ui.selecting = false; ui.tab = d.tab === 'progress' ? 'history' : d.tab; if (d.tab === 'progress') ui.progSub = null; if (d.tab === 'plan') ui.planView = 'week'; if (d.tab === 'today') ui.summaryId = null; if (d.tab === 'history') ui.historyEx = null; window.scrollTo(0, 0); render(); },
+  tab: (d) => { ui.infoFrom = null; if (d.tab === 'today') ui.peek = false; if (!$('#sheet').hidden) closeSheet(); ui.summaryFresh = false; ui.selecting = false; ui.tab = d.tab === 'progress' ? 'history' : d.tab; if (d.tab === 'progress') ui.progSub = null; if (d.tab === 'plan') ui.planView = 'week'; if (d.tab === 'today') ui.summaryId = null; if (d.tab === 'history') ui.historyEx = null; if (d.tab === 'people') { if (ui.people) { ui.people.client = null; ui.people.edit = null; } people.refresh(); } window.scrollTo(0, 0); render(); },
   day: (d) => { ui.day = d.day; ui.tab = 'today'; ui.showCardio = false; ui.selecting = false; render(); },
   'open-set': (d) => openSetSheet(d.uid, +d.i),
   'leave-workout-view': () => { closeSheet(); ui.peek = true; render(); toast('Your workout keeps running. Tap "Back to workout" to return.'); },
@@ -3602,6 +3618,11 @@ const actions = {
   'start-workout': () => { ensureSession(ui.day); haptic(); render(); },
   'open-settings': (d) => { if (!$('#sheet').hidden) closeSheet(); ui.setPage = d?.page || null; ui.prevTab = ui.tab; ui.tab = 'settings'; window.scrollTo(0, 0); render(); },
   'settings-back': () => { if (ui.setPage) { ui.setPage = null; window.scrollTo(0, 0); return render(); } ui.tab = ui.prevTab || 'today'; window.scrollTo(0, 0); render(); },
+  'set-food': (d, el) => { db.settings.foodTracking = !!el.checked; persist(); render(); toast(foodOn() ? 'Food tracking is on.' : 'Food tracking is off.'); },
+  'food-off': () => {
+    if (!confirm('Turn off food tracking? The Food tab goes away and your food log is kept. Turn it back on in Settings.')) return;
+    db.settings.foodTracking = false; persist(); ui.tab = 'today'; window.scrollTo(0, 0); render(); toast('Food tracking is off. Turn it back on in Settings.');
+  },
   'settings-page': (d) => { ui.setPage = d.v; window.scrollTo(0, 0); render(); },
   'prog-sub': (d) => { ui.progSub = d.v; window.scrollTo(0, 0); render(); },
   'progress-back': () => { if (ui.tab === 'body') ui.tab = 'history'; ui.progSub = null; window.scrollTo(0, 0); render(); },
@@ -4320,7 +4341,7 @@ const actions = {
   },
 };
 
-Object.assign(actions, food.actions, year.actions, extras.actions, cloud.actions, acctUi.actions, pain.actions, train.actions, focusUi.actions, exEditor.actions, planTools.actions, health.actions);
+Object.assign(actions, food.actions, year.actions, extras.actions, cloud.actions, acctUi.actions, people.actions, pain.actions, train.actions, focusUi.actions, exEditor.actions, planTools.actions, health.actions);
 
 onReorder('session', (uid, to, opt = {}) => {
   const shown = todayItems(ui.day);
@@ -4434,6 +4455,7 @@ document.addEventListener('change', (e) => {
 });
 
 document.addEventListener('input', (e) => {
+  if (people.onInput(e)) return;
   // Search boxes on lists: hide rows that don't match, and headings left with nothing under them.
   if (e.target.matches?.('.list-filter')) {
     const q = e.target.value.trim().toLowerCase();
@@ -4525,6 +4547,7 @@ actions['recovery-download'] = () => recoveryRaw && download(`lift-recovery-${to
   dailySnapshot(db);
   cloud.onBoot();
   acctUi.start();
+  people.start();
   // Reopened mid-workout (even after the app was fully closed): go straight back to it.
   if (db.activeSession) { ui.day = db.activeSession.day; ui.tab = 'today'; render(); setTimeout(() => toast('Workout resumed where you left off.'), 400); }
   // Existing plans: core placement starts at the default once.

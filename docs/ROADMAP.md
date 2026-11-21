@@ -23,7 +23,7 @@ See [NATIVE-APP.md](NATIVE-APP.md): lock-screen and Dynamic Island rest timer (L
 
 ## Trainer and client
 A trainer sees a client's plan and history, edits exercises, and sends lifts or whole programs; the client keeps logging as usual.
-- Accounts (passkey and recovery code) and record-level sync are built (see [CLOUD-BACKUP.md](CLOUD-BACKUP.md#accounts-and-sync)). Next: sharing grants between accounts (invite code, revocable, per section), then friends and comparison, trainer tools, and web push for rest alerts and trainer messages.
+- Accounts (passkey and recovery code) and record-level sync are built (see [CLOUD-BACKUP.md](CLOUD-BACKUP.md#accounts-and-sync)). Friends (boards, challenges, cheers) and coaching (shared data by section, plan suggestions, notes) are built in the People tab. Next: web push for rest alerts, coach notes and challenge results; coach tools for several clients at once (templates, bulk suggestions); paid trainer seats in the native app.
 - Trainer edits become a "proposed plan" the client accepts, so nothing changes mid-workout and both sides keep their own history.
 - Sharing is opt-in and per section (plan, workouts, body weight, food), since health data is sensitive.
 - Natural fit for the paid app: trainers pay per client seat; clients use the app as normal.

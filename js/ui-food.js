@@ -66,7 +66,8 @@ export function createFood(ctx) {
       </section>
       <div class="food-search"><button class="search-btn" data-a="food-add" data-meal="${nextMeal}">${icon('search')}<span>Search foods</span></button><button class="icon-btn accent" data-a="food-more" data-meal="${nextMeal}" aria-label="More ways to add food">${icon('plus')}</button></div>
       ${mealCards}
-      <div class="list-group"><button class="list-row" data-a="food-energy"><span class="grow"><b>Energy balance and weekly check-in</b><span class="pick-sub">Burned ~${r0(dayEnergy(db, d).total).toLocaleString()} kcal today${db.profile ? '' : ' · default targets'}</span></span>${icon('right', 'chev')}</button></div>`;
+      <div class="list-group"><button class="list-row" data-a="food-energy"><span class="grow"><b>Energy balance and weekly check-in</b><span class="pick-sub">Burned ~${r0(dayEnergy(db, d).total).toLocaleString()} kcal today${db.profile ? '' : ' · default targets'}</span></span>${icon('right', 'chev')}</button></div>
+      <button class="text-link center-link" data-a="food-off">Turn off food tracking</button>`;
   }
 
   function openSettings() {

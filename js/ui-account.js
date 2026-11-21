@@ -88,6 +88,7 @@ export function createAccountUi(ctx) {
     setPending(false);
     ctx.toast('Syncing…');
     const r = await run({ mode });
+    if (r) ctx.people?.publish().then(() => ctx.people.refresh()).then(() => ctx.people.maybeInvite());
     ctx.toast(r ? `Signed in as ${account()?.user.name}. ${r.received ? "Your account's data is on this phone." : 'Your data is in your account.'}` : `Sync didn't finish: ${lastError}`);
     ctx.render();
   }
@@ -156,7 +157,7 @@ export function createAccountUi(ctx) {
         resetSyncState();
         ctx.render();
         showCode(code, true);
-        run();
+        run().then(() => ctx.people?.publish()).then(() => ctx.people?.refresh());
       } catch (e) { ctx.toast(e.name === 'NotAllowedError' ? 'Passkey was cancelled.' : e.message); }
     },
     'acct-passkey': async () => {
@@ -173,7 +174,7 @@ export function createAccountUi(ctx) {
     'acct-copy': async () => { try { await navigator.clipboard.writeText(account()?.code || ''); ctx.toast('Copied.'); } catch { ctx.toast('Select the code and copy it.'); } },
     'acct-signout': async () => {
       if (!confirm('Sign out of this phone? Your data stays on this phone and in your account.')) return;
-      await signOut(); resetSyncState(); setPending(false); ctx.render(); ctx.toast('Signed out.');
+      await signOut(); resetSyncState(); setPending(false); ctx.people?.reset(); ctx.render(); ctx.toast('Signed out.');
     },
   };
 

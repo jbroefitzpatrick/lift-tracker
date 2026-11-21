@@ -12,6 +12,8 @@
 //
 // Storage: Cloudflare D1 (SQLite), binding DB. Tables in schema.sql.
 
+import { handleSocial } from './social.js';
+
 const enc = new TextEncoder();
 const b64u = {
   encode(bytes) { let s = ''; for (const b of new Uint8Array(bytes)) s += String.fromCharCode(b); return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); },
@@ -254,6 +256,12 @@ export async function handleV2(req, env, url, json, allowedOrigins, accessOk) {
         more,
         docs: list.map((r) => ({ id: r.id, ver: r.ver, ts: r.ts, deleted: !!r.deleted, data: r.deleted ? null : JSON.parse(r.data) })),
       });
+    }
+    // Friends and coaching (social.js).
+    if ((path.startsWith('/v2/social') || path.startsWith('/v2/coach/')) && (req.method === 'POST' || path === '/v2/social')) {
+      const user = await authUser(req, env);
+      if (!user) return json({ error: 'Signed out.' }, 401);
+      return handleSocial(path, body, user, env, json);
     }
     return json({ error: 'Not found.' }, 404);
   } catch (e) {

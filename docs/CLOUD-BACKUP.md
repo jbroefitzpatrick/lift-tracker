@@ -125,6 +125,16 @@ The same worker also runs accounts (`cloud/accounts.js`) on a D1 database named 
 - **Not synced:** progress photos, and settings that describe the phone itself (tips shown, backup reminders, the install hint).
 - **Unlike cloud backup, synced data isn't end-to-end encrypted:** the server can read it, which sharing with a trainer or friends will need. It's stored in Cloudflare D1 and only returned to a signed-in session for that account.
 
+## Friends and coaching
+
+Routes in `cloud/social.js`, tables at the end of `cloud/schema.sql` (links, invites, cards, cheers, contests, proposals, messages). In the app: the **People** tab, shown only when signed in.
+
+- **Connecting:** single-use invite codes (`ABCD-EFGH`, 7 days), shared as a link (`…/lift-tracker/?invite=CODE`) or typed in. Three kinds: a friend; "coach me" (the inviter picks what the coach sees); "I'll coach you" (the person accepting picks).
+- **What friends see:** each phone publishes a small card (`js/card.js`): workouts done against its own plan this week, sets, streak, weekly best estimated max per lift for 12 weeks, records as a percentage, and the last 10 workouts by name and set count. No weights, food, body data or notes.
+- **Comparison:** a weekly board (workouts done / planned, then sets) and a progress board (median % change in estimated max, last two weeks against weeks three to six back). Head-to-head challenges: most workouts, or % gain on a lift both people log, over 1, 2 or 4 weeks. Cheers on records and workouts.
+- **Coaching:** the coach reads the client's synced documents for the parts shared (plan, workouts, body, food; recent workouts and food only). Plan suggestions are whole days the client reviews as a list of added, changed and removed exercises; nothing changes until they accept (a snapshot is taken first). Notes go both ways, optionally about one workout. The client can change what's shared or end coaching at any time, which deletes the notes.
+- **Not yet:** push notifications (the People tab shows a badge when the app is open), and trainers paying per client.
+
 | Task | How |
 |---|---|
 | Create the database (done once) | `npx wrangler d1 create lift`, paste the id into `wrangler.toml` |
