@@ -119,7 +119,7 @@ New phone, wiped data, or a bad update:
 The same worker also runs accounts (`cloud/accounts.js`) on a D1 database named `lift` (binding `DB` in `cloud/wrangler.toml`). In the app: **Settings → Account and sync**.
 
 - **Sign-in:** a passkey (Face ID, stored in iCloud Keychain, so it reaches the person's other Apple devices) or a recovery code shown once when the account is made. The server keeps only public keys, a hash of the recovery code, and hashes of session tokens.
-- **New accounts need the beta access key** (the same one as cloud backup, so it arrives with the setup link). Signing in to an existing account doesn't.
+- **Anyone can create an account,** up to 5 a day from one network and 300 a day overall (the cap uses a hash of the IP address, table `signups`). The beta access key skips the cap.
 - **Sync:** the record is split into small documents (one per workout, weigh-in, food entry, exercise, plan day, and each top-level setting group). Each phone sends what changed since its last sync and receives what's newer than the last version it saw. The newest change to each document wins. It runs about 20 seconds after a change, when the app opens, and when it's put away.
 - **First sign-in on a phone with its own data** asks whether to combine both or use the account's data. Where both have the same document (settings, plan days), the account's copy is kept. A snapshot of the phone's data is taken first, and again before the first sync each day.
 - **Not synced:** progress photos, and settings that describe the phone itself (tips shown, backup reminders, the install hint).

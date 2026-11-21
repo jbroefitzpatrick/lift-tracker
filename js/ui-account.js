@@ -93,6 +93,23 @@ export function createAccountUi(ctx) {
     ctx.render();
   }
 
+  // Sign-up and sign-in problems stay on the page (a toast can vanish before it's read).
+  let authError = null; // { where: 'create' | 'signin', text }
+  const typed = { name: '', code: '' };
+  function explain(e) {
+    if (e.name === 'NotAllowedError') return "The passkey wasn't saved. If you didn't cancel it, check that iCloud Keychain is on: Settings → your name → iCloud → Passwords and Keychain.";
+    if (e.name === 'InvalidStateError') return 'This phone already has a passkey for Lift. Use Sign in with a passkey instead.';
+    if (e.name === 'SecurityError') return 'Passkeys only work in the app opened from its own address (jbroefitzpatrick.github.io).';
+    return e.message || 'Something went wrong. Try again.';
+  }
+  function fail(where, e) {
+    typed.name = document.getElementById('acct-name')?.value ?? typed.name;
+    typed.code = document.getElementById('acct-code')?.value ?? typed.code;
+    authError = { where, text: explain(e) };
+    ctx.render();
+  }
+  const errFor = (where) => (authError?.where === where ? `<p class="notice warn small" role="alert">${esc(authError.text)}</p>` : '');
+
   function page() {
     const a = account();
     const st = syncState();
@@ -103,15 +120,17 @@ export function createAccountUi(ctx) {
       </div>
       <h2 class="group-title">New here</h2>
       <div class="card">
-        <div class="field"><span>Your name</span><input id="acct-name" type="text" autocomplete="name" placeholder="Shown to people you share with later"></div>
+        <div class="field"><span>Your name</span><input id="acct-name" type="text" autocomplete="name" placeholder="Shown to people you share with later" value="${esc(typed.name)}"></div>
         <button class="btn primary block" data-a="acct-create" ${passkeysSupported() ? '' : 'disabled'}>Create account with a passkey</button>
         ${passkeysSupported() ? '' : '<p class="muted small">Passkeys need the app opened from the home screen on an up-to-date iPhone or a current browser.</p>'}
+        ${errFor('create')}
       </div>
       <h2 class="group-title">Already have an account</h2>
       <div class="card">
         <button class="btn block" data-a="acct-passkey" ${passkeysSupported() ? '' : 'disabled'}>Sign in with a passkey</button>
-        <div class="field"><span>Or your recovery code</span><input id="acct-code" type="text" autocapitalize="characters" autocomplete="off" placeholder="ABCDE-FGHJK-LMNPQ-RSTUV"></div>
+        <div class="field"><span>Or your recovery code</span><input id="acct-code" type="text" autocapitalize="characters" autocomplete="off" placeholder="ABCDE-FGHJK-LMNPQ-RSTUV" value="${esc(typed.code)}"></div>
         <button class="btn block" data-a="acct-code">Sign in with the code</button>
+        ${errFor('signin')}
       </div>`;
     }
     if (pending()) {
@@ -150,7 +169,10 @@ export function createAccountUi(ctx) {
   const actions = {
     'acct-create': async () => {
       const name = (document.getElementById('acct-name')?.value || '').trim();
-      if (!name) return ctx.toast('Add your name first.');
+      if (!name) return fail('create', new Error('Add your name first.'));
+      authError = null;
+      typed.name = name;
+      ctx.toast('Creating your account…');
       try {
         const { code } = await createAccount(name);
         // A new account is empty: this phone's data goes up quietly while the code is on screen.
@@ -158,13 +180,15 @@ export function createAccountUi(ctx) {
         ctx.render();
         showCode(code, true);
         run().then(() => ctx.people?.publish()).then(() => ctx.people?.refresh());
-      } catch (e) { ctx.toast(e.name === 'NotAllowedError' ? 'Passkey was cancelled.' : e.message); }
+      } catch (e) { fail('create', e); }
     },
     'acct-passkey': async () => {
-      try { await signInWithPasskey(); ctx.render(); await linkThisPhone(); } catch (e) { ctx.toast(e.name === 'NotAllowedError' ? 'Passkey was cancelled.' : e.message); }
+      authError = null;
+      try { await signInWithPasskey(); ctx.render(); await linkThisPhone(); } catch (e) { fail('signin', e); }
     },
     'acct-code': async () => {
-      try { await signInWithCode(document.getElementById('acct-code')?.value); ctx.render(); await linkThisPhone(); } catch (e) { ctx.toast(e.message); }
+      authError = null;
+      try { await signInWithCode(document.getElementById('acct-code')?.value); typed.code = ''; ctx.render(); await linkThisPhone(); } catch (e) { fail('signin', e); }
     },
     'acct-link': (d) => finishLink(d.v),
     'acct-relink': () => linkThisPhone(),

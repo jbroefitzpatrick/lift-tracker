@@ -129,7 +129,14 @@ export async function handleV2(req, env, url, json, allowedOrigins, accessOk) {
   try {
     // Create an account (beta: needs the access key) — step 1 of 2: a passkey challenge.
     if (path === '/v2/auth/register/start' && req.method === 'POST') {
-      if (!accessOk) return json({ error: 'Creating an account needs the beta access key (Settings → Backup → Cloud backup setup link).' }, 401);
+      // Open sign-up, with a cap per network and overall per day (the beta access key skips it).
+      if (!accessOk) {
+        const day = now() - 86400000;
+        const ip = hex(await sha256(`lift-ip:${req.headers.get('CF-Connecting-IP') || 'unknown'}`));
+        const mine = await env.DB.prepare('SELECT COUNT(*) AS n FROM signups WHERE ip = ? AND created > ?').bind(ip, day).first();
+        const all = await env.DB.prepare('SELECT COUNT(*) AS n FROM signups WHERE created > ?').bind(day).first();
+        if ((mine?.n || 0) >= 5 || (all?.n || 0) >= 300) return json({ error: 'Too many new accounts today. Try again tomorrow.' }, 429);
+      }
       const name = String(body.name || '').trim().slice(0, 40);
       if (!name) return json({ error: 'Add a name.' }, 400);
       const rpId = rpIdFor(origin);
@@ -166,6 +173,7 @@ export async function handleV2(req, env, url, json, allowedOrigins, accessOk) {
         if (!/^[0-9a-f]{64}$/.test(body.codeHash || '')) return json({ error: 'Missing recovery code.' }, 400);
         await env.DB.batch([
           env.DB.prepare('INSERT INTO users (id, name, created, ver) VALUES (?, ?, ?, 0)').bind(ch.user_id, ch.name, now()),
+          env.DB.prepare('INSERT INTO signups (ip, created) VALUES (?, ?)').bind(hex(await sha256(`lift-ip:${req.headers.get('CF-Connecting-IP') || 'unknown'}`)), now()),
           env.DB.prepare('INSERT INTO codes (hash, user_id) VALUES (?, ?)').bind(hex(await sha256(body.codeHash)), ch.user_id),
         ]);
       }

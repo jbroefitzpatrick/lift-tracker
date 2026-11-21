@@ -110,3 +110,10 @@ CREATE TABLE IF NOT EXISTS messages (-- notes between a coach and client, option
   created INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS messages_link ON messages (link_id, created);
+
+-- New accounts per network per day (hash of the IP address), for the sign-up cap.
+CREATE TABLE IF NOT EXISTS signups (
+  ip TEXT NOT NULL,
+  created INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS signups_ip ON signups (ip, created);
