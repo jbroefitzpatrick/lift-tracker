@@ -1,9 +1,10 @@
 // Settings → Account and sync: create an account (passkey), sign in, recovery code, sync status.
 // Also runs sync in the background: shortly after changes, when the app opens, and when it's left.
 
-import { account, createAccount, signInWithPasskey, signInWithCode, addPasskey, signOut, passkeysSupported } from './account.js';
+import { account, createAccount, signInWithPasskey, signInWithCode, addPasskey, signOut, passkeysSupported, deleteAccount } from './account.js';
 import { syncNow, syncState, resetSyncState, applyDocs, hasOwnData, peekRemote } from './sync.js';
 import { safetySnapshot } from './store.js';
+import { pushStatus, enablePush, disablePush, testPush } from './push.js';
 
 export function createAccountUi(ctx) {
   const { esc } = ctx;
@@ -114,7 +115,9 @@ export function createAccountUi(ctx) {
     const a = account();
     const st = syncState();
     if (!a) {
-      return `<div class="card">
+      let invited = false;
+      try { invited = !!localStorage.getItem('lift.invite'); } catch {}
+      return `${invited ? '<div class="notice-card"><b>You have an invite</b><p class="small">Create an account (or sign in) and it opens right after.</p></div>' : ''}<div class="card">
         <p class="small">An account keeps your plan, workouts, food and body data in sync across your phones, and is the first step toward sharing with a trainer or friends. You sign in with a passkey (Face ID); no password.</p>
         <p class="muted small">Your synced data is stored on the Lift server so it can reach your other devices. Progress photos stay on this phone.</p>
       </div>
@@ -155,7 +158,19 @@ export function createAccountUi(ctx) {
         ${a.code ? '<button class="list-row" data-a="acct-show-code"><span class="grow"><b>Recovery code</b><span class="pick-sub">Signs in on a device without your passkey</span></span></button>' : ''}
         <button class="list-row danger-row" data-a="acct-signout"><span class="grow">Sign out of this phone</span></button>
       </div>
-      <p class="muted small pad">Syncs by itself shortly after changes, when the app opens and when you leave it. Progress photos stay on this phone.</p>`;
+      ${notifRow()}
+      <div class="list-group"><button class="list-row danger-row" data-a="acct-delete"><span class="grow">Delete account<span class="pick-sub">Removes your account and synced data from the server</span></span></button></div>
+      <p class="muted small pad"><a href="privacy.html" target="_blank" rel="noopener">Privacy policy</a> · Syncs by itself shortly after changes, when the app opens and when you leave it. Progress photos stay on this phone.</p>`;
+  }
+
+  // Notifications: rest timer when the phone is locked, coach notes, challenges, invites.
+  function notifRow() {
+    const st = pushStatus();
+    if (st === 'unsupported') return '';
+    if (st === 'install') return '<div class="card"><b>Notifications</b><p class="small muted">Add Lift to your Home Screen first (Share → Add to Home Screen), then open it from there to turn on rest-timer alerts and coach notes.</p></div>';
+    if (st === 'denied') return '<div class="card"><b>Notifications are blocked</b><p class="small muted">Allow them in the iPhone Settings app → Notifications → Lift.</p></div>';
+    return `<div class="list-group"><label class="list-row toggle"><span class="grow"><b>Notifications</b><span class="pick-sub">Rest timer when the phone is locked, coach notes, challenges</span></span><input type="checkbox" data-a="acct-push" ${st === 'on' ? 'checked' : ''}></label>
+      ${st === 'on' ? '<button class="list-row" data-a="acct-push-test"><span class="grow">Send a test notification</span></button>' : ''}</div>`;
   }
 
   function showCode(code, fresh) {
@@ -163,7 +178,7 @@ export function createAccountUi(ctx) {
       <p class="small">It signs in to your account on any device, even without your passkey. Keep it somewhere safe, like your password manager.</p>
       <p class="code-big" id="acct-code-show">${esc(code)}</p>
       <button class="btn block" data-a="acct-copy">Copy code</button>
-      <button class="btn primary block" data-a="close-sheet">${fresh ? 'I saved it' : 'Done'}</button>`);
+      <button class="btn primary block" data-a="${fresh ? 'acct-code-saved' : 'close-sheet'}">${fresh ? 'I saved it' : 'Done'}</button>`);
   }
 
   const actions = {
@@ -194,14 +209,32 @@ export function createAccountUi(ctx) {
     'acct-relink': () => linkThisPhone(),
     'acct-sync': async () => { ctx.toast('Syncing…'); const r = await run(); ctx.toast(r ? (r.received || r.sent ? `Synced: ${r.sent} sent, ${r.received} received.` : 'Everything is up to date.') : `Sync didn't finish: ${lastError}`); },
     'acct-add-passkey': async () => { try { await addPasskey(); ctx.toast('Passkey added.'); ctx.render(); } catch (e) { ctx.toast(e.name === 'NotAllowedError' ? 'Passkey was cancelled.' : e.message); } },
+    'acct-code-saved': () => { ctx.closeSheet(); setTimeout(() => ctx.people?.maybeInvite(), 350); },
+    'acct-delete': async () => {
+      const ok = await ctx.ask('Delete your account? Your synced data, friends, coaching and challenges are removed from the server for good, and other phones are signed out. The data on this phone stays.', 'Delete account', true);
+      if (!ok) return;
+      try {
+        await deleteAccount();
+        await disablePush();
+        resetSyncState(); setPending(false); ctx.people?.reset(); ctx.render();
+        ctx.toast('Account deleted. Your data on this phone is kept.');
+      } catch (e) { ctx.toast(e.message); }
+    },
+    'acct-push': async (d, el) => {
+      try {
+        if (el.checked) { await enablePush(); ctx.toast('Notifications are on.'); } else { await disablePush(); ctx.toast('Notifications are off.'); }
+      } catch (e) { ctx.toast(e.message); }
+      ctx.render();
+    },
+    'acct-push-test': async () => { try { const r = await testPush(); ctx.toast(r.sent ? 'Sent. It should arrive in a moment.' : 'Nothing was sent. Turn notifications off and on again.'); } catch (e) { ctx.toast(e.message); } },
     'acct-show-code': () => showCode(account()?.code, false),
     'acct-copy': async () => { try { await navigator.clipboard.writeText(account()?.code || ''); ctx.toast('Copied.'); } catch { ctx.toast('Select the code and copy it.'); } },
     'acct-signout': async () => {
-      if (!confirm('Sign out of this phone? Your data stays on this phone and in your account.')) return;
-      await signOut(); resetSyncState(); setPending(false); ctx.people?.reset(); ctx.render(); ctx.toast('Signed out.');
+      if (!(await ctx.ask('Sign out of this phone? Your data stays on this phone and in your account.', 'Sign out', true))) return;
+      await disablePush(); await signOut(); resetSyncState(); setPending(false); ctx.people?.reset(); ctx.render(); ctx.toast('Signed out.');
     },
   };
 
-  const summary = () => { const a = account(); return a ? `${a.user.name} · synced ${ago(syncState().lastSync)}` : 'Not signed in'; };
+  const summary = () => { const a = account(); if (!a) return 'Not signed in'; const t = syncState().lastSync; return `${a.user.name} · ${t ? `synced ${ago(t)}` : 'not synced yet'}`; };
   return { page, actions, schedule, start, summary };
 }

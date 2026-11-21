@@ -480,7 +480,7 @@ export function createTrain(ctx) {
       ctx.persist(); ctx.closeSheet(); ctx.render();
       ctx.toast(`Runs on ${Object.values(days).sort((a, b) => dayIndex(a) - dayIndex(b)).map((d) => SHORT[d]).join(', ')}. Hard runs avoid heavy leg days.`);
     },
-    'rg-remove': () => { if (!confirm('Remove the running goal? Logged runs stay in your history.')) return; ctx.db.runGoal = null; ctx.persist(); ctx.closeSheet(); ctx.render(); },
+    'rg-remove': async () => { if (!(await ctx.ask('Remove the running goal? Logged runs stay in your history.', 'Remove', true))) return; ctx.db.runGoal = null; ctx.persist(); ctx.closeSheet(); ctx.render(); },
     'open-share': () => openShare(),
     'share-app': async () => {
       try { if (navigator.share) await navigator.share({ title: 'Lift Tracker', text: 'Workout, cardio and nutrition tracker', url: APP_URL }); else { await navigator.clipboard.writeText(APP_URL); ctx.toast('Link copied.'); } } catch {}

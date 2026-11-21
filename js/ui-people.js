@@ -10,6 +10,8 @@ import { wt } from './units.js';
 import { APP_URL } from './ui-train.js';
 
 const CACHE = 'lift.social';
+const isIos = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const standalone = () => window.matchMedia?.('(display-mode: standalone)').matches || navigator.standalone === true;
 const SEEN = 'lift.social.seen';
 const INVITE = 'lift.invite';
 const PERM_LABELS = { plan: 'Plan', workouts: 'Workouts', body: 'Body weight and measurements', food: 'Food' };
@@ -63,13 +65,30 @@ export function createPeople(ctx) {
     // An invite link (…?invite=CODE) opened on this phone: keep it until it can be accepted.
     const m = /[?&]invite=([A-Za-z0-9-]{8,9})/.exec(location.search);
     if (m) { ls.set(INVITE, m[1]); history.replaceState(null, '', location.pathname); }
-    setTimeout(async () => { await publish(); await refresh(); maybeInvite(); }, 3500);
+    // On iPhone a link always opens in Safari, which doesn't share storage with the Home Screen
+    // app. So the code itself carries the invite over: copy it, open Lift, paste.
+    const inSafari = !!m && isIos() && !standalone();
+    if (inSafari) setTimeout(() => safariInvite(m[1]), 600);
+    setTimeout(async () => { await publish(); await refresh(); if (!inSafari) maybeInvite(); }, 3500);
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') refresh(); else publish(); });
   }
+  function safariInvite(code) {
+    ctx.openSheet(`<h2>You're invited</h2>
+      <p class="small">Your invite code:</p>
+      <p class="code-big">${esc(code)}</p>
+      <button class="btn primary block big" data-a="ppl-copy-code" data-v="${esc(code)}">Copy code</button>
+      <h3 class="sheet-h">Have Lift on your Home Screen?</h3>
+      <p class="small">Open it there, go to People and tap <b>Enter an invite code</b>, then <b>Paste</b>. iPhone always opens links in Safari, so the code is how the invite gets to the app.</p>
+      <h3 class="sheet-h">New to Lift?</h3>
+      <p class="small">Tap <b>Share</b> at the bottom of Safari, then <b>Add to Home Screen</b>. Open Lift from there, create an account in Settings → Account and sync, then paste the code in People.</p>
+      <button class="btn plain block" data-a="ppl-invite-here">Continue in Safari instead</button>`);
+  }
+
   function maybeInvite() {
     const code = ls.get(INVITE, null);
     if (!code) return;
-    if (!on()) { ctx.toast('Sign in to accept the invite: Settings → Account and sync.'); return; }
+    // No account yet: go straight to creating one; the invite opens once signed in.
+    if (!on()) { ctx.ui.prevTab = ctx.ui.tab; ctx.ui.tab = 'settings'; ctx.ui.setPage = 'account'; window.scrollTo(0, 0); ctx.render(); return; }
     ls.set(INVITE, null);
     peekInvite(code);
   }
@@ -448,7 +467,8 @@ export function createPeople(ctx) {
     const days = weekOrder().filter((d) => e.days[d]);
     return `<header class="top"><button class="back" data-a="ppl-edit-cancel" aria-label="Cancel">${icon('left')}</button><h1 class="grow">Suggest changes</h1></header>
       <p class="muted small pad">${esc(l?.user.name || '')} reviews these before anything changes. Sets and the rep range per exercise.</p>
-      ${days.map((d) => `<section class="card"><div class="row between"><h3>${FULL_DAY[d]}${e.days[d].name ? ` · ${esc(e.days[d].name)}` : ''}</h3></div>
+      ${templates().length ? '<button class="btn block" data-a="ppl-tpl-load">Start from a template</button>' : ''}
+      ${days.map((d) => `<section class="card"><div class="row between"><h3>${FULL_DAY[d]}${e.days[d].name ? ` · ${esc(e.days[d].name)}` : ''}</h3><button class="mini" data-a="ppl-ed-rest" data-d="${d}">Make rest day</button></div>
         ${e.days[d].items.map((it, i) => `<div class="ed-item"><div class="row between"><b>${esc(exNameFor(cl, it.exerciseId))}</b><button class="icon-btn" data-a="ppl-ed-del" data-d="${d}" data-i="${i}" aria-label="Remove">${icon('trash')}</button></div>
           <div class="ed-nums">
             <label><span>Sets</span><input type="text" inputmode="numeric" data-ed="sets" data-d="${d}" data-i="${i}" value="${it.sets}"></label>
@@ -457,8 +477,15 @@ export function createPeople(ctx) {
           </div></div>`).join('')}
         <button class="btn block" data-a="ppl-ed-add" data-d="${d}">Add exercise</button></section>`).join('')}
       <div class="field"><span>Note for ${esc(l?.user.name || 'your client')}</span><textarea id="ppl-ed-note" rows="2" placeholder="Why these changes">${esc(e.note || '')}</textarea></div>
-      <button class="btn primary block" data-a="ppl-ed-send">Send suggestion</button>`;
+      ${others(id).length ? `<div class="field"><span>Also send to</span><div class="list-group">${others(id).map((o) => `<label class="list-row toggle"><span class="grow">${esc(o.user.name)}<span class="pick-sub">Replaces the same weekdays in their plan</span></span><input type="checkbox" data-also="${o.user.id}"></label>`).join('')}</div></div>` : ''}
+      <button class="btn primary block" data-a="ppl-ed-send">Send suggestion</button>
+      <button class="btn plain block" data-a="ppl-tpl-save">Save as a template</button>`;
   }
+  // Coach templates (synced with the coach's own data): a week of days to start suggestions from.
+  const templates = () => ctx.db.coachTemplates || [];
+  // Other clients who share their plan, for sending one suggestion to several people.
+  const others = (id) => myClients().filter((x) => x.user.id !== id && x.perms?.plan);
+
   function addExerciseSheet(day, q = '') {
     const words = q.toLowerCase().split(/\s+/).filter(Boolean);
     const list = Object.values(ctx.db.exercises).filter((x) => x?.name && words.every((w) => x.name.toLowerCase().includes(w))).sort((a, b) => a.name.localeCompare(b.name)).slice(0, 40);
@@ -484,7 +511,18 @@ export function createPeople(ctx) {
       try { if (navigator.share) await navigator.share({ title: 'Lift Tracker invite', text: shareText(d.v) }); else { await navigator.clipboard.writeText(shareText(d.v)); ctx.toast('Invite copied.'); } } catch {}
     },
     'ppl-invite-cancel': async (d) => { try { await api('/v2/social/invite/cancel', { code: d.v }, { auth: true }); await refresh(); } catch (e) { ctx.toast(e.message); } },
-    'ppl-code': () => ctx.openSheet(`<h2>Enter an invite code</h2><div class="field"><input id="ppl-code" type="text" autocapitalize="characters" autocomplete="off" placeholder="ABCD-EFGH"></div><button class="btn primary block" data-a="ppl-code-go">Continue</button>`),
+    'ppl-code': () => ctx.openSheet(`<h2>Enter an invite code</h2><div class="field"><div class="row"><input id="ppl-code" class="grow" type="text" autocapitalize="characters" autocomplete="off" placeholder="ABCD-EFGH">${navigator.clipboard?.readText ? '<button class="btn" data-a="ppl-paste">Paste</button>' : ''}</div></div><button class="btn primary block" data-a="ppl-code-go">Continue</button>`),
+    // iPhone shows its own small "Paste" bubble to allow reading the clipboard.
+    'ppl-paste': async () => {
+      try {
+        const t = await navigator.clipboard.readText();
+        const m = /([A-Za-z0-9]{4})-?([A-Za-z0-9]{4})/.exec(t || '');
+        const el = document.getElementById('ppl-code');
+        if (m && el) { el.value = `${m[1]}-${m[2]}`.toUpperCase(); peekInvite(el.value); } else ctx.toast('No invite code on the clipboard.');
+      } catch { ctx.toast('Paste it into the box instead (touch and hold, then Paste).'); }
+    },
+    'ppl-copy-code': async (d) => { try { await navigator.clipboard.writeText(d.v); ctx.toast('Copied. Now open Lift from your Home Screen.'); } catch { ctx.toast('Touch and hold the code to copy it.'); } },
+    'ppl-invite-here': () => { ctx.closeSheet(); setTimeout(async () => { await refresh(); maybeInvite(); }, 300); },
     'ppl-code-go': () => { const c = document.getElementById('ppl-code')?.value || ''; if (c.replace(/[^A-Za-z0-9]/g, '').length !== 8) return ctx.toast('Invite codes are 8 letters and numbers.'); peekInvite(c); },
     'ppl-accept': async (d) => {
       const perms = document.querySelector('#sheet [data-perm]') ? readPerms() : undefined;
@@ -518,7 +556,7 @@ export function createPeople(ctx) {
     'ppl-perms': async (d) => { try { await api('/v2/social/link/perms', { id: d.id, perms: readPerms() }, { auth: true }); ctx.closeSheet(); await refresh(); ctx.toast('Saved.'); } catch (e) { ctx.toast(e.message); } },
     'ppl-unlink': async (d) => {
       const l = links().find((x) => x.id === d.id);
-      if (!l || !confirm(l.kind === 'friend' ? `Remove ${l.user.name} as a friend? You'll stop seeing each other's summaries.` : `End coaching with ${l.user.name}? Notes between you are deleted and they stop seeing ${l.role === 'coach' ? 'your data' : 'nothing changes on their phone'}.`)) return;
+      if (!l || !(await ctx.ask(l.kind === 'friend' ? `Remove ${l.user.name} as a friend? You'll stop seeing each other's summaries.` : `End coaching with ${l.user.name}? Notes between you are deleted and they stop seeing ${l.role === 'coach' ? 'your data' : 'nothing changes on their phone'}.`, 'Remove', true))) return;
       try { await api('/v2/social/link/remove', { id: d.id }, { auth: true }); ctx.closeSheet(); pv().client = null; await refresh(); ctx.toast('Removed.'); } catch (e) { ctx.toast(e.message); }
     },
     'ppl-review': (d) => reviewSheet(d.id),
@@ -552,10 +590,47 @@ export function createPeople(ctx) {
       e.note = document.getElementById('ppl-ed-note')?.value || '';
       const orig = JSON.parse(e.orig);
       const days = Object.fromEntries(Object.entries(e.days).filter(([k, v]) => JSON.stringify(v) !== JSON.stringify(orig[k])));
+      for (const k of Object.keys(orig)) if (!e.days[k]) days[k] = null; // made a rest day
       if (!Object.keys(days).length) return ctx.toast('Nothing changed yet.');
       const exercises = {};
-      for (const day of Object.values(days)) for (const it of day.items) if (!cl.exercises[it.exerciseId] && ctx.db.exercises[it.exerciseId]) exercises[it.exerciseId] = ctx.db.exercises[it.exerciseId];
-      try { await api('/v2/coach/propose', { client: id, days, exercises, note: e.note }, { auth: true }); pv().edit = null; await refresh(); window.scrollTo(0, 0); ctx.render(); ctx.toast('Suggestion sent.'); } catch (err) { ctx.toast(err.message); }
+      for (const day of Object.values(days)) for (const it of day?.items || []) if (!cl.exercises[it.exerciseId] && ctx.db.exercises[it.exerciseId]) exercises[it.exerciseId] = ctx.db.exercises[it.exerciseId];
+      // Other clients get the same weekdays (the full day as written here), with every exercise it uses.
+      const also = [...document.querySelectorAll('[data-also]:checked')].map((x) => x.dataset.also);
+      const allEx = {};
+      for (const day of Object.values(e.days)) for (const it of day.items) if (ctx.db.exercises[it.exerciseId]) allEx[it.exerciseId] = ctx.db.exercises[it.exerciseId];
+      const changedDays = Object.fromEntries(Object.keys(days).map((k) => [k, e.days[k] || null]));
+      try {
+        await api('/v2/coach/propose', { client: id, days, exercises, note: e.note }, { auth: true });
+        for (const o of also) await api('/v2/coach/propose', { client: o, days: changedDays, exercises: allEx, note: e.note }, { auth: true });
+        pv().edit = null; await refresh(); window.scrollTo(0, 0); ctx.render();
+        ctx.toast(also.length ? `Suggestion sent to ${also.length + 1} clients.` : 'Suggestion sent.');
+      } catch (err) { ctx.toast(err.message); }
+    },
+    'ppl-ed-rest': (d) => { delete pv().edit.days[d.d]; ctx.render(); },
+    'ppl-tpl-save': () => ctx.openSheet(`<h2>Save as a template</h2><p class="muted small">Start other clients' suggestions from this week.</p>
+      <div class="field"><input id="tpl-name" type="text" maxlength="40" placeholder="e.g. Beginner full body 3 days" autocomplete="off"></div>
+      <button class="btn primary block" data-a="ppl-tpl-save-go">Save template</button>`),
+    'ppl-tpl-save-go': () => {
+      const name = (document.getElementById('tpl-name')?.value || '').trim();
+      if (!name) return ctx.toast('Give it a name.');
+      const e = pv().edit;
+      const exercises = {};
+      for (const day of Object.values(e.days)) for (const it of day.items) if (ctx.db.exercises[it.exerciseId]) exercises[it.exerciseId] = ctx.db.exercises[it.exerciseId];
+      (ctx.db.coachTemplates ||= []).push({ id: `t${Date.now().toString(36)}`, name, days: JSON.parse(JSON.stringify(e.days)), exercises, created: Date.now() });
+      ctx.persist(); ctx.closeSheet(); ctx.toast('Template saved.');
+    },
+    'ppl-tpl-load': () => ctx.openSheet(`<h2>Start from a template</h2><p class="muted small">Replaces the week in the editor. Nothing is sent until you tap Send.</p>
+      <div class="list-group">${templates().map((t) => `<div class="list-row"><button class="grow plain-pick" data-a="ppl-tpl-use" data-id="${t.id}"><b>${esc(t.name)}</b><span class="pick-sub">${Object.keys(t.days).length} days</span></button><button class="icon-btn subtle" data-a="ppl-tpl-del" data-id="${t.id}" aria-label="Delete ${esc(t.name)}">${icon('trash')}</button></div>`).join('')}</div>`),
+    'ppl-tpl-use': (d) => {
+      const t = templates().find((x) => x.id === d.id);
+      if (!t) return;
+      for (const [eid, ex] of Object.entries(t.exercises || {})) if (!ctx.db.exercises[eid]) ctx.db.exercises[eid] = ex;
+      pv().edit.days = JSON.parse(JSON.stringify(t.days));
+      ctx.closeSheet(); ctx.render(); ctx.toast(`${t.name} loaded.`);
+    },
+    'ppl-tpl-del': async (d) => {
+      if (!(await ctx.ask('Delete this template? Suggestions already sent are not affected.', 'Delete', true))) return;
+      ctx.db.coachTemplates = templates().filter((x) => x.id !== d.id); ctx.persist(); ctx.closeSheet();
     },
   };
 

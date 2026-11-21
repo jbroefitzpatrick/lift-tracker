@@ -91,7 +91,7 @@ export function freshDb() {
       rowRotation: 0,
       rotationPromptWeek: 0,
       // lift | cardio | both | rest
-      dayModes: { mon: 'lift', tue: 'lift', wed: 'lift', thu: 'lift', fri: 'lift', sat: 'rest', sun: 'rest' },
+      dayModes: {}, // set when a plan is built (or the sample plan is loaded)
       sound: true,
       welcomed: false, // first-run welcome on Today
       defaultIncrements: { ...DEFAULT_INCREMENTS },
@@ -105,7 +105,7 @@ export function freshDb() {
       backupReminder: true,
     },
     exercises: syncBank(defaultExercises(), DEFAULT_INCREMENTS),
-    plan: defaultPlan(),
+    plan: {}, // new installs start blank: build a plan, or start a workout from scratch
     state: seedState(),
     sessions: [],
     pain: [], // { id, ts, date, area (muscle or joint), side: left|right|center, level 0–3, exerciseId? }

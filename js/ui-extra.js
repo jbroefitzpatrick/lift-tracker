@@ -48,7 +48,7 @@ export function createExtras(ctx) {
       </div>
     </div>
     ${rec ? `<div class="card"><h3>Personal records</h3>
-      ${rec.e1.v ? `<div class="rx-row"><span class="muted">Best est. 1RM</span><b>${wt(Math.round(rec.e1.v))} <span class="muted small">(${toDisp(rec.e1.w)}×${rec.e1.r}, ${ctx.fmtDate(rec.e1.date)})</span></b></div>` : ''}
+      ${rec.e1.v ? `<div class="rx-row"><span class="muted">Best est. max</span><b>${wt(Math.round(rec.e1.v))} <span class="muted small">(${toDisp(rec.e1.w)}×${rec.e1.r}, ${ctx.fmtDate(rec.e1.date)})</span></b></div>` : ''}
       <div class="rx-row"><span class="muted">Heaviest set</span><b>${wt(rec.heavy.v)} × ${rec.heavy.r}</b></div>
       <div class="rx-row"><span class="muted">Most reps</span><b>${rec.reps.v}${rec.reps.w ? ` @ ${wt(rec.reps.w)}` : ''}</b></div>
       ${rec.vol.v ? `<div class="rx-row"><span class="muted">Best workout volume</span><b>${Math.round(toDisp(rec.vol.v)).toLocaleString()} ${wUnit()}</b></div>` : ''}
@@ -95,7 +95,8 @@ export function createExtras(ctx) {
 
   // ---------- Body: measurements & photos ----------
 
-  function bodyCards() {
+  // part: 'measure' or 'photos' (both when not given).
+  function bodyCards(part = null) {
     const db = ctx.db;
     const list = [...db.measurements].sort((a, b) => b.date.localeCompare(a.date));
     const last = list[0];
@@ -104,18 +105,19 @@ export function createExtras(ctx) {
     const delta = (k) => (last && first && last !== first && last[k] != null && first[k] != null ? last[k] - first[k] : null);
     const photos = [...db.photos].sort((a, b) => b.date.localeCompare(a.date));
     setTimeout(loadThumbs);
-    return `<div class="card"><h3>Measurements</h3><p class="muted small">Inches</p>
-        <div class="grid3">${Object.entries(MEASURES).map(([k, v]) => `<div class="field"><span>${v}</span><input id="ms-${k}" type="text" inputmode="decimal" value="${today[k] ?? ''}" placeholder="${last?.[k] ?? ''}"></div>`).join('')}</div>
+    const measure = `<div class="card"><h3>Measurements</h3><p class="muted small">Inches${last && last.date !== todayStr() ? ` · last measured ${ctx.fmtDate(last.date)}, shown in gray` : ''}</p>
+        <div class="grid3">${Object.entries(MEASURES).map(([k, v]) => `<div class="field"><span>${v}</span><input id="ms-${k}" type="text" inputmode="decimal" value="${today[k] ?? ''}" placeholder="${last?.[k] ?? '—'}"></div>`).join('')}</div>
         <button class="btn primary block" data-a="ms-save">${today.date ? 'Update' : 'Save'} today's measurements</button>
         ${list.length > 1 ? `<p class="small">Since ${ctx.fmtDate(first.date)}: ${Object.entries(MEASURES).map(([k, v]) => { const d = delta(k); return d == null ? '' : `${v} ${d >= 0 ? '+' : ''}${d.toFixed(1)}`; }).filter(Boolean).join(' · ')}</p>` : ''}
         ${list.slice(0, 5).map((m) => `<div class="list-row small"><span class="grow">${ctx.fmtDate(m.date)}</span><span class="muted">${Object.keys(MEASURES).filter((k) => m[k] != null).map((k) => `${MEASURES[k][0]} ${m[k]}`).join(' · ')}</span><button class="mini" data-a="ms-del" data-date="${m.date}" aria-label="Delete">${icon('x')}</button></div>`).join('')}
-      </div>
-      <div class="card"><h3>Progress photos</h3>
+      </div>`;
+    const photoCard = `<div class="card"><h3>Progress photos</h3>
         <p class="muted small">Stored only on this phone (resized to save space). Same pose and lighting each time makes them easier to compare.</p>
         <label class="btn block file-btn">Add photo<input id="photo-file" type="file" accept="image/*" hidden></label>
         ${photos.length >= 2 ? '<button class="btn block" data-a="photo-compare">Compare first and latest</button>' : ''}
         <div class="photo-grid">${photos.map((p) => `<button class="photo-thumb" data-a="photo-open" data-id="${p.id}"><img data-photo="${p.id}" alt="Progress photo ${ctx.fmtDate(p.date)}"><span>${ctx.fmtDate(p.date)}</span></button>`).join('')}</div>
       </div>`;
+    return part === 'measure' ? measure : part === 'photos' ? photoCard : measure + photoCard;
   }
 
   async function photoUrl(id) {
@@ -316,7 +318,7 @@ export function createExtras(ctx) {
 
   async function finishImport(data) {
     const { db: next, photos } = importData(data);
-    if (!confirm(`Replace all data with this backup (${next.sessions.length} workouts, ${next.foodLog.length} food entries)? A snapshot of your current data is kept.`)) return;
+    if (!(await ctx.ask(`Replace all data with this backup (${next.sessions.length} workouts, ${next.foodLog.length} food entries)? A snapshot of your current data is kept.`, 'Replace', true))) return;
     await safetySnapshot(ctx.db, 'Before import');
     for (const p of photos) {
       try { const blob = await (await fetch(p.dataUrl)).blob(); await putPhoto(p.id, blob); } catch {}
@@ -358,7 +360,7 @@ export function createExtras(ctx) {
         <figure><img src="${await photoUrl(b.id)}" alt=""><figcaption>${ctx.fmtDate(b.date)}</figcaption></figure></div><button class="btn block" data-a="close-sheet">Close</button>`);
     },
     'photo-del': async (d) => {
-      if (!confirm('Delete this photo?')) return;
+      if (!(await ctx.ask('Delete this photo?', 'Delete', true))) return;
       await deletePhoto(d.id).catch(() => {});
       ctx.db.photos = ctx.db.photos.filter((x) => x.id !== d.id);
       photoUrls.delete(d.id);
@@ -409,8 +411,8 @@ export function createExtras(ctx) {
       if (!g.plates.length) g.plates = [5];
       ctx.persist(); ctx.closeSheet(); ctx.render();
     },
-    'gym-del': (d) => {
-      if (!confirm('Delete this gym?')) return;
+    'gym-del': async (d) => {
+      if (!(await ctx.ask('Delete this gym?', 'Delete', true))) return;
       ctx.db.gyms = ctx.db.gyms.filter((x) => x.id !== d.id);
       ctx.db.settings.activeGym = ctx.db.gyms[0].id;
       ctx.persist(); ctx.closeSheet(); ctx.render();
@@ -470,7 +472,7 @@ export function createExtras(ctx) {
         <button class="btn block" data-a="close-sheet">Close</button>`);
     },
     'snap-restore': async (d) => {
-      if (!confirm('Restore this snapshot? Your current data is snapshotted first.')) return;
+      if (!(await ctx.ask('Restore this snapshot? Your current data is snapshotted first.', 'Restore'))) return;
       const next = await readSnapshot(d.key);
       if (ctx.db) await safetySnapshot(ctx.db, 'Before snapshot restore');
       ctx.closeSheet(); ctx.replaceDb(next); ctx.toast('Snapshot restored.');
@@ -482,8 +484,8 @@ export function createExtras(ctx) {
     },
     'reset-all': async () => {
       const signedIn = !!account();
-      if (!confirm(`Erase ALL data on this device? A snapshot is kept, but export a backup first.${signedIn ? ' This phone is also signed out of your account; the data in your account stays as it is.' : ''}`)) return;
-      if (!confirm('Really erase everything?')) return;
+      if (!(await ctx.ask(`Erase ALL data on this device? A snapshot is kept, but export a backup first.${signedIn ? ' This phone is also signed out of your account; the data in your account stays as it is.' : ''}`, 'Erase', true))) return;
+      if (!(await ctx.ask('Really erase everything?', 'Erase everything', true))) return;
       await safetySnapshot(ctx.db, 'Before erase');
       // Signed out first, so the erase isn't synced to the account and the other phones.
       if (signedIn) { await signOut(); resetSyncState(); try { localStorage.removeItem('lift.sync.pending'); } catch {} }

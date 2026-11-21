@@ -48,3 +48,9 @@ Since **April 28, 2026**, App Store uploads must be built with **Xcode 26** and 
 - **Food data:** USDA FoodData Central is public domain. Keep the attribution anyway.
 - **Health disclaimers:** keep "not medical advice" wording, and follow App Store guideline 1.4.1 for any health claims.
 - **Privacy:** if nothing leaves the device or iCloud, the App Store privacy label can say "Data Not Collected".
+
+## Before selling: exercise images and privacy (checked November 21, 2026)
+
+- **Images:** all 634 exercise pictures and step texts come from [free-exercise-db](https://github.com/yuhonas/free-exercise-db) (raw.githubusercontent.com). The dataset is released under the Unlicense (public domain), and it credits [wrkout/exercises.json](https://github.com/wrkout/exercises.json) as its source. The images' own rights are not settled: an open issue on the project ([#12](https://github.com/yuhonas/free-exercise-db/issues/12)) asks about their license with no answer from the maintainer. Before charging for the app, either get written confirmation that the photos are public domain, or replace them (licensed stock, commissioned photos, or simple illustrations). Self-host whatever is used rather than loading from GitHub.
+- **Privacy:** the policy is at `privacy.html` (linked from Settings and from Account and sync). App Store Connect needs its URL and a privacy "nutrition label": data linked to the user = name, fitness and health data (synced), user ID; no tracking.
+- **Account deletion:** built in (Settings → Account and sync → Delete account), as App Store Review Guideline 5.1.1(v) requires for apps with sign-up.

@@ -18,6 +18,26 @@ export function createFood(ctx) {
   const date = () => ui.foodDate || todayStr();
   const fmtDay = (d) => (d === todayStr() ? 'Today' : d === addDays(todayStr(), -1) ? 'Yesterday' : ctx.fmtDate(d));
 
+  // Meal names: by time of day for the number of meals, renamable (db.nutrition.mealNames).
+  const DEFAULT_MEALS = {
+    1: ['Meals'], 2: ['First meal', 'Second meal'], 3: ['Breakfast', 'Lunch', 'Dinner'], 4: ['Breakfast', 'Lunch', 'Dinner', 'Snack'],
+    5: ['Breakfast', 'Snack', 'Lunch', 'Snack', 'Dinner'], 6: ['Breakfast', 'Snack', 'Lunch', 'Snack', 'Dinner', 'Snack'],
+  };
+  function mealName(m, count = targets(ctx.db, date()).meals) {
+    const own = ctx.db.nutrition?.mealNames?.[m];
+    if (own) return own;
+    const list = DEFAULT_MEALS[count] || [];
+    const name = list[m - 1] || `Meal ${m}`;
+    // Two snacks: number them so they can be told apart.
+    return name === 'Snack' && list.filter((x) => x === 'Snack').length > 1 ? `Snack ${list.slice(0, m).filter((x) => x === 'Snack').length}` : name;
+  }
+  function renameMeal(m) {
+    ctx.openSheet(`<h2>Rename ${esc(mealName(m))}</h2>
+      <div class="field"><input id="meal-rename" type="text" maxlength="24" value="${esc(mealName(m))}" autocomplete="off"></div>
+      <button class="btn primary block" data-a="meal-rename-save" data-meal="${m}">Save</button>
+      ${ctx.db.nutrition?.mealNames?.[m] ? `<button class="btn plain block" data-a="meal-rename-reset" data-meal="${m}">Use the default name</button>` : ''}`);
+  }
+
   function screen() {
     const db = ctx.db;
     const d = date();
@@ -32,10 +52,10 @@ export function createFood(ctx) {
       const items = entries.filter((x) => Math.min(x.meal, t.meals) === m);
       const mt = items.reduce((a, x) => ({ kcal: a.kcal + x.kcal, p: a.p + x.p }), { kcal: 0, p: 0 });
       const low = items.length && mt.p < t.perMealProtein * 0.8;
-      return `<section class="meal" aria-label="Meal ${m}">
+      return `<section class="meal" aria-label="${esc(mealName(m, t.meals))}">
         <div class="meal-head">
-          <div class="grow"><h3>Meal ${m}</h3><p class="muted small">${items.length ? `${r0(mt.kcal)} kcal · ${r0(mt.p)} g protein${low ? ` · <span class="hint">aim ~${t.perMealProtein} g</span>` : ''}` : `Aim ~${Math.round(t.kcal / t.meals / 10) * 10} kcal · ${t.perMealProtein} g protein`}</p></div>
-          <button class="icon-btn accent" data-a="food-add" data-meal="${m}" aria-label="Add food to meal ${m}">${icon('plus')}</button>
+          <div class="grow"><h3><button class="meal-title" data-a="meal-rename" data-meal="${m}" aria-label="Rename ${esc(mealName(m, t.meals))}">${esc(mealName(m, t.meals))}</button></h3><p class="muted small">${items.length ? `${r0(mt.kcal)} kcal · ${r0(mt.p)} g protein${low ? ` · <span class="hint">aim ~${t.perMealProtein} g</span>` : ''}` : `Aim ~${Math.round(t.kcal / t.meals / 10) * 10} kcal · ${t.perMealProtein} g protein`}</p></div>
+          <button class="icon-btn accent" data-a="food-add" data-meal="${m}" aria-label="Add food to ${esc(mealName(m, t.meals))}">${icon('plus')}</button>
         </div>
         ${items.map((x) => `<div class="list-row food-row"><span class="grow"><b>${esc(x.name)}</b><span class="pick-sub">${esc(fmtQty(x))} · ${r0(x.kcal)} kcal · P ${r0(x.p)} · C ${r0(x.c)} · F ${r0(x.f)}</span></span>
           <button class="icon-btn subtle" data-a="food-del" data-id="${x.id}" aria-label="Remove ${esc(x.name)}">${icon('x')}</button></div>`).join('')}
@@ -199,7 +219,7 @@ export function createFood(ctx) {
 
   function openAdd(meal) {
     st.meal = meal; st.q = ''; st.cat = 'all';
-    ctx.openSheet(`<h2>Add to meal ${meal}</h2>
+    ctx.openSheet(`<h2>Add to ${esc(mealName(+meal))}</h2>
       <input id="food-q" class="search" type="search" placeholder="Search foods" autocomplete="off">
       <div class="chips pk-filters">${[['all', 'All'], ['mine', 'Mine'], ...Object.entries(CATS)].map(([k, v]) => `<button class="chip ${k === 'all' ? 'on' : ''}" data-a="food-cat" data-v="${k}">${v}</button>`).join('')}</div>
       <div class="chips"><button class="chip" data-a="meal-saved" data-meal="${meal}">Saved meals</button><button class="chip" data-a="food-ideas" data-meal="${meal}">Meal ideas</button><button class="chip" data-a="food-custom">Create a food</button></div>
@@ -223,7 +243,7 @@ export function createFood(ctx) {
       <div class="field"><span>Amount</span>${ctx.stepper('amt-qty', defQty, f.per100 && defUnit === 0 ? 10 : 0.5)}</div>
       <div class="field"><span>Unit</span><select id="amt-unit" data-a="amt-unit">${units.map(([n, g], i) => `<option value="${i}" ${i === defUnit ? 'selected' : ''}>${esc(n)}${g !== 1 && n !== 'oz' ? ` (${g} g)` : ''}</option>`).join('')}</select></div>
       <div id="amt-preview" class="macro-preview"></div>
-      <button class="btn primary block big" data-a="amt-save">Add to meal ${st.meal}</button>
+      <button class="btn primary block big" data-a="amt-save">Add to ${esc(mealName(+st.meal))}</button>
       <button class="btn block" data-a="close-sheet">Cancel</button>`);
     preview();
   }
@@ -314,7 +334,7 @@ export function createFood(ctx) {
         const m = solveMeal(tpl, kcal, prot);
         return `<div class="idea"><div class="row between"><b>${esc(tpl.name)}</b><span class="muted small">${r0(m.totals.kcal)} kcal · ${r0(m.totals.p)} g P</span></div>
           <p class="small muted">${m.items.map((x) => `${esc(x.food.name)} ${x.grams} g`).join(' · ')}</p>
-          <button class="mini" data-a="idea-log" data-id="${tpl.id}">Log to meal ${meal}</button></div>`;
+          <button class="mini" data-a="idea-log" data-id="${tpl.id}">Log to ${esc(mealName(+meal))}</button></div>`;
       }).join('')}
       <button class="btn block" data-a="close-sheet">Close</button>`);
   }
@@ -322,6 +342,14 @@ export function createFood(ctx) {
   // ---------- Actions ----------
 
   const actions = {
+    'meal-rename': (d) => renameMeal(+d.meal),
+    'meal-rename-save': (d) => {
+      const v = (document.getElementById('meal-rename')?.value || '').trim();
+      const n = (ctx.db.nutrition.mealNames ||= {});
+      if (v) n[d.meal] = v.slice(0, 24); else delete n[d.meal];
+      ctx.persist(); ctx.closeSheet(); ctx.render();
+    },
+    'meal-rename-reset': (d) => { delete ctx.db.nutrition.mealNames?.[d.meal]; ctx.persist(); ctx.closeSheet(); ctx.render(); },
     'food-day': (d) => { ui.foodDate = addDays(date(), +d.v); if (ui.foodDate > todayStr()) ui.foodDate = todayStr(); ctx.render(); },
     'food-why': () => openWhy(),
     'energy-why': () => openEnergyWhy(),
@@ -390,7 +418,7 @@ export function createFood(ctx) {
       ctx.persist();
       if (!d.id) openAmount(food.id); else { ctx.closeSheet(); ctx.render(); }
     },
-    'cf-del': (d) => { if (!confirm('Delete this food? Logged entries stay.')) return; ctx.db.customFoods = ctx.db.customFoods.filter((x) => x.id !== d.id); ctx.persist(); openMine(); },
+    'cf-del': async (d) => { if (!(await ctx.ask('Delete this food? Logged entries stay.', 'Delete', true))) return; ctx.db.customFoods = ctx.db.customFoods.filter((x) => x.id !== d.id); ctx.persist(); openMine(); },
     'food-mine': () => openMine(),
     'meal-save': (d) => {
       const items = ctx.db.foodLog.filter((x) => x.date === date() && x.meal === +d.meal);

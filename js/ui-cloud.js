@@ -98,7 +98,7 @@ export function createCloud(ctx) {
     ctx.toast('Downloading and decrypting…');
     const text = await downloadBackup(cfg, version);
     const { db: next } = importData(parseBackup(text));
-    if (!confirm(`Replace the data on this phone with this backup (${next.sessions.length} workouts, ${next.foodLog.length} food entries)? A snapshot of the current data is kept.`)) return;
+    if (!(await ctx.ask(`Replace the data on this phone with this backup (${next.sessions.length} workouts, ${next.foodLog.length} food entries)? A snapshot of the current data is kept.`, 'Replace', true))) return;
     if (ctx.db) await safetySnapshot(ctx.db, 'Before cloud restore');
     setCloudConfig({ ...cfg, enabled: true, lastCounts: historyCounts(next), lastError: undefined });
     ctx.closeSheet();
@@ -142,8 +142,8 @@ export function createCloud(ctx) {
         <button class="btn block" data-a="cloud-copy" data-v="${esc(c.key)}">Copy access key</button>
         <button class="btn primary block" data-a="close-sheet">Done</button>`);
     },
-    'cloud-off': () => {
-      if (!confirm('Turn off cloud backup on this phone? Backups already on the server are kept, and your recovery code still opens them.')) return;
+    'cloud-off': async () => {
+      if (!(await ctx.ask('Turn off cloud backup on this phone? Backups already on the server are kept, and your recovery code still opens them.', 'Turn off'))) return;
       setCloudConfig({ enabled: false });
       ctx.render();
     },

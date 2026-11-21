@@ -1482,3 +1482,59 @@ details.sess summary::-webkit-details-marker { display: none; }
 .c-flow .set-row.lift.done .check { background: linear-gradient(135deg, var(--good), #2dd4bf); border-color: transparent; }
 .c-flow .wb-progress > *, .c-flow .c-fill.me { background: linear-gradient(90deg, #7aa2ff, #2dd4bf); }
 .key-grid > .key-tile:last-child:nth-child(odd) { grid-column: span 2; }
+
+/* Workout summary: the four numbers as one card (glows with the hero cards) */
+.sum-stats { grid-template-columns: repeat(4, 1fr); gap: 0; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 6px 0; }
+.sum-stats .stat { background: none; border: 0; border-radius: 0; padding: 10px 4px; border-left: 1px solid var(--line); }
+.sum-stats .stat:first-child { border-left: 0; }
+.sum-stats .stat b { font-size: 1.375rem; }
+button.stat { font: inherit; color: inherit; }
+.c-wash .sum-stats { background: radial-gradient(120% 90% at 0% 0%, var(--glow-a), transparent 60%), radial-gradient(90% 80% at 100% 0%, var(--glow-b), transparent 60%), var(--surface); border-color: var(--glow-line); }
+
+.more-hist summary { padding: 12px 0 4px; color: var(--accent); font-weight: 600; cursor: pointer; list-style: none; }
+.more-hist summary::-webkit-details-marker { display: none; }
+.more-hist[open] summary { display: none; }
+.meal-title { background: none; border: 0; padding: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.meal-title:focus-visible { outline: 2px solid var(--accent); border-radius: 6px; }
+
+/* iOS-style switches for every on/off setting */
+.toggle input[type="checkbox"], .toggle-row input[type="checkbox"], .list-row.toggle input[type="checkbox"], .avail-day input[type="checkbox"] {
+  -webkit-appearance: none; appearance: none; flex: none; width: 46px; height: 28px; margin: 0; border-radius: 14px; position: relative; cursor: pointer;
+  background: var(--surface-3); border: 0; transition: background-color 0.2s ease;
+}
+.toggle input[type="checkbox"]::after, .toggle-row input[type="checkbox"]::after, .list-row.toggle input[type="checkbox"]::after, .avail-day input[type="checkbox"]::after {
+  content: ""; position: absolute; top: 2px; left: 2px; width: 24px; height: 24px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgb(0 0 0 / 0.3); transition: transform 0.2s ease;
+}
+.toggle input[type="checkbox"]:checked, .toggle-row input[type="checkbox"]:checked, .list-row.toggle input[type="checkbox"]:checked, .avail-day input[type="checkbox"]:checked { background: var(--good); }
+.toggle input[type="checkbox"]:checked::after, .toggle-row input[type="checkbox"]:checked::after, .list-row.toggle input[type="checkbox"]:checked::after, .avail-day input[type="checkbox"]:checked::after { transform: translateX(18px); }
+.toggle input[type="checkbox"]:focus-visible, .toggle-row input[type="checkbox"]:focus-visible, .list-row.toggle input[type="checkbox"]:focus-visible, .avail-day input[type="checkbox"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.toggle { justify-content: space-between; }
+.toggle > span { flex: 1; order: -1; }
+.list-row.toggle input[type="checkbox"] { margin-left: 12px; }
+@media (prefers-reduced-motion: reduce) { .toggle input::after, .toggle-row input::after, .list-row.toggle input::after, .avail-day input::after { transition: none; } }
+
+/* Menus inside rows look like chips */
+.avail-row select, select.chip-select {
+  -webkit-appearance: none; appearance: none; min-height: 36px; padding: 0 30px 0 12px; border-radius: 999px; border: 0; background-color: var(--surface-2); color: var(--text); font: inherit; font-size: 0.875rem; font-weight: 600;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23a2a9b6' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 10px center; background-size: 14px;
+}
+.avail-row select:disabled { opacity: 0.4; }
+.avail-row select { background-color: var(--surface); }
+.avail-row.on select { background-color: var(--surface); }
+
+/* In-app confirmation */
+.ask-text { font-size: 1.0625rem; line-height: 1.45; margin: 4px 0 18px; }
+.btn.danger-fill { background: var(--bad); border-color: var(--bad); color: #fff; }
+a.list-row { color: inherit; text-decoration: none; }
+
+/* First run / no plan: two ways to start */
+.start-card { display: flex; flex-direction: column; gap: 12px; margin-top: 8px; }
+.start-card h2 { font-size: 1.25rem; margin: 4px 2px 4px; }
+.start-opt { display: flex; flex-direction: column; gap: 4px; text-align: left; padding: 18px 18px; border-radius: var(--radius); border: 1px solid var(--line); background: var(--surface); color: var(--text); font: inherit; cursor: pointer; }
+.start-opt b { font-size: 1.125rem; }
+.start-opt span { color: var(--muted); font-size: 0.9375rem; line-height: 1.4; }
+.start-opt.primary { background: var(--accent-strong); border-color: var(--accent-strong); color: var(--on-accent); box-shadow: 0 8px 24px rgb(61 107 230 / 0.3); }
+.start-opt.primary span { color: rgb(255 255 255 / 0.85); }
+.start-opt:active { transform: scale(0.99); }
+.c-wash .start-opt:not(.primary) { background: radial-gradient(120% 90% at 0% 0%, var(--glow-a), transparent 60%), var(--surface); border-color: var(--glow-line); }

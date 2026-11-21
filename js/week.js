@@ -173,7 +173,8 @@ export function composeWeek(db, avail, fromDay = todayKey(), { keepCardio = fals
     assigned[slots[i]] = { name: t.name, from: [t.day], base: clone(resolveDay(db, t.day, { template: true }).filter((it) => isLiftItem(db, it))) };
   });
   // More sessions than days: move each leftover session's main lifts into the lightest day.
-  for (const t of todo.slice(slots.length)) {
+  // (With no days at all there is nothing to fold into; the summary says the week is off.)
+  for (const t of open.length ? todo.slice(slots.length) : []) {
     const mains = resolveDay(db, t.day, { template: true }).filter((it) => isLiftItem(db, it) && (focus.includes(it.exerciseId) || db.exercises[it.exerciseId]?.category === 'compound')).slice(0, 2);
     for (const m of mains) {
       const target = slots.map((d) => assigned[d]).sort((a, b) => a.base.filter((x) => db.exercises[x.exerciseId]?.category === 'compound').length - b.base.filter((x) => db.exercises[x.exerciseId]?.category === 'compound').length)[0];

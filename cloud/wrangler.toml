@@ -5,6 +5,8 @@ compatibility_date = "2025-01-01"
 
 # Sites allowed to call the worker from a browser (comma-separated).
 [vars]
+# Web push (push.js): the public half of the VAPID key pair. The private half is the VAPID_PRIVATE secret.
+VAPID_PUBLIC = "BMOi2VIHNNOLabJrbf0nG6epf3MKvAx4lPt7SmqqX8j2Escgb1u4Na4gwn9N5h-2Nia3xJZuAfIxhaVfsJnhsCo"
 ALLOWED_ORIGINS = "https://jbroefitzpatrick.github.io,http://localhost:8765"
 
 # Paste the id printed by `npx wrangler kv namespace create BACKUPS` below.
@@ -20,3 +22,16 @@ id = "ebe04eb6176f4901bcb81889e8048176"
 binding = "DB"
 database_name = "lift"
 database_id = "eba7bd72-63b2-4df3-a242-96dd3dc209a8"
+
+# Rest alerts while the phone is locked: one Durable Object per account (push.js).
+[[durable_objects.bindings]]
+name = "ALERTS"
+class_name = "RestAlerts"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["RestAlerts"]
+
+# Hourly: announce challenges that ended.
+[triggers]
+crons = ["0 * * * *"]

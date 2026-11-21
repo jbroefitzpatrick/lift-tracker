@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src 'self'">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="referrer" content="no-referrer">
+  <title>Lift privacy policy</title>
+  <style>
+    :root { --bg: #f5f6f8; --text: #0f1115; --muted: #545b67; --line: #e1e4ea; --accent: #2f5fd0; color-scheme: light; }
+    @media (prefers-color-scheme: dark) { :root { --bg: #0c0e12; --text: #f1f3f6; --muted: #a2a9b6; --line: #2a2f39; --accent: #7aa2ff; color-scheme: dark; } }
+    body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.6 -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; padding: max(24px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) 48px max(20px, env(safe-area-inset-left)); }
+    main { max-width: 680px; margin: 0 auto; }
+    h1 { font-size: 1.75rem; line-height: 1.2; margin: 0 0 4px; }
+    h2 { font-size: 1.125rem; margin: 28px 0 6px; }
+    p, li { color: var(--text); }
+    .muted { color: var(--muted); font-size: 0.9375rem; }
+    ul { padding-left: 20px; }
+    li { margin: 4px 0; }
+    a { color: var(--accent); }
+    hr { border: 0; border-top: 1px solid var(--line); margin: 28px 0; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Privacy policy</h1>
+  <p class="muted">Lift Tracker · last updated November 21, 2026</p>
+
+  <p>Lift keeps your training, food and body data on your phone. Nothing leaves it unless you turn on an account or cloud backup. There are no ads, no analytics and no tracking, and your data is never sold or shared for marketing.</p>
+
+  <h2>On your phone</h2>
+  <p>Your plan, workouts, food log, body weight, measurements, pain reports and settings are stored in the app's storage on your phone. Progress photos are stored only on your phone and are never uploaded. Erasing all data (Settings → Backup and data) removes it from the phone.</p>
+
+  <h2>With an account</h2>
+  <p>An account is optional. With one, the app stores on Lift's server (Cloudflare):</p>
+  <ul>
+    <li>the name you choose;</li>
+    <li>your passkeys' public keys (the private keys never leave your devices), a scrambled form of your recovery code, and scrambled forms of sign-in tokens;</li>
+    <li>a copy of your training, food and body data so it can sync to your other phones (not progress photos);</li>
+    <li>if you add friends: a weekly summary they can see (workouts done, sets, streak, strength change in percent, records without weights);</li>
+    <li>if you have a coach: the parts of your data you choose to share with them, plan suggestions, and notes between you;</li>
+    <li>for limiting sign-ups, a scrambled form of the network address that created the account.</li>
+  </ul>
+  <p>Synced data is protected in transit and only returned to your signed-in devices and to the people you chose to share with. It is not end-to-end encrypted, because sharing with friends and a coach needs the server to read it.</p>
+  <p><b>Deleting your account</b> (Settings → Account and sync → Delete account) removes all of the above from the server right away. The data on your phone stays until you erase it.</p>
+
+  <h2>Cloud backup</h2>
+  <p>Optional and separate from accounts. Backups are encrypted on your phone with your recovery code before they are sent, so the server can't read them. Daily copies expire after 60 days.</p>
+
+  <h2>Notifications</h2>
+  <p>If you turn on notifications, your phone's push address is stored with your account so the app can send rest-timer alerts, coach notes and challenge results. Turning notifications off or deleting your account removes it.</p>
+
+  <h2>Other services</h2>
+  <ul>
+    <li><b>GitHub Pages</b> hosts the app itself.</li>
+    <li><b>Cloudflare</b> runs the server for accounts, sync and backups.</li>
+    <li><b>Exercise pictures</b> load from GitHub (the free-exercise-db project). Like any website, GitHub sees your network address when a picture loads.</li>
+    <li><b>YouTube</b> opens only when you tap "Watch a demo".</li>
+    <li><b>Apple Health</b> receives workout calories only if you set up the Shortcut and tap Send.</li>
+  </ul>
+
+  <h2>Children</h2>
+  <p>Lift is not directed at children under 13, and accounts are not intended for them.</p>
+
+  <h2>Changes and questions</h2>
+  <p>If this policy changes, the date above changes with it. Questions can be raised on the project's <a href="https://github.com/jbroefitzpatrick/lift-tracker/issues" rel="noopener">GitHub page</a>.</p>
+  <hr>
+  <p class="muted"><a href="./">Back to Lift</a></p>
+</main>
+</body>
+</html>

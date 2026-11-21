@@ -173,9 +173,9 @@ export function createPlanTools(ctx) {
       ctx.persist(); ctx.closeSheet(); ctx.render();
       ctx.toast(had ? `Swapped ${FULL[d.day]} and ${FULL[d.to]}.` : `Moved to ${FULL[d.to]}.`);
     },
-    'pt-remove': (d) => {
+    'pt-remove': async (d) => {
       const name = ctx.db.plan[d.day].name;
-      if (!confirm(`Remove ${name} from ${FULL[d.day]}s? Its focus lifts move into your other days. You can undo this from the Plan tab.`)) return;
+      if (!(await ctx.ask(`Remove ${name} from ${FULL[d.day]}s? Its focus lifts move into your other days. You can undo this from the Plan tab.`, 'Remove', true))) return;
       const moved = removeDay(d.day);
       ctx.persist(); ctx.closeSheet(); ctx.render();
       ctx.toast(moved.length ? `Removed. Moved ${moved.join(', ')}.` : `${FULL[d.day]} is now a rest day.`);

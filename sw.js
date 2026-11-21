@@ -1,10 +1,11 @@
 // Offline support: cache the app shell, serve from cache first, refresh in the background.
 // Bump VERSION whenever you deploy changes so phones pick up the new files.
-const VERSION = 'lift-v43';
+const VERSION = 'lift-v46';
 const IMG_CACHE = 'lift-img-v1'; // exercise photos, cached as they're viewed
 const SHELL = [
   './',
   './index.html',
+  './privacy.html',
   './styles.css',
   './manifest.webmanifest',
   './js/app.js',
@@ -41,6 +42,11 @@ const SHELL = [
   './js/ui-account.js',
   './js/card.js',
   './js/ui-people.js',
+  './js/push.js',
+  './js/screen-progress.js',
+  './js/screen-workout.js',
+  './js/screen-plan.js',
+  './js/screen-builder.js',
   './js/blocks.js',
   './js/conditioning.js',
   './js/cloud.js',
@@ -105,4 +111,29 @@ self.addEventListener('fetch', (e) => {
       return res || (req.mode === 'navigate' ? cache.match('./index.html') : Response.error());
     }),
   );
+});
+
+// ---------- Notifications (web push from the Lift server, cloud/push.js) ----------
+self.addEventListener('push', (e) => {
+  let m = {};
+  try { m = e.data ? e.data.json() : {}; } catch { m = { body: e.data?.text() }; }
+  e.waitUntil(self.registration.showNotification(m.title || 'Lift', {
+    body: m.body || '',
+    tag: m.tag || undefined,
+    renotify: !!m.tag,
+    icon: './icons/icon-192.png',
+    badge: './icons/icon-192.png',
+    data: { url: m.url || './' },
+  }));
+});
+
+// Tapping a notification opens the app (or brings it forward) where the notification points.
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  const target = new URL(e.notification.data?.url || './', self.registration.scope).href;
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+    const open = list.find((c) => c.url.startsWith(self.registration.scope));
+    if (open) { open.postMessage({ type: 'open', url: target }); return open.focus(); }
+    return self.clients.openWindow(target);
+  }));
 });

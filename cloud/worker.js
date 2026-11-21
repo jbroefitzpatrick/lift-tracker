@@ -16,11 +16,17 @@
 // backing up a few times a day use well under 5% of it.
 
 import { handleV2 } from './accounts.js';
+import { RestAlerts, finishedContests } from './push.js';
+
+// Durable Object class for rest alerts (push.js), bound as ALERTS in wrangler.toml.
+export { RestAlerts };
 
 const MAX_BYTES = 10 * 1024 * 1024; // backups without photos are far smaller than this
 const KEEP_DAYS = 60;
 
 export default {
+  // Hourly (wrangler.toml [triggers]): notify people whose challenge just ended.
+  async scheduled(event, env, ctx) { ctx.waitUntil(finishedContests(env)); },
   async fetch(req, env) {
     const cors = corsHeaders(req, env);
     const json = (body, status = 200) => new Response(JSON.stringify(body), {

@@ -90,6 +90,18 @@ In the app: **Cloud backup → Share with a tester**.
 
 Each tester gets their own recovery code and their own private backups. Nobody can see anyone else's data, including you.
 
+## Notifications
+
+Web push from the same worker (`cloud/push.js`). Messages are encrypted for each phone (RFC 8291) and signed with the server's VAPID key (RFC 8292): the public half is `VAPID_PUBLIC` in `wrangler.toml`, the private half the `VAPID_PRIVATE` secret. In the app: Settings → Account and sync → Notifications (on iPhone, only once Lift is on the Home Screen).
+
+- **Sent for:** a coach note, a plan suggestion, a challenge sent or accepted, an invite accepted, and a challenge that ended (hourly cron).
+- **Rest timer while locked:** when the app goes to the background during a rest, it asks the server to send "Rest is over" at the rest's end time. A Durable Object per account (`RestAlerts`, binding `ALERTS`) holds the alert and sends it from an alarm; coming back to the app cancels it.
+- **Deleting an account** (Settings → Account and sync → Delete account) removes every row for it, including notification subscriptions.
+
+| Task | How |
+|---|---|
+| New VAPID keys | Generate a P-256 key pair, put the raw public key (base64url) in `VAPID_PUBLIC` and the private JWK with `npx wrangler secret put VAPID_PRIVATE` (from `cloud`); phones re-subscribe when notifications are turned off and on |
+
 ## Restoring
 
 New phone, wiped data, or a bad update:

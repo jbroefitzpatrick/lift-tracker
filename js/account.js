@@ -97,3 +97,9 @@ export async function signOut() {
   try { await api('/v2/auth/logout', {}, { auth: true }); } catch {}
   saveAccount(null);
 }
+
+// Delete the account and everything the server holds for it. This phone's own data stays.
+export async function deleteAccount() {
+  await api('/v2/account/delete', {}, { auth: true });
+  saveAccount(null);
+}

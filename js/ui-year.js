@@ -102,13 +102,13 @@ export function createYear(ctx) {
 
   const find = (id) => ctx.db.yearPlan.phases.findIndex((p) => p.id === id);
   const actions = {
-    'yr-suggest': () => {
-      if (ctx.db.yearPlan && !confirm('Replace your year plan with a suggested one?')) return;
+    'yr-suggest': async () => {
+      if (ctx.db.yearPlan && !(await ctx.ask('Replace your year plan with a suggested one?', 'Replace'))) return;
       ctx.db.yearPlan = suggestYear(ctx.db.profile, mondayOf(todayStr()));
       ctx.persist(); ctx.render(); ctx.toast('Suggested year added — edit any phase.');
     },
     'yr-blank': () => { ctx.db.yearPlan = { start: mondayOf(todayStr()), phases: [newPhase('maintain', 52)] }; ctx.persist(); ctx.render(); },
-    'yr-clear': () => { if (!confirm('Remove the year plan? Targets go back to your profile goal.')) return; ctx.db.yearPlan = null; ctx.persist(); ctx.render(); },
+    'yr-clear': async () => { if (!(await ctx.ask('Remove the year plan? Targets go back to your profile goal.', 'Remove', true))) return; ctx.db.yearPlan = null; ctx.persist(); ctx.render(); },
     'yr-add': () => { ctx.db.yearPlan.phases.push(newPhase('maintain', 4)); ctx.persist(); ctx.render(); },
     'yr-del': (d) => { const ph = ctx.db.yearPlan.phases; if (ph.length <= 1) return ctx.toast('Keep at least one phase.'); ph.splice(find(d.id), 1); ctx.persist(); ctx.render(); },
     'yr-weeks': (d) => { const p = ctx.db.yearPlan.phases[find(d.id)]; p.weeks = Math.max(1, Math.min(52, p.weeks + +d.v)); ctx.persist(); ctx.render(); },

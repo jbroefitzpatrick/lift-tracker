@@ -117,3 +117,19 @@ CREATE TABLE IF NOT EXISTS signups (
   created INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS signups_ip ON signups (ip, created);
+
+-- Web push: each phone that turned on notifications (its push endpoint and keys).
+CREATE TABLE IF NOT EXISTS push_subs (
+  endpoint TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  p256dh TEXT NOT NULL,
+  auth TEXT NOT NULL,
+  created INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS push_subs_user ON push_subs (user_id);
+
+-- Challenges whose end has been announced (hourly check in push.js).
+CREATE TABLE IF NOT EXISTS contest_done (
+  id TEXT PRIMARY KEY,
+  done INTEGER NOT NULL
+);

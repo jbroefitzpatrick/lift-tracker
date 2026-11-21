@@ -13,6 +13,7 @@
 // Storage: Cloudflare D1 (SQLite), binding DB. Tables in schema.sql.
 
 import { handleSocial } from './social.js';
+import { handlePush } from './push.js';
 
 const enc = new TextEncoder();
 const b64u = {
@@ -264,6 +265,38 @@ export async function handleV2(req, env, url, json, allowedOrigins, accessOk) {
         more,
         docs: list.map((r) => ({ id: r.id, ver: r.ver, ts: r.ts, deleted: !!r.deleted, data: r.deleted ? null : JSON.parse(r.data) })),
       });
+    }
+    // Delete the account and everything stored for it: synced data, sign-ins, passkeys, the
+    // recovery code, and its friends and coaching links (with their notes, cheers and challenges).
+    if (path === '/v2/account/delete' && req.method === 'POST') {
+      const user = await authUser(req, env);
+      if (!user) return json({ error: 'Signed out.' }, 401);
+      const id = user.id;
+      const links = await env.DB.prepare('SELECT id FROM links WHERE a = ? OR b = ?').bind(id, id).all();
+      const stmts = [
+        env.DB.prepare('DELETE FROM docs WHERE user_id = ?').bind(id),
+        env.DB.prepare('DELETE FROM sessions WHERE user_id = ?').bind(id),
+        env.DB.prepare('DELETE FROM creds WHERE user_id = ?').bind(id),
+        env.DB.prepare('DELETE FROM codes WHERE user_id = ?').bind(id),
+        env.DB.prepare('DELETE FROM challenges WHERE user_id = ?').bind(id),
+        env.DB.prepare('DELETE FROM cards WHERE user_id = ?').bind(id),
+        env.DB.prepare('DELETE FROM cheers WHERE owner = ? OR from_user = ?').bind(id, id),
+        env.DB.prepare('DELETE FROM contests WHERE a = ? OR b = ?').bind(id, id),
+        env.DB.prepare('DELETE FROM proposals WHERE coach = ? OR client = ?').bind(id, id),
+        env.DB.prepare('DELETE FROM invites WHERE user_id = ?').bind(id),
+        ...(links.results || []).map((l) => env.DB.prepare('DELETE FROM messages WHERE link_id = ?').bind(l.id)),
+        env.DB.prepare('DELETE FROM links WHERE a = ? OR b = ?').bind(id, id),
+        env.DB.prepare('DELETE FROM push_subs WHERE user_id = ?').bind(id),
+        env.DB.prepare('DELETE FROM users WHERE id = ?').bind(id),
+      ];
+      await env.DB.batch(stmts);
+      return json({ ok: true });
+    }
+    // Notifications (push.js).
+    if (path.startsWith('/v2/push/') && req.method === 'POST') {
+      const user = await authUser(req, env);
+      if (!user) return json({ error: 'Signed out.' }, 401);
+      return handlePush(path, body, user, env, json);
     }
     // Friends and coaching (social.js).
     if ((path.startsWith('/v2/social') || path.startsWith('/v2/coach/')) && (req.method === 'POST' || path === '/v2/social')) {

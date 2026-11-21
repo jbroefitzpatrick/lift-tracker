@@ -80,7 +80,7 @@ export function createExerciseEditor(ctx) {
       if (d.k === 'category' && d.v === 'conditioning' && st.metric === 'reps') { /* reps still fine for e.g. burpees */ }
     },
     'exe-mus': (d) => cycle(d.m), // tapping a chip moves it along: main → helper → removed
-    'exe-save': () => {
+    'exe-save': async () => {
       const db = ctx.db;
       let name = $('#exe-name').value.trim().replace(/\s+/g, ' ');
       if (name === name.toLowerCase()) name = name[0]?.toUpperCase() + name.slice(1); // "viking press" from search → "Viking press"
@@ -97,7 +97,7 @@ export function createExerciseEditor(ctx) {
       if (id) Object.assign(db.exercises[id], fields, { customMeta: true });
       else {
         const dup = Object.values(db.exercises).find((e) => e.name.toLowerCase() === name.toLowerCase());
-        if (dup && !confirm(`"${dup.name}" already exists. Create another one anyway?`)) return;
+        if (dup && !(await ctx.ask(`"${dup.name}" already exists. Create another one anyway?`, 'Create anyway'))) return;
         id = slug(name);
         while (db.exercises[id]) id += '-2';
         db.exercises[id] = { id, ...fields, substitute: '', minRir: 0, rules: {}, startWeight: null, custom: true, customMeta: true };
@@ -108,14 +108,14 @@ export function createExerciseEditor(ctx) {
       if (then) setTimeout(() => then(id), 200);
       else { ctx.render(); ctx.toast(`${name} saved.`); }
     },
-    'exe-delete': () => {
+    'exe-delete': async () => {
       const db = ctx.db;
       const id = st.id;
       const used = Object.values(db.plan).some((p) => p.items.some((i) => i.exerciseId === id || i.variants?.includes(id)))
         || Object.values(db.activeSession?.entries || {}).some((e) => e.exerciseId === id);
       if (used) return ctx.toast('It\'s in your plan or today\'s workout. Swap it out first.');
       if (db.sessions.some((s) => s.entries.some((e) => e.exerciseId === id))) return ctx.toast('It\'s in your workout history, so it stays. Mark it "Never suggest" to hide it.');
-      if (!confirm(`Delete ${db.exercises[id].name}? Past workouts that used it keep their records.`)) return;
+      if (!(await ctx.ask(`Delete ${db.exercises[id].name}? Past workouts that used it keep their records.`, 'Delete', true))) return;
       delete db.exercises[id];
       ctx.persist(); ctx.closeSheet(); ctx.render();
       ctx.toast('Exercise deleted.');

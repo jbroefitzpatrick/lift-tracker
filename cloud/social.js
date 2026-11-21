@@ -7,6 +7,8 @@
 // workouts, body, food), suggest plan changes the client accepts or declines, and exchange notes.
 // Either side can end a link at any time; the client can change what's shared at any time.
 
+import { pushTo } from './push.js';
+
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const now = () => Date.now();
 const rid = (n = 12) => { const b = crypto.getRandomValues(new Uint8Array(n)); let s = ''; for (const x of b) s += String.fromCharCode(x); return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); };
@@ -122,6 +124,7 @@ export async function handleSocial(path, body, user, env, json) {
       env.DB.prepare('INSERT INTO links (id, a, b, kind, perms, created) VALUES (?, ?, ?, ?, ?, ?)').bind(id, a, b, kind, perms ? JSON.stringify(perms) : null, now()),
       env.DB.prepare('DELETE FROM invites WHERE code = ?').bind(code),
     ]);
+    await pushTo(env, inv.user_id, { title: kind === 'friend' ? `${user.name} accepted your invite` : `${user.name} is connected for coaching`, body: kind === 'friend' ? 'You can now compare weeks and cheer each other on.' : 'Open People to get started.', tag: `link-${id}`, url: './?open=people' });
     return json({ ok: true, link: { id, kind, role: kind === 'friend' ? 'friend' : inv.kind === 'coach' ? 'client' : 'coach', user: { id: inv.user_id, name: inv.name } } });
   }
 
@@ -164,6 +167,7 @@ export async function handleSocial(path, body, user, env, json) {
     const id = rid();
     await env.DB.prepare("INSERT INTO contests (id, a, b, kind, ex, ex_name, days, start, status, created) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, 'pending', ?)")
       .bind(id, me, to, kind, kind === 'lift' ? String(body.ex).slice(0, 80) : null, kind === 'lift' ? String(body.exName || '').slice(0, 80) : null, days, now()).run();
+    await pushTo(env, to, { title: `${user.name} challenged you`, body: kind === 'workouts' ? `Most workouts over ${days} days.` : `Biggest gain on ${body.exName || 'a lift'} over ${days} days.`, tag: `contest-${id}`, url: './?open=people' });
     return json({ ok: true, id });
   }
   if (path === '/v2/social/contest/respond') {
@@ -177,6 +181,7 @@ export async function handleSocial(path, body, user, env, json) {
     if (c.b !== me) return json({ error: 'Not yours.' }, 403);
     if (body.accept && !isDate(body.today)) return json({ error: 'Missing date.' }, 400);
     await env.DB.prepare('UPDATE contests SET status = ?, start = ? WHERE id = ?').bind(body.accept ? 'active' : 'declined', body.accept ? body.today : null, c.id).run();
+    if (body.accept) await pushTo(env, c.a, { title: `${user.name} accepted your challenge`, body: 'It starts today. Good luck.', tag: `contest-${c.id}`, url: './?open=people' });
     return json({ ok: true });
   }
 
@@ -218,6 +223,7 @@ export async function handleSocial(path, body, user, env, json) {
     await env.DB.prepare("UPDATE proposals SET status = 'withdrawn', decided = ? WHERE coach = ? AND client = ? AND status = 'pending'").bind(now(), me, l.b).run();
     const id = rid();
     await env.DB.prepare("INSERT INTO proposals (id, coach, client, data, note, status, created) VALUES (?, ?, ?, ?, ?, 'pending', ?)").bind(id, me, l.b, data, String(body.note || '').slice(0, 1000), now()).run();
+    await pushTo(env, l.b, { title: `${user.name} suggested plan changes`, body: String(body.note || 'Open People to review them.').slice(0, 140), tag: `proposal-${id}`, url: './?open=people' });
     return json({ ok: true, id });
   }
   if (path === '/v2/coach/withdraw') {
@@ -237,6 +243,7 @@ export async function handleSocial(path, body, user, env, json) {
     if (!text) return json({ error: 'Write something first.' }, 400);
     const id = rid();
     await env.DB.prepare('INSERT INTO messages (id, link_id, from_user, session_id, text, created) VALUES (?, ?, ?, ?, ?, ?)').bind(id, l.id, me, body.session ? String(body.session).slice(0, 80) : null, text, now()).run();
+    await pushTo(env, l.a === me ? l.b : l.a, { title: user.name, body: text.slice(0, 140), tag: `note-${l.id}`, url: './?open=people' });
     return json({ ok: true, id });
   }
   return json({ error: 'Not found.' }, 404);

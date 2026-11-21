@@ -43,6 +43,7 @@ export function createHealth(ctx) {
       ${steps()}
       ${sessionId ? `<label class="toggle"><input type="checkbox" id="hs-hide"><span>Don't show this again</span></label>
       <button class="btn primary block big" data-a="health-send-now" data-id="${esc(sessionId)}">I've set it up — send ${kcal} kcal</button>` : ''}
+      ${!sessionId ? '<h3 class="sheet-h">Check it works</h3><p class="small">Sends 1 kcal. Then open Health → Browse → Activity → Active Energy → Show All Data: a 1 kcal entry from Shortcuts means it works (swipe left on it to delete it).</p><button class="btn block" data-a="health-test">Send a test (1 kcal)</button>' : ''}
       ${!sessionId && ctx.db.settings.healthSetupHidden ? '<button class="btn block" data-a="health-reset">Show these steps again when I send</button>' : ''}
       <button class="btn plain block" data-a="close-sheet">${sessionId ? 'Not now' : 'Done'}</button>`);
   }
@@ -76,6 +77,7 @@ export function createHealth(ctx) {
       send(d.id);
     },
     'health-setup': () => openSetup(null),
+    'health-test': () => { ctx.closeSheet(); runShortcut(1); },
     'health-reset': () => { ctx.db.settings.healthSetupHidden = false; ctx.persist(); ctx.render(); ctx.toast('Setup steps will show next time you send.'); },
   };
 
