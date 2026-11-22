@@ -202,44 +202,48 @@ export function createProgressScreens(A) {
     return { sex: p.sex || '', age: +p.age || null, bw: latestBodyweight() };
   }
   const areas = () => strengthAreas((id) => liftStats(id), person());
+  const partNames = (a) => a.parts.map((p) => p.name.toLowerCase()).join(' or ');
   function standardsPanel() {
     const me = person();
     const list = areas();
-    const scored = list.filter((a) => a.pct != null);
-    const pcts = scored.map((a) => a.pct).sort((x, y) => x - y);
+    const pcts = list.filter((a) => a.pct != null).map((a) => a.pct).sort((x, y) => x - y);
     const overall = pcts.length ? pcts[Math.floor((pcts.length - 1) / 2)] : null;
     const missing = [!me.bw && 'body weight', !me.age && 'age', !me.sex && 'sex'].filter(Boolean);
     const tile = (a) => {
-      if (a.pct == null) return `<button class="std-tile empty" data-a="std-area" data-v="${a.id}"><span class="std-name">${a.name}</span><span class="std-sub">${me.bw ? `Log a ${a.keyName.toLowerCase()} or similar` : 'Add your body weight'}</span></button>`;
+      if (a.pct == null) return `<button class="std-tile empty" data-a="std-area" data-v="${a.id}"><span class="std-name">${a.name}</span><span class="std-sub">${me.bw ? `Log a ${partNames(a)}` : 'Add your body weight'}</span></button>`;
       return `<button class="std-tile" data-a="std-area" data-v="${a.id}">
         <span class="std-name">${a.name}</span>
-        <span class="std-val num">${a.ratio.toFixed(2)}<small>× BW</small></span>
+        <span class="std-val">${a.level >= 0 ? LEVELS[a.level] : 'Starting out'}</span>
         <span class="std-bar" aria-hidden="true"><i class="std-avg"></i><i class="std-you" style="left:${Math.min(98, Math.max(2, a.pct))}%"></i></span>
-        <span class="std-sub">${a.level >= 0 ? LEVELS[a.level] : 'Starting out'} · stronger than ${a.pct}%</span>
+        <span class="std-sub">Stronger than ${a.pct}%</span>
       </button>`;
     };
     return `<section class="card strength-hero std-panel">
       <div class="row between"><h3>How you compare</h3>${overall != null ? `<span class="small">Overall: <b>stronger than ${overall}%</b></span>` : ''}</div>
-      <p class="muted small">Estimated max ÷ body weight on each area's key lift, against lifters of your sex, age and weight. The line marks the average lifter.</p>
       <div class="std-grid">${list.map(tile).join('')}</div>
-      ${missing.length ? `<p class="muted small">Add your ${missing.join(', ').replace(/, ([^,]*)$/, ' and $1')} in <button class="text-link small-link" data-a="open-builder">Profile and goals</button>${!me.bw ? ' or Body' : ''} for a closer comparison.</p>` : ''}
+      ${missing.length ? `<p class="muted small">Add your ${missing.join(', ').replace(/, ([^,]*)$/, ' and $1')} in <button class="text-link small-link" data-a="open-builder">Profile</button> for a closer comparison.</p>` : ''}
     </section>`;
   }
   function openStrengthArea(id) {
     const a = areas().find((x) => x.id === id);
     if (!a) return;
-    const me = person();
-    const bw = me.bw;
-    const rows = LEVELS.map((l, i) => `<div class="kv ${a.level === i ? 'std-here' : ''}"><span>${l}<span class="pick-sub">stronger than ${[5, 20, 50, 80, 95][i]}% of lifters${i === 2 ? ' (average)' : ''}</span></span><b>${bw ? wtEst(a.levels[i] * bw) : `${a.levels[i].toFixed(2)}× BW`}</b></div>`).join('');
-    const related = a.related.map((x) => `<button class="list-row" data-a="ex-info-close" data-id="${x.id}"><span class="grow"><b>${A.esc(x.s.ex.name)}</b><span class="pick-sub">Est. max ${wtEst(x.s.now)}${x.f !== 1 ? ` · ≈ ${wtEst(x.s.now * x.f)} ${a.keyName.toLowerCase()}` : ''}${x === a.basis ? ' · used here' : ''}</span></span>${icon('right', 'chev')}</button>`).join('');
+    const bw = person().bw;
+    const lvl = (n) => (n >= 0 ? LEVELS[n] : 'Starting out');
+    const parts = a.parts.map((p) => p.basis
+      ? `<div class="post-metric"><span class="pm-label">${A.esc(p.name)}${p.basis.f !== 1 ? ` (from ${A.esc(p.basis.s.ex.name)})` : ''}</span><b class="num">${wtEst(p.equiv)} · ${p.ratio.toFixed(2)}× BW</b><span class="pm-sub">${lvl(p.level)} · stronger than ${p.pct}%</span></div>`
+      : `<p class="small muted">${A.esc(p.name)}: not logged yet</p>`).join('');
+    const multi = a.parts.length > 1;
+    const val = (p, i) => (bw ? wtEst(p.levels[i] * bw) : `${p.levels[i].toFixed(2)}×`);
+    const rows = LEVELS.map((l, i) => `<div class="kv ${a.level === i ? 'std-here' : ''}"><span>${l}<span class="pick-sub">stronger than ${[5, 20, 50, 80, 95][i]}%${i === 2 ? " (average)" : ""}</span></span><b>${a.parts.map((p) => val(p, i)).join(' · ')}</b></div>`).join('');
+    const related = a.parts.flatMap((p) => p.related.map((x) => ({ x, p }))).map(({ x, p }) => `<button class="list-row" data-a="ex-info-close" data-id="${x.id}"><span class="grow"><b>${A.esc(x.s.ex.name)}</b><span class="pick-sub">Est. max ${wtEst(x.s.now)}${x.f !== 1 ? ` · ≈ ${wtEst(x.s.now * x.f)} ${p.name.toLowerCase()}` : ''}${x === p.basis ? ' · used' : ''}</span></span>${icon('right', 'chev')}</button>`).join('');
     A.openSheet(`<h2>${a.name}</h2>
-      ${a.basis ? `<div class="post-metric"><span class="pm-label">${A.esc(a.keyName)}${a.basis.f !== 1 ? ` (from ${A.esc(a.basis.s.ex.name)})` : ''}</span><b class="num">${wtEst(a.equiv)} · ${a.ratio.toFixed(2)}× BW</b><span class="pm-sub">${a.level >= 0 ? LEVELS[a.level] : 'Starting out'} · stronger than about ${a.pct}% of lifters like you</span></div>`
-        : `<p class="small">Log a ${a.keyName.toLowerCase()} (or a close variation) to see where you stand.</p>`}
-      <h3 class="sheet-h">Standards for you${bw ? ` (${wtEst(bw)} body weight)` : ''}</h3>
+      ${a.pct != null ? `<p class="small"><b>${lvl(a.level)}</b> · stronger than ${a.pct}% of lifters like you${multi && a.parts.every((p) => p.basis) ? ' (bench 60%, overhead press 40%)' : ''}</p>` : ''}
+      ${parts}
+      <h3 class="sheet-h">Standards for you${multi ? ` <span class="muted small">${a.parts.map((p) => p.name.toLowerCase()).join(' · ')}</span>` : ''}</h3>
       <div class="kv-list">${rows}</div>
-      ${related ? `<h3 class="sheet-h">Related lifts</h3><div class="list-group">${related}</div>` : ''}
-      <p class="muted small">Standards come from people who lift, so "average" means the average lifter. They're adjusted for body weight (heavier lifters lift less per pound), age (about 1% less a year after 40) and sex. Variations are converted with typical ratios, so they're estimates. ${A.refChips(['strengthlevel', 'jaric2002', 'keller2013'])}</p>
-      <button class="btn block" data-a="prog-sub-close" data-v="strength-${a.group}">See ${a.name.toLowerCase()} lifts</button>`);
+      ${related ? `<h3 class="sheet-h">Your lifts</h3><div class="list-group">${related}</div>` : ''}
+      <p class="muted small">Compared with people who lift, adjusted for your sex, age and body weight. Variations are converted with typical ratios. ${A.refChips(['strengthlevel', 'jaric2002', 'keller2013'])}</p>
+      <button class="btn block" data-a="prog-sub-close" data-v="strength-${a.group}">See all ${A.esc(GROUPS.find((g) => g.id === a.group)?.name.toLowerCase() || a.name.toLowerCase())} lifts</button>`);
   }
 
   function strengthPage() {

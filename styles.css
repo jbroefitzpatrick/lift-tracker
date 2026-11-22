@@ -1599,7 +1599,7 @@ a.list-row { color: inherit; text-decoration: none; }
 .std-tile { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 12px; border: 0; border-radius: 14px; background: var(--surface-2); color: var(--text); font: inherit; text-align: left; cursor: pointer; min-height: 112px; }
 .std-tile.empty { justify-content: center; }
 .std-name { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
-.std-val { font-size: 1.5rem; font-weight: 700; }
+.std-val { font-size: 1.15rem; font-weight: 700; }
 .std-val small { font-size: 0.75rem; font-weight: 600; color: var(--muted); margin-left: 3px; }
 .std-sub { font-size: 0.75rem; color: var(--muted); }
 .std-bar { position: relative; width: 100%; height: 8px; border-radius: 4px; background: linear-gradient(90deg, var(--surface-3), var(--accent-soft)); margin: 4px 0 2px; }
@@ -1645,3 +1645,8 @@ body.in-workout .ex-hero.big { cursor: zoom-out; }
   position: sticky; top: 0; z-index: 8; margin: calc(-1 * (env(safe-area-inset-top) + 14px)) -16px 14px; padding: calc(env(safe-area-inset-top) + 10px) 16px 10px;
   background: color-mix(in srgb, var(--bg) 92%, transparent); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
 }
+
+/* Summary note: a quiet row until opened */
+.note-card summary { list-style: none; cursor: pointer; font-weight: 600; color: var(--accent); }
+.note-card summary::-webkit-details-marker { display: none; }
+.note-card[open] summary { color: var(--text); margin-bottom: 8px; }

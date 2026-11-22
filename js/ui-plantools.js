@@ -184,7 +184,7 @@ export function createPlanTools(ctx) {
     'pt-add-go': (d) => {
       addDay(d.day, d.src || null);
       ctx.persist(); ctx.closeSheet(); ctx.render();
-      ctx.toast(d.src ? `Copied to ${FULL[d.day]}. Edit it below.` : `${FULL[d.day]} added. Add exercises below.`);
+      ctx.toast(d.src ? `Copied to ${FULL[d.day]}.` : `${FULL[d.day]} added.`);
     },
     'pt-bulk': (d) => openBulk(d.day),
     'pt-bulk-set': (d) => { st.bulk[d.k] = d.v; $('#pt-bulk').innerHTML = bulkBody(); },
@@ -199,7 +199,7 @@ export function createPlanTools(ctx) {
         if (b.rest !== 'keep') it.restSec = +b.rest;
       }
       ctx.persist(); ctx.closeSheet(); ctx.render();
-      ctx.toast(`Updated ${list.length} exercise${list.length === 1 ? '' : 's'}. Undo is on the Plan tab.`);
+      ctx.toast(`Updated ${list.length} exercise${list.length === 1 ? '' : 's'}.`);
     },
   };
 

@@ -71,8 +71,7 @@ export function createPlanScreens(A) {
         <button class="list-row" data-a="plan-view" data-v="program"><span class="grow"><b>Block ${b.index} · week ${b.weekInBlock} of ${b.n}</b><span class="pick-sub">Focus lifts, deloads, progression</span></span>${icon('right', 'chev')}</button>
         <button class="list-row" data-a="rv-open"><span class="grow"><b>Last week</b><span class="pick-sub">${rv.sessions ? (nSug ? (nSug > 3 ? `Top 3 of ${nSug} suggestions` : `${nSug} suggestion${nSug === 1 ? '' : 's'}`) : 'Nothing to change') : 'No workouts logged'}</span></span>${icon('right', 'chev')}</button>
         <button class="list-row" data-a="plan-view" data-v="year"><span class="grow"><b>Goals and year</b><span class="pick-sub">Running goal, training phases</span></span>${icon('right', 'chev')}</button>
-        <button class="list-row" data-a="programs-open"><span class="grow"><b>Start a known program</b><span class="pick-sub">5/3/1, GZCLP, Starting Strength, PHUL, Push Pull Legs</span></span>${icon('right', 'chev')}</button>
-      <button class="list-row" data-a="open-builder"><span class="grow"><b>Rebuild plan from goals</b><span class="pick-sub">Days, sets, reps and exercises</span></span>${icon('right', 'chev')}</button>
+        <button class="list-row" data-a="plan-change"><span class="grow"><b>Change plan</b><span class="pick-sub">Rebuild from goals or start a known program</span></span>${icon('right', 'chev')}</button>
       </div>`;
   }
 

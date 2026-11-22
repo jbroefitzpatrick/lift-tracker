@@ -486,7 +486,7 @@ export function createTrain(ctx) {
         liftMaintenance: $('#rg-maint').checked, trials: prev?.trials || [],
       };
       ctx.persist(); ctx.closeSheet(); ctx.render();
-      ctx.toast(`Runs on ${Object.values(days).sort((a, b) => dayIndex(a) - dayIndex(b)).map((d) => SHORT[d]).join(', ')}. Hard runs avoid heavy leg days.`);
+      ctx.toast(`Runs on ${Object.values(days).sort((a, b) => dayIndex(a) - dayIndex(b)).map((d) => SHORT[d]).join(', ')}.`);
     },
     'rg-remove': async () => { if (!(await ctx.ask('Remove the running goal? Logged runs stay in your history.', 'Remove', true))) return; ctx.db.runGoal = null; ctx.persist(); ctx.closeSheet(); ctx.render(); },
     'open-share': () => openShare(),

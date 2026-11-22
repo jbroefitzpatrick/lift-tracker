@@ -230,7 +230,7 @@ export function createAccountUi(ctx) {
     'acct-show-code': () => showCode(account()?.code, false),
     'acct-copy': async () => { try { await navigator.clipboard.writeText(account()?.code || ''); ctx.toast('Copied.'); } catch { ctx.toast('Select the code and copy it.'); } },
     'acct-signout': async () => {
-      if (!(await ctx.ask('Sign out of this phone? Your data stays on this phone and in your account.', 'Sign out', true))) return;
+      if (!(await ctx.ask('Sign out of this phone? Your data stays.', 'Sign out', true))) return;
       await disablePush(); await signOut(); resetSyncState(); setPending(false); ctx.people?.reset(); ctx.render(); ctx.toast('Signed out.');
     },
   };

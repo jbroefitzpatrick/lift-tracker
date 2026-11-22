@@ -168,7 +168,8 @@ export function createWorkoutScreens(A) {
     if (!session && day === dayKeyOf(todayStr())) html += A.doneTodayCard(day);
     // The day a plan is made: nothing but the plan (no check-ins, reviews or reminders yet).
     const planDay0 = A.db.settings.planSince === todayStr() && day === dayKeyOf(todayStr());
-    if (!session && !planDay0) html += [A.train.recoveryCheck(), A.reviewCard(), A.skippedPrompt(day), A.train.weekPrompt(), A.extras.backupBanner(), A.db.settings.welcomed ? A.train.installHint() : ''].filter(Boolean).slice(0, 1).join('');
+    const banner = !session && !planDay0 ? [A.train.recoveryCheck(), A.reviewCard(), A.skippedPrompt(day), A.train.weekPrompt(), A.extras.backupBanner(), A.db.settings.welcomed ? A.train.installHint() : ''].filter(Boolean)[0] || '' : '';
+    html += banner;
     html += A.blockCheckinBanner();
     if (needsRotationPrompt(A.db)) {
       const nextId = nextRowCompound(A.db);
@@ -189,10 +190,9 @@ export function createWorkoutScreens(A) {
     if (!session && !condOnly && (!dayPlan(A.db, day) || mode === 'cardio' || mode === 'rest')) {
       if (planDay0) return html + planReadyCard();
       html += A.train.recoveryCards(day, []);
-      html += A.train.recoveryReminder(day, mode);
-      html += `<p class="muted small pad">${mode === 'rest' ? 'Rest day. Light recovery work is optional.' : 'Cardio day.'}</p>`;
+      if (!banner) html += A.train.recoveryReminder(day, mode);
       html += `<button class="add-workout-big" data-a="add-workout" data-day="${day}"><span class="aw-plus">${icon('plus')}</span><span class="grow"><b>Add a workout</b><span>Cardio, mobility, lifting, or build your own</span></span></button>`;
-      html += A.cardioSection(day, mode === 'rest' ? 'Recovery' : 'Cardio', true);
+      html += A.cardioSection(day, mode === 'rest' ? 'Recovery' : 'Cardio', mode !== 'rest');
       return html;
     }
 
@@ -200,7 +200,7 @@ export function createWorkoutScreens(A) {
     if (session && session.date !== todayStr()) html += `<div class="notice-card"><p>This workout was started on ${A.fmtDate(session.date)}. Finish or discard it to start a new one.</p></div>`;
 
     html += A.train.recoveryCards(day, items);
-    html += A.train.recoveryReminder(day, mode);
+    if (!banner) html += A.train.recoveryReminder(day, mode);
 
     // Overview: what's ahead, or progress once started.
     const counts = items.map((i) => {
@@ -232,7 +232,7 @@ export function createWorkoutScreens(A) {
         <button class="icon-btn accent" data-a="today-add" aria-label="Add exercise">${icon('plus')}</button>
       </div>
     </div>`;
-    if (selecting) html += `<p class="muted small">Select exercises to link into a superset or circuit, or drag to reorder. Anywhere, you can also hold an exercise to move it, or drop it onto another to link them. ${session ? 'Changes apply to today\'s workout.' : `Changes apply to every ${A.FULL_DAY[day]}.`}</p>`;
+    if (selecting) html += `<p class="muted small">Select to link as a superset, or drag to reorder. ${session ? 'Today only.' : `Applies every ${A.FULL_DAY[day]}.`}</p>`;
     // The exercise you're on: the last one opened if it has sets left, else the first with sets left.
     A.ui.nextUid = session ? ((A.ui.exUid && items.find((i) => i.uid === A.ui.exUid && setsLeft(session, i))) || items.find((i) => setsLeft(session, i)))?.uid : null;
     html += '<div class="ex-list">';
@@ -261,7 +261,7 @@ export function createWorkoutScreens(A) {
     if (session?.freestyle && !items.length) html += '<p class="muted small center pad">Add exercises from the library to build this workout.</p>';
 
     if (session && mode !== 'both' && A.ui.workoutCardio !== day) { /* cardio stays out of the way during a workout */ } else if (session || mode === 'both') html += A.cardioSection(day, session ? 'Cardio' : 'Cardio after lifting', true);
-    else html += A.cardioSection(day, 'Cardio', !!A.ui.showCardio);
+    else if (A.ui.showCardio) html += A.cardioSection(day, 'Cardio', true);
     if (!session) html += `<div class="chips quick-log" role="group" aria-label="Log something else"><button class="chip" data-a="cardio-all" data-day="${day}">${icon('plus')} Log cardio</button><button class="chip" data-a="cardio-log" data-id="yoga">${icon('plus')} Yoga</button><button class="chip" data-a="cardio-log" data-id="mobility">${icon('plus')} Mobility</button></div>`;
 
     if (session) {
@@ -456,7 +456,7 @@ export function createWorkoutScreens(A) {
         // A lift never logged before: the weight shown is a starting guess.
         const fresh = !conditioning && !ex.noLoad && ex.type !== 'bodyweight' && !A.db.sessions.some((x) => x.entries.some((e) => e.exerciseId === ex.id));
         if (allDone || conditioning || !(fresh || t.weight == null)) return '';
-        return `<div class="first-weight">${t.weight != null ? '<p class="small muted">First time on this lift: the weight is a starting guess. Adjust it after your first set.</p>' : ''}${session ? `<button class="btn sm base-find" data-a="base-find" data-uid="${item.uid}">Help me pick a weight</button>` : ''}</div>`;
+        return `<div class="first-weight">${t.weight != null ? '<p class="small muted">First time: the weight is a starting guess.</p>' : ''}${session ? `<button class="btn sm base-find" data-a="base-find" data-uid="${item.uid}">Help me pick a weight</button>` : ''}</div>`;
       })()}
       ${ex.modes?.length > 1 ? `<div class="segmented small-seg metric-seg" role="radiogroup" aria-label="Measure by">${ex.modes.map((m) => `<button class="${m === metric ? 'on' : ''}" data-a="set-metric" data-uid="${item.uid}" data-v="${m}" role="radio" aria-checked="${m === metric}">${METRICS[m]}</button>`).join('')}</div>` : ''}
       ${conditioning ? A.train.condInfo(item, entry, ex, metric) : ''}
@@ -668,12 +668,11 @@ export function createWorkoutScreens(A) {
       ${s.isDeload ? '<p class="muted small pad">Deload workouts don\'t change targets.</p>' : res.length ? `<div class="card"><h3>Next time${progressed.length ? ` · <span class="up-count">${progressed.length} up</span>` : ''}</h3>${[...progressed, ...res.filter((r) => !progressed.includes(r) && !stalled.includes(r)), ...stalled].map(row).join('')}</div>` : ''}
       ${adj.length ? `<div class="card"><h3>Plan adjustments from your check-ins</h3>${adj.map((a) => `<p class="small">${A.esc(a.text)}</p>`).join('')}</div>` : ''}
       ${A.ui.summaryFresh ? A.extras.summaryBackupCard() : ''}
-      <div class="card"><h3>Notes</h3><textarea id="session-note" data-sid="${s.id}" rows="3" placeholder="How did it go? Sleep, energy, anything to remember">${A.esc(s.note || '')}</textarea></div>
+      <details class="card note-card" ${s.note ? 'open' : ''}><summary>${s.note ? 'Note' : 'Add a note'}</summary><textarea id="session-note" data-sid="${s.id}" rows="3" placeholder="How did it go?">${A.esc(s.note || '')}</textarea></details>
       ${A.health.button(s)}
-      <div class="row"><button class="btn grow" data-a="share-session" data-id="${s.id}">Share</button><button class="btn grow" data-a="edit-session" data-id="${s.id}">Edit workout</button></div>
-    <div class="row"><button class="btn grow" data-a="repeat-session" data-id="${s.id}">Do it again</button><button class="btn grow" data-a="save-session-plan" data-id="${s.id}">Save to plan</button></div>
+      <div class="row"><button class="btn grow" data-a="share-session" data-id="${s.id}">Share</button><button class="btn grow" data-a="session-more" data-id="${s.id}">More</button></div>
       <button class="btn primary block" data-a="tab" data-tab="${A.ui.summaryFresh ? 'today' : 'history'}">Done</button>
-      ${A.canReopen(s.id) ? '<button class="text-link center-link" data-a="resume-finished">Finished too soon? Resume workout</button>' : ''}`;
+      ${A.canReopen(s.id) ? '<button class="text-link center-link" data-a="resume-finished">Resume workout</button>' : ''}`;
   }
 
   // ---------- Edit a finished workout ----------

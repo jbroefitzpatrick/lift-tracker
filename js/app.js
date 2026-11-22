@@ -1257,10 +1257,8 @@ function cardioSection(day, title, defaultOpen = true) {
     ${logged.map((c) => `<div class="list-row logged"><span class="grow"><b>${esc(CARDIO[c.cardioId]?.name || String(c.cardioId || 'Cardio').replace(/[-_]+/g, ' ').replace(/^./, (x) => x.toUpperCase()))}</b> · ${c.minutes} min${c.distance ? ` · ${c.distance} mi` : ''}${c.cardioId !== 'conditioning' && !c.fromWorkout ? ` · ~${Math.round(cardioBurn(db, c, CARDIO[c.cardioId]).active)} kcal` : ''}</span>
       <button class="mini" data-a="cardio-del" data-id="${c.id}" aria-label="Delete">${icon('x')}</button></div>`).join('')}
     ${weeklyCardioLine()}
-    <h4 class="sub-h">Suggested</h4>
-    ${top.map(cardioRow).join('') || '<p class="muted small">Everything is a stretch today — consider resting.</p>'}
-    <button class="btn block" data-a="cardio-all" data-day="${day}">All cardio options</button>
-    <button class="btn block" data-a="open-templates" data-day="${day}">Conditioning workouts</button>
+    ${top.slice(0, 3).map(cardioRow).join('') || '<p class="muted small">Everything is a stretch today — consider resting.</p>'}
+    <div class="row"><button class="btn grow" data-a="cardio-all" data-day="${day}">All options</button><button class="btn grow" data-a="open-templates" data-day="${day}">Conditioning</button></div>
   </section>`;
 }
 
@@ -2170,7 +2168,7 @@ const actions = {
     db.sessions.sort((a, b) => (a.finishedAt || 0) - (b.finishedAt || 0));
     persist(); closeSheet();
     actions['edit-session']({ id: s.id });
-    toast(tpl ? 'Filled in from your plan. Change anything that was different.' : 'Add the exercises you did.');
+    toast(tpl ? 'Filled in from your plan.' : 'Add the exercises you did.');
   },
   'rec-pick': (d) => { ui.recSel = d.g ? { group: d.g } : { area: d.m, side: null }; refreshRecovery(); },
   // A "?" next to a label shows or hides its explanation.
@@ -2302,11 +2300,11 @@ const actions = {
   finish: async () => {
     const s = db.activeSession;
     const open = s.order.reduce((a, u) => a + (s.entries[u].pain ? 0 : s.entries[u].sets.filter((x) => !x.done).length), 0);
-    if (!(await ask(open ? `${open} set${open > 1 ? 's' : ''} not logged. Finish the workout anyway?` : 'Finish this workout?', 'Finish'))) return;
+    if (open && !(await ask(`${open} set${open > 1 ? 's' : ''} not logged. Finish anyway?`, 'Finish'))) return;
     finishWorkout();
   },
   discard: async () => {
-    if (!(await ask('Discard this workout? Logged sets will be lost.', 'Discard', true))) return;
+    if (!(await ask('Discard this workout and its logged sets?', 'Discard', true))) return;
     db.activeSession = null; persist(); stopRest(); render();
   },
   'rotate-yes': () => {
@@ -2324,7 +2322,7 @@ const actions = {
   'settings-back': () => { if (ui.setPage) { ui.setPage = null; window.scrollTo(0, 0); return render(); } ui.tab = ui.prevTab || 'today'; window.scrollTo(0, 0); render(); },
   'set-food': (d, el) => { db.settings.foodTracking = !!el.checked; persist(); render(); toast(foodOn() ? 'Food tracking is on.' : 'Food tracking is off.'); },
   'food-off': async () => {
-    if (!(await ask('Turn off food tracking? The Food tab goes away and your food log is kept. Turn it back on in Settings.', 'Turn off'))) return;
+    if (!(await ask('Hide the Food tab? Your log is kept; turn it back on in Settings.', 'Hide'))) return;
     db.settings.foodTracking = false; persist(); ui.tab = 'today'; window.scrollTo(0, 0); render(); toast('Food tracking is off. Turn it back on in Settings.');
   },
   'settings-page': (d) => { ui.setPage = d.v; window.scrollTo(0, 0); render(); },
@@ -2394,7 +2392,7 @@ const actions = {
       session.order.push(it.uid);
     }
     persist(); closeSheet(); ui.tab = 'today'; render();
-    toast(`${tpl.name} ready. Warm up first, then tap a round's play button to start its timer.`);
+    toast(`${tpl.name} ready.`);
   },
   'tpl-add': (d) => {
     const tpl = TEMPLATES.find((t) => t.id === d.id);
@@ -2472,7 +2470,7 @@ const actions = {
   'quick-build': () => openQuickBuild(),
   'qb-set': (d) => { ui.qb[d.k] = d.k === 'days' ? +d.v : d.v; openQuickBuild(); },
   'qb-full': () => { closeSheet(); openBuilder(); },
-  'plan-first-today': (d) => { moveDay(db, d.day, dayKeyOf(todayStr())); persist(); ui.day = dayKeyOf(todayStr()); render(); toast(`${db.plan[d.day]?.name || 'Workout'} is today. Your other days stay the same.`); },
+  'plan-first-today': (d) => { moveDay(db, d.day, dayKeyOf(todayStr())); persist(); ui.day = dayKeyOf(todayStr()); render(); toast(`${db.plan[d.day]?.name || 'Workout'} is today.`); },
   'qb-go': () => {
     const q = ui.qb;
     const g = QB_GOALS[q.goal];
@@ -2581,7 +2579,6 @@ const actions = {
   },
   'resume-finished': async () => {
     if (!canReopen()) return toast('Only a workout finished today can be reopened.');
-    if (!(await ask('Reopen this workout? It comes back exactly as you left it, and your targets update again when you finish.', 'Reopen'))) return;
     const { id, finishedAt, reopen } = db.lastFinish;
     for (const k of ['state', 'plan', 'week', 'runGoal', 'recoveryAdjust']) { if (reopen[k] === undefined) delete db[k]; else db[k] = reopen[k]; }
     db.sessions = db.sessions.filter((x) => x.id !== id);
@@ -2751,7 +2748,7 @@ const actions = {
       o.items = o.items.filter((i) => i.uid !== d.uid);
       if (o.base) o.base = o.base.filter((i) => i.uid !== d.uid);
       persist(); closeSheet(); render();
-      return toast('Removed for this week. Your plan is unchanged.', { label: 'Undo', a: 'list-undo' });
+      return toast('Removed this week.', { label: 'Undo', a: 'list-undo' });
     }
     const sx = ensureSession(ui.day);
     if (!sx) return; const e = sx.entries[d.uid];
@@ -2804,7 +2801,7 @@ const actions = {
     readEditInputs(sx);
     const changed = recomputeSession(sx);
     persist(); ui.summaryId = sx.id; ui.summaryFresh = false; ui.tab = 'summary'; render();
-    toast(changed.length ? `Saved. Targets updated for ${changed.length} exercise${changed.length > 1 ? 's' : ''}.` : 'Saved.');
+    toast('Saved.');
   },
   'es-delete': async () => {
     const sx = db.sessions.find((x) => x.id === ui.editId);
@@ -2882,7 +2879,8 @@ const actions = {
   },
   'undo-plan': async () => {
     const prev = db.previousPlan;
-    if (!prev || !(await ask('Switch back to your previous plan? (You can switch again afterwards.)', 'Switch back'))) return;
+    if (!prev) return;
+    closeSheet();
     db.previousPlan = { plan: db.plan, dayModes: { ...db.settings.dayModes }, deloadEvery: db.settings.deloadEvery, savedAt: Date.now() };
     db.plan = prev.plan;
     db.settings.dayModes = prev.dayModes;
@@ -2904,13 +2902,30 @@ const actions = {
   'cardio-log': (d) => openCardioSheet(d.id),
   'cardio-all': (d) => openCardioAll(d.day || ui.day),
   'std-area': (d) => openStrengthArea(d.v),
+  'session-more-go': (d) => { if (d.v === 'edit-session') closeSheet(); actions[d.v]({ id: d.id }); },
+  'session-more': (d) => {
+    const row = (a, t, sub) => `<button class="list-row" data-a="session-more-go" data-v="${a}" data-id="${d.id}"><span class="grow"><b>${t}</b><span class="pick-sub">${sub}</span></span>${icon('right', 'chev')}</button>`;
+    openSheet(`<h2>Workout</h2><div class="list-group">
+      ${row('edit-session', 'Edit workout', 'Fix sets, weights or exercises')}
+      ${row('repeat-session', 'Do it again', "Make it today's workout")}
+      ${row('save-session-plan', 'Save to plan', 'Use it as a weekly day')}
+    </div>`);
+  },
+  'plan-change': () => {
+    const row = (a, t, sub) => `<button class="list-row" data-a="${a}"><span class="grow"><b>${t}</b><span class="pick-sub">${sub}</span></span>${icon('right', 'chev')}</button>`;
+    openSheet(`<h2>Change plan</h2><div class="list-group">
+      ${row('plan-change-builder', 'Rebuild from goals', 'Days, time, equipment and focus')}
+      ${row('programs-open', 'Start a known program', '5/3/1, GZCLP, Starting Strength and more')}
+      ${db.previousPlan ? row('undo-plan', 'Switch back', `To your plan from ${new Date(db.previousPlan.savedAt).toLocaleDateString()}`) : ''}
+    </div><p class="muted small">Your history and progress always stay.</p>`);
+  },
+  'plan-change-builder': () => { closeSheet(); actions['open-builder']({}); },
   'programs-open': () => openSheet(`<h2>Start a known program</h2>
-    <p class="muted small">Replaces your weekly plan. Your history and progress stay, and you can switch back from Plan.</p>
     <div class="list-group">${Object.entries(PROGRAMS).map(([k, p]) => `<button class="list-row" data-a="program-use" data-v="${k}"><span class="grow"><b>${esc(p.name)}</b><span class="pick-sub">${p.days.length} days a week · ${esc(p.level)} · ${esc(p.goal)}</span><span class="pick-sub">${esc(p.desc)}</span></span>${icon('right', 'chev')}</button>`).join('')}</div>`),
   'program-use': async (d) => {
     const p = PROGRAMS[d.v];
     if (!p) return;
-    if (!(await ask(`Switch to ${p.name}? ${p.days.length} days a week. Your history stays, and you can switch back from Plan.`, `Start ${p.name}`))) return;
+    if (!(await ask(`Switch to ${p.name}? You can switch back from Plan.`, `Start ${p.name}`))) return;
     safetySnapshot(db, `Before starting ${p.name}`);
     db.previousPlan = { plan: db.plan, dayModes: { ...db.settings.dayModes }, deloadEvery: db.settings.deloadEvery, savedAt: Date.now() };
     const { plan, dayModes } = programPlan(d.v);
@@ -2919,7 +2934,7 @@ const actions = {
     if (p.focus) { db.blocks ||= {}; db.blocks.focus ||= {}; db.blocks.focus[blockInfo(db).index] = p.focus.filter((id) => db.exercises[id]); }
     db.settings.welcomed = true; db.settings.planSince = todayStr();
     persist(); closeSheet(); ui.tab = 'plan'; ui.planView = 'week'; window.scrollTo(0, 0); render();
-    toast(`${p.name} is your plan. Tap a day to see it.`);
+    toast(`${p.name} is your plan.`);
   },
   'ex-note': (d) => {
     const cur = db.exNotes?.[d.id] || '';
@@ -2938,18 +2953,18 @@ const actions = {
     const today = dayKeyOf(todayStr());
     if (db.activeSession) return toast('Finish or discard the current workout first.');
     const planned = dayPlan(db, today)?.items?.some((i) => db.exercises[i.exerciseId]?.category !== 'conditioning');
-    if (planned && !sessionFor(today) && !(await ask(`Replace today's planned workout with ${sessionName(s)} from ${fmtDate(s.date)}? This week only.`, 'Replace'))) return;
+    if (planned && !sessionFor(today) && !(await ask(`Replace today's workout with ${sessionName(s)}? This week only.`, 'Replace'))) return;
     const items = sessionToItems(s, `${today}-r`);
     if (!db.week || db.week.start !== mondayOf(todayStr())) db.week = { start: mondayOf(todayStr()), avail: {}, days: {} };
     db.week.days[today] = { name: sessionName(s), mode: 'lift', from: [], base: items.map((x) => ({ ...x })), items };
     persist(); ui.summaryFresh = false; ui.tab = 'today'; ui.day = today; window.scrollTo(0, 0); render();
-    toast(`${sessionName(s)} is today. Tap Start workout when you're ready.`);
+    closeSheet(); toast(`${sessionName(s)} is today.`);
   },
   'save-session-plan': (d) => openSaveToPlan(d.id),
   'save-session-plan-go': async (d) => {
     const s = db.sessions.find((x) => x.id === d.id);
     if (!s) return;
-    if (db.plan[d.day] && !(await ask(`Replace ${db.plan[d.day].name} on ${FULL_DAY[d.day]}s with this workout? Your history is kept.`, 'Replace'))) return;
+    if (db.plan[d.day] && !(await ask(`Replace ${db.plan[d.day].name} on ${FULL_DAY[d.day]}s?`, 'Replace'))) return;
     safetySnapshot(db, 'Before saving a workout to the plan');
     db.plan[d.day] = { name: sessionName(s) === 'Workout' ? `${FULL_DAY[d.day]} workout` : sessionName(s), items: sessionToItems(s, `${d.day}-`) };
     db.settings.dayModes = { ...(db.settings.dayModes || {}), [d.day]: 'lift' };
@@ -2989,7 +3004,7 @@ const actions = {
     if (note) entry.note = note;
     db.cardio.push(entry);
     persist(); closeSheet(); render(); haptic();
-    toast(`Logged ${CARDIO[d.id].name}, ${minutes} min · ~${Math.round(cardioBurn(db, entry, CARDIO[d.id]).active)} kcal.`);
+    toast(`Logged ${CARDIO[d.id].name}.`);
   },
   'cardio-del': async (d) => {
     if (!(await ask('Delete this cardio entry?', 'Delete', true))) return;
@@ -3087,12 +3102,10 @@ const actions = {
     }
     // From today's workout
     const entry = sessionFor(ui.day)?.entries[picker.uid];
-    if (entry && !entry.pain && entry.sets.some((x) => x.done)
-      && !(await ask(`Keep your logged ${db.exercises[entry.exerciseId].name} sets and add ${ex.name} after them?`, 'Keep and add'))) return;
     if (picker.scope === 'plan') swapInPlan(ui.day, picker.uid, d.id);
     if (picker.scope === 'today' || sessionFor(ui.day)) swapInSession(picker.uid, d.id);
     closeSheet(); render();
-    toast(picker.scope === 'plan' ? `Swapped to ${ex.name} (plan updated).` : `Swapped to ${ex.name} for today.`);
+    toast(`Swapped to ${ex.name}.`);
   },
 
   'pe-save': (d) => savePlanEdit(+d.i),
@@ -3117,7 +3130,7 @@ const actions = {
     persist(); toast('Increments updated.');
   },
   'reset-plan': async () => {
-    if (!(await ask('Replace your plan with the sample plan (5 days: upper, lower, push, pull, legs)? History and targets are kept.', 'Load sample plan'))) return;
+    if (!(await ask('Replace your plan with the 5-day sample plan?', 'Load sample'))) return;
     safetySnapshot(db, 'Before loading the sample plan');
     db.settings.planSince = todayStr();
     db.plan = defaultPlan(); db.settings.dayModes = { mon: 'lift', tue: 'lift', wed: 'lift', thu: 'lift', fri: 'lift', sat: 'rest', sun: 'rest' }; persist(); render(); toast('Sample plan loaded.');
