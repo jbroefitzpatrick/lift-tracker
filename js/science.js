@@ -379,4 +379,19 @@ export const REFS = {
     finding: 'People judge their abilities by comparing with others, and comparisons with similar others are the most informative and motivating. Comparing progress rather than absolute strength keeps peers of different sizes and levels comparable.',
     url: 'https://doi.org/10.1177/001872675400700202',
   },
+  strengthlevel: {
+    cite: 'Strength Level (2024). Strength standards for the bench press, squat, deadlift, overhead press, barbell row and curl, by sex and body weight. strengthlevel.com.',
+    finding: 'Built from millions of lifts logged by people who train. Levels: beginner stronger than 5% of lifters, novice 20%, intermediate 50%, advanced 80%, elite 95%.',
+    url: 'https://strengthlevel.com/strength-standards',
+  },
+  jaric2002: {
+    cite: 'Jaric S (2002). Muscle strength testing: use of normalisation for body size. Sports Med 32(10):615-631.',
+    finding: 'Strength grows with body mass to about the 2/3 power, so dividing by body weight alone understates heavier people; scaling by mass^(2/3) compares sizes fairly.',
+    url: 'https://doi.org/10.2165/00007256-200232100-00002',
+  },
+  keller2013: {
+    cite: 'Keller K, Engelhardt M (2013). Strength and muscle mass loss with aging process. Age and strength loss. Muscles Ligaments Tendons J 3(4):346-350.',
+    finding: 'Strength declines with age, by roughly 1-1.5% a year from middle age and faster after about 65; training slows the loss.',
+    url: 'https://pubmed.ncbi.nlm.nih.gov/24596700/',
+  },
 };

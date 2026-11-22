@@ -168,17 +168,22 @@ export function createTrain(ctx) {
   // ---------- Recovery ----------
 
   // The daily "how do you feel" question for groups trained in the last few days.
+  // How sore are the muscles trained recently: one slim line on Train (out of the way before a
+  // workout), opening a short sheet. Dismissed with the x until tomorrow.
   function recoveryCheck() {
     const db = ctx.db;
-    let html = '';
     const due = dueChecks(db);
-    if (due.length) {
-      html += `<section class="card recov-card" aria-label="Recovery check"><h3>How do you feel?</h3>
-        ${due.map((c) => `<div class="recov-row"><b class="grow">${esc(c.name)}</b>
-          <div class="seg-mini" role="group" aria-label="${esc(c.name)}">${RATINGS.map(([l, v]) => `<button data-a="rec-rate" data-g="${c.group}" data-v="${v}" data-s="${c.sessionId}" data-h="${Math.round(c.hours)}">${l}</button>`).join('')}</div></div>`).join('')}
-</section>`;
-    }
-    return html;
+    if (!due.length || db.settings.feelDismissed === todayStr()) return '';
+    return `<div class="slim-banner"><button class="grow banner-main" data-a="rec-open"><span class="dot" aria-hidden="true"></span><span><b>How do you feel?</b> · ${due.map((c) => esc(c.name.toLowerCase())).join(', ')}</span></button><button class="icon-btn subtle" data-a="rec-feel-dismiss" aria-label="Not now">${icon('x')}</button></div>`;
+  }
+  function openRecoveryCheck() {
+    const due = dueChecks(ctx.db);
+    if (!due.length) { ctx.closeSheet(); return; }
+    ctx.openSheet(`<h2>How do you feel?</h2>
+      <p class="muted small">Soreness in muscles you trained recently. It tunes how soon they're worked again.</p>
+      <section class="recov-card">${due.map((c) => `<div class="recov-row"><b class="grow">${esc(c.name)}</b>
+          <div class="seg-mini" role="group" aria-label="${esc(c.name)}">${RATINGS.map(([l, v]) => `<button data-a="rec-rate" data-g="${c.group}" data-v="${v}" data-s="${c.sessionId}" data-h="${Math.round(c.hours)}">${l}</button>`).join('')}</div></div>`).join('')}</section>
+      <button class="btn plain block" data-a="close-sheet">Done</button>`);
   }
 
   // Today's planned muscles aren't ready: offer alternatives.
@@ -417,7 +422,10 @@ export function createTrain(ctx) {
       // Very sore two or more days after training: learn that this group needs longer.
       if (+d.v === 2 && +d.h >= 40) learnSlowRecovery(ctx.db, d.g, 'very sore two days after');
       ctx.persist(); ctx.render();
+      if (!document.getElementById('sheet').hidden && document.querySelector('#sheet .recov-card')) openRecoveryCheck();
     },
+    'rec-open': () => openRecoveryCheck(),
+    'rec-feel-dismiss': () => { ctx.db.settings.feelDismissed = todayStr(); ctx.persist(); ctx.render(); },
     'rec-swap': (d) => {
       const db = ctx.db;
       const day = ctx.ui.day;

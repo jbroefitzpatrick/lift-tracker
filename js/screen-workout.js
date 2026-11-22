@@ -191,6 +191,7 @@ export function createWorkoutScreens(A) {
       html += A.train.recoveryCards(day, []);
       html += A.train.recoveryReminder(day, mode);
       html += `<p class="muted small pad">${mode === 'rest' ? 'Rest day. Light recovery work is optional.' : 'Cardio day.'}</p>`;
+      html += `<button class="add-workout-big" data-a="add-workout" data-day="${day}"><span class="aw-plus">${icon('plus')}</span><span class="grow"><b>Add a workout</b><span>Cardio, mobility, lifting, or build your own</span></span></button>`;
       html += A.cardioSection(day, mode === 'rest' ? 'Recovery' : 'Cardio', true);
       return html;
     }
@@ -261,6 +262,7 @@ export function createWorkoutScreens(A) {
 
     if (session && mode !== 'both' && A.ui.workoutCardio !== day) { /* cardio stays out of the way during a workout */ } else if (session || mode === 'both') html += A.cardioSection(day, session ? 'Cardio' : 'Cardio after lifting', true);
     else html += A.cardioSection(day, 'Cardio', !!A.ui.showCardio);
+    if (!session) html += `<div class="chips quick-log" role="group" aria-label="Log something else"><button class="chip" data-a="cardio-all" data-day="${day}">${icon('plus')} Log cardio</button><button class="chip" data-a="cardio-log" data-id="yoga">${icon('plus')} Yoga</button><button class="chip" data-a="cardio-log" data-id="mobility">${icon('plus')} Mobility</button></div>`;
 
     if (session) {
       const has = (ph) => session.order.some((u) => session.entries[u]?.phase === ph);

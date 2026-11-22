@@ -15,7 +15,8 @@
 import { DAY_KEYS, resolveDay, groupNum, groupOf } from './engine.js';
 import { mondayOf, todayStr, addDays, weekPos, weekOrder } from './store.js';
 import { estimateMinutes } from './builder.js';
-import { similarExercises } from './bank.js';
+import { similarExercises, MUSCLES } from './bank.js';
+import { weeklySets } from './groups.js';
 import { isAvailable } from './gym.js';
 import { focusFor, blockInfo } from './blocks.js';
 import { liftLoads } from './fatigue.js';
@@ -411,4 +412,48 @@ export function previewSpread(db, day, date = todayStr()) {
   const r = planSpread(db, day, date);
   db.week = JSON.parse(saved);
   return r;
+}
+
+// ---------- Adding a workout to a day without one ----------
+
+// Do another plan day's lifting again (doubling up, e.g. a second push day). The original day
+// stays scheduled, and this one doesn't count as doing it.
+export function copyDayTo(db, from, to) {
+  const tpl = resolveDay(db, from, { template: true }).filter((it) => isLiftItem(db, it)).map(({ ex, ...rest }, i) => ({ ...rest, uid: `${to}-x${i}` }));
+  const dst = weekDay(db, to);
+  const cond = (dst.items || []).filter((i) => !isLiftItem(db, i));
+  db.week.days[to] = { ...dst, name: db.plan[from]?.name || 'Workout', mode: cond.length ? 'both' : 'lift', from: [], base: clone(tpl), items: [...tpl, ...cond], note: undefined };
+  return db.week.days[to].name;
+}
+
+// The muscles with the fewest hard sets in the last 7 days (the big and commonly skipped ones).
+const CATCH_UP = ['chest', 'lats', 'upper-back', 'side-delts', 'rear-delts', 'biceps', 'triceps', 'quads', 'hamstrings', 'glutes', 'calves', 'abs'];
+export function laggingMuscles(db, n = 3, now = Date.now()) {
+  const { muscles } = weeklySets(db, 7, now);
+  return [...CATCH_UP].sort((a, b) => (muscles[a] || 0) - (muscles[b] || 0)).slice(0, n);
+}
+
+// A workout for what's behind: one or two exercises for each of the least-trained muscles, chosen
+// from lifts the person already does where possible, available at the gym and not avoided.
+export function catchUpDay(db, to, now = Date.now()) {
+  const low = laggingMuscles(db, 3, now);
+  const known = new Set([...Object.values(db.plan || {}).flatMap((p) => (p.items || []).map((i) => i.exerciseId)), ...(db.sessions || []).flatMap((x) => x.entries.map((e) => e.exerciseId))]);
+  const used = new Set();
+  const items = [];
+  low.forEach((m, mi) => {
+    const cands = Object.values(db.exercises).filter((e) => e?.primary?.[0] === m && e.category !== 'conditioning' && !e.noLoad
+      && !['mobility', 'prehab'].includes(e.pattern) && isAvailable(db, e) && !['never', 'avoid'].includes(db.exPrefs?.[e.id]) && !used.has(e.id))
+      .sort((a, b) => (known.has(b.id) - known.has(a.id)) || ((db.exPrefs?.[b.id] === 'prefer') - (db.exPrefs?.[a.id] === 'prefer')) || ((b.category === 'compound') - (a.category === 'compound')) || a.name.localeCompare(b.name));
+    for (const e of cands.slice(0, mi === 0 ? 2 : 1)) {
+      used.add(e.id);
+      const big = e.category === 'compound';
+      items.push({ uid: `${to}-c${items.length}`, exerciseId: e.id, group: String(items.length + 1), sets: 3, repMin: big ? 6 : 10, repMax: big ? 10 : 15, restSec: big ? 120 : 75, note: 'Catch-up: least trained this week', manual: true });
+    }
+  });
+  if (!items.length) return null;
+  const dst = weekDay(db, to);
+  const cond = (dst.items || []).filter((i) => !isLiftItem(db, i));
+  const name = `Catch-up: ${low.map((m) => MUSCLES[m] || m).join(', ')}`;
+  db.week.days[to] = { ...dst, name, mode: cond.length ? 'both' : 'lift', from: [], base: clone(items), items: [...items, ...cond], note: undefined };
+  return { name, muscles: low };
 }

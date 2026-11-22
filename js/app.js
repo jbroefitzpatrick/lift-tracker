@@ -32,7 +32,7 @@ import { createExtras } from './ui-extra.js';
 import { createCloud } from './ui-cloud.js';
 import { createAccountUi } from './ui-account.js';
 import { createPeople } from './ui-people.js';
-import { moveDay } from './week.js';
+import { moveDay, copyDayTo, catchUpDay, laggingMuscles } from './week.js';
 import { scheduleRest, cancelRest } from './push.js';
 import { account } from './account.js';
 import { cloudReady } from './cloud.js';
@@ -73,6 +73,8 @@ import { createBuilderScreens } from './screen-builder.js';
 // ---------- Split modules: live access to app state ----------
 const A = {
   get $() { return $; },
+  get openSheet() { return openSheet; },
+  get liftTemplatesFor() { return liftTemplates; },
   todayStrNow: () => todayStr(),
   get peopleOn() { return peopleOn; },
   latestBodyweight: () => { const l = [...(db.bodyweight || [])].sort((a, b) => a.date.localeCompare(b.date)); return l.length ? l[l.length - 1].weight : null; },
@@ -132,7 +134,7 @@ const A = {
 const { liftDayKeys, builderCompounds, builderFocus, B_STEPS, BUILD_LABELS, openBuilder, refLinks, REF_ORDER, refNum, builderState, recommendProgression, progressionList, helpBtn, bChips, screenBuilder, SPLIT_DAY_NAMES, splitDayName, reviewHtml, retargetWeights, applyBuilt, builderInput } = createBuilderScreens(A);
 const { builderEntry, planViewTabs, subHeader, screenPlan, planWeek, planProgram, planDay, openPlanEdit, muscleChips, chosenMuscles, fillMeta, savePlanEdit } = createPlanScreens(A);
 const { dayTabs, rirTarget, plannedFor, plannedRaw, rank, todayItems, groupsOf, linkLabel, thumb, screenToday, targetMuscles, exerciseRow, exerciseFull, setsLeft, comingUp, fmtElapsed, workoutBar, openWhyWorkout, screenExercise, warmBlock, warmFor, defaultWarm, SET_TYPES, setHead, liftRows, condRows, relabel, openMuscleWork, STATUS, screenSummary, isLatestFor, recomputeSession, screenEditSession, readEditInputs, openBackfill } = createWorkoutScreens(A);
-const { ring, weekStats, weekStrip, weekStreak, bestStreak, calendarCard, weekRingsCard, KEY_SLOTS, liftStats, sparkSvg, pctText, keyLifts, keyTile, median, groupLifts, strengthPage, strengthGroupPage, latestBodyweight, exerciseHistory, screenHistory, progressPage, screenExerciseHistory, bwStats, screenBody } = createProgressScreens(A);
+const { openStrengthArea, ring, weekStats, weekStrip, weekStreak, bestStreak, calendarCard, weekRingsCard, KEY_SLOTS, liftStats, sparkSvg, pctText, keyLifts, keyTile, median, groupLifts, strengthPage, strengthGroupPage, latestBodyweight, exerciseHistory, screenHistory, progressPage, screenExerciseHistory, bwStats, screenBody } = createProgressScreens(A);
 
 let db = null; // loaded asynchronously at startup (see bottom)
 const ui = {
@@ -1248,6 +1250,26 @@ function cardioSection(day, title, defaultOpen = true) {
   </section>`;
 }
 
+// A day without a workout: recommendations come first, but anything can be added.
+function openAddWorkout(day) {
+  const lifts = liftTemplates(db);
+  const low = laggingMuscles(db).map((m) => (MUSCLES[m] || m).toLowerCase());
+  const row = (a, title, sub, extra = '') => `<button class="list-row" data-a="${a}" data-day="${day}" ${extra}><span class="grow"><b>${title}</b><span class="pick-sub">${sub}</span></span>${icon('right', 'chev')}</button>`;
+  openSheet(`<h2>Add a workout</h2>
+    <div class="list-group">
+      ${row('cardio-all', 'Cardio', 'Run, bike, row, swim and more, ranked by how your muscles feel')}
+      ${row('open-templates', 'Mobility or recovery', 'Yoga, stretching, foam rolling, recovery routines')}
+      ${row('add-catchup', 'Train what\'s behind', `Least trained this week: ${esc(low.join(', '))}`)}
+      ${lifts.length ? row('add-double', 'Repeat a lifting day', `Do ${esc(lifts.slice(0, 3).map((t) => t.name).join(', '))} again today`) : ''}
+      ${row('start-empty', 'Build your own', 'Pick exercises as you go')}
+    </div>`);
+}
+function openDoubleUp(day) {
+  openSheet(`<h2>Repeat a lifting day</h2>
+    <p class="muted small">Adds that day's lifts to ${FULL_DAY[day]} this week. The original day stays as planned.</p>
+    <div class="list-group">${liftTemplates(db).map((t) => `<button class="list-row" data-a="add-copy" data-from="${t.day}" data-day="${day}"><span class="grow"><b>${esc(t.name)}</b><span class="pick-sub">${FULL_DAY[t.day]} · ${t.items.length} exercises</span></span>${icon('right', 'chev')}</button>`).join('')}</div>`);
+}
+
 function openCardioAll(day) {
   const { list } = suggestCardio(db, day, day === defaultDay());
   const sect = (v, label) => {
@@ -1979,6 +2001,9 @@ function navDir(from, to) {
   if (PUSHED.includes(fa) && !PUSHED.includes(ta)) return 'back';
   return 'fade';
 }
+// Scroll position per screen (key from screenKey), for returning to the same spot on Back.
+const scrollMem = {};
+let navFrom = null;
 function animateIn(main, dir) {
   if (reduceMotion.matches || !main.animate) return;
   const x = dir === 'forward' ? 32 : dir === 'back' ? -32 : 0;
@@ -2012,8 +2037,18 @@ function render() {
   const prevKey = main.dataset.key;
   if (main.dataset.screen === ui.tab && prevKey === key) morph(main, html); else { main.innerHTML = html; main.dataset.screen = ui.tab; }
   main.dataset.key = key;
-  if (prevKey && prevKey !== key) animateIn(main, navDir(prevKey, key));
-  if (Math.abs(window.scrollY - y) > 1 && document.body.style.position !== 'fixed') window.scrollTo(0, y);
+  let restoreY = y;
+  if (prevKey && prevKey !== key) {
+    // Remember the screen being left; going back to a remembered screen returns to that spot.
+    scrollMem[prevKey] = navFrom?.key === prevKey ? navFrom.y : y;
+    const dir = navDir(prevKey, key);
+    // (Moving between exercises always starts at the top of the next one.)
+    const between = prevKey.startsWith('exercise:') && key.startsWith('exercise:');
+    restoreY = dir === 'back' && !between && scrollMem[key] != null ? scrollMem[key] : window.scrollY;
+    animateIn(main, dir);
+  }
+  navFrom = null;
+  if (Math.abs(window.scrollY - restoreY) > 1 && document.body.style.position !== 'fixed') window.scrollTo(0, restoreY);
   // Elsewhere in the app mid-workout: a pill to get back.
   if (db.activeSession && !['today', 'exercise', 'summary'].includes(ui.tab)) $('#main').insertAdjacentHTML('beforeend', '<button class="back-to-workout" data-a="back-to-workout">Back to workout</button>');
   refreshRecovery();
@@ -2825,7 +2860,14 @@ const actions = {
     toast(`${FULL_DAY[ui.planDay]}s are now ${MODE_LABELS[d.v].toLowerCase()} days.`);
   },
   'cardio-log': (d) => openCardioSheet(d.id),
-  'cardio-all': (d) => openCardioAll(d.day),
+  'cardio-all': (d) => openCardioAll(d.day || ui.day),
+  'std-area': (d) => openStrengthArea(d.v),
+  'ex-info-close': (d) => { closeSheet(); actions['ex-info'](d); },
+  'prog-sub-close': (d) => { closeSheet(); actions['prog-sub'](d); },
+  'add-workout': (d) => openAddWorkout(d.day || ui.day),
+  'add-double': (d) => openDoubleUp(d.day || ui.day),
+  'add-copy': (d) => { const name = copyDayTo(db, d.from, d.day); persist(); closeSheet(); ui.day = d.day; render(); toast(`${name} added to ${FULL_DAY[d.day]}.`); },
+  'add-catchup': (d) => { const r = catchUpDay(db, d.day); if (!r) return toast('Nothing to add right now.'); persist(); closeSheet(); ui.day = d.day; render(); toast(`Added: ${r.name}.`); },
   rpe: (d, el) => {
     sheetState.rpe = d.v === '–' ? null : +d.v;
     el.parentElement.querySelectorAll('.chip').forEach((c) => c.classList.toggle('on', c === el));
@@ -3038,6 +3080,8 @@ document.addEventListener('click', (e) => {
   const fn = actions[el.dataset.a];
   if (!fn) return;
   e.preventDefault();
+  // Where this screen was scrolled to, before the action moves anything (Back restores it).
+  navFrom = { key: $('#main').dataset.key, y: window.scrollY };
   try {
     const r = fn(el.dataset, el);
     if (r?.catch) r.catch((err) => { console.error(err); toast('That didn\'t work. Please try again.'); });
