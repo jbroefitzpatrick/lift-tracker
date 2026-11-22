@@ -14,6 +14,7 @@ import { muscleIcon } from './body.js';
 import { DAY_NAMES, e1rm } from './engine.js';
 import { lineChart } from './chart.js';
 import { strengthAreas, LEVELS } from './standards.js';
+import { roundToGym, activeGym } from './gym.js';
 import { CATEGORIES } from './bank.js';
 
 export function createProgressScreens(A) {
@@ -351,6 +352,24 @@ export function createProgressScreens(A) {
         </button>`).join('')}</div></div>` : ''}`;
   }
 
+  // Rep maxes: the most you could likely lift for 1 to 12 reps, from your best set in the last
+  // 8 weeks (Epley's formula, rounded to weights your gym has). Most accurate near the reps you
+  // actually did; beyond about 10 reps from that, treat as rough.
+  function repMaxCard(ex, hist) {
+    if (ex.category === 'conditioning' || ex.noLoad) return '';
+    const recent = hist.filter((h) => !h.isDeload && !h.excluded && h.date >= addDays(todayStr(), -56));
+    if (!recent.length) return '';
+    const best = recent.reduce((a, h) => (h.best1rm > a.best1rm ? h : a));
+    const gym = activeGym(A.db);
+    const rows = [1, 2, 3, 4, 5, 6, 8, 10, 12].map((r) => {
+      const w = roundToGym(ex, best.best1rm / (1 + (r === 1 ? 0 : r) / 30), gym);
+      return `<div class="rm-cell"><span>${r} ${r === 1 ? 'rep' : 'reps'}</span><b class="num">${toDisp(w)}</b></div>`;
+    }).join('');
+    return `<div class="card"><div class="row between"><h3>Rep maxes</h3><span class="muted small">${wUnit()}${ex.type === 'dumbbell' ? ' each' : ''}</span></div>
+      <p class="muted small">Estimated from your best set in the last 8 weeks (${A.fmtDate(best.date)}).</p>
+      <div class="rm-grid">${rows}</div></div>`;
+  }
+
   function screenExerciseHistory(exId) {
     const ex = A.db.exercises[exId];
     const hist = exerciseHistory(exId);
@@ -373,6 +392,7 @@ export function createProgressScreens(A) {
     return `<header class="top"><button class="back" data-a="history-back" aria-label="Back">${icon('left')}</button><div><h1>${A.esc(ex.name)}</h1><p class="muted small">${CATEGORIES[ex.category]} · ${A.esc(A.muscleLine(ex))}</p></div></header>
       ${A.extras.exerciseInfo(ex)}
       ${hist.length ? `<div class="card"><p class="muted small">${bw ? 'Total reps per workout' : 'Estimated max and heaviest set'}</p><div id="hist-chart"></div></div>` : ''}
+      ${bw ? '' : repMaxCard(ex, hist)}
       <div class="card"><h3>Workouts</h3>${rows || '<p class="muted small">No workouts yet.</p>'}</div>`;
   }
 

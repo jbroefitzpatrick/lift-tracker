@@ -194,5 +194,21 @@ const header = `// Exercise form info.
 // steps + images: free-exercise-db by yuhonas (The Unlicense / public domain), https://github.com/yuhonas/free-exercise-db
 // cues: written for this app. Generated file — edit the mapping script, not this file.
 `;
-fs.writeFileSync(process.argv[3], `${header}export const EX_INFO = ${JSON.stringify(out, null, 0)};\n`);
+// Steps go to a separate file (exercise-steps.js next to the output), loaded on demand.
+const info = {}; const steps = {};
+for (const [k, v] of Object.entries(out)) { const { steps: st, ...rest } = v; info[k] = rest; if (st?.length) steps[k] = st; }
+const loader = `
+// Step-by-step instructions are the largest part (about 250 KB), so they load the first time
+// someone opens an exercise's how-to, not at startup. stepsFor returns them once loaded (and
+// calls onLoad when they arrive).
+let STEPS = null;
+let loading = null;
+export function stepsFor(id, onLoad) {
+  if (STEPS) return STEPS[id] || null;
+  if (!loading) loading = import('./exercise-steps.js').then((m) => { STEPS = m.STEPS; onLoad?.(); }).catch(() => { loading = null; });
+  return null;
+}
+`;
+fs.writeFileSync(process.argv[3], `${header}export const EX_INFO = ${JSON.stringify(info, null, 0)};\n${loader}`);
+fs.writeFileSync(require('path').join(require('path').dirname(process.argv[3]), 'exercise-steps.js'), `// Step-by-step instructions per exercise (free-exercise-db, public domain). Loaded on demand by\n// stepsFor() in exercise-info.js.\nexport const STEPS = ${JSON.stringify(steps)};\n`);
 console.log('mapped', Object.values(out).filter((x) => x.steps).length, 'of', Object.keys(out).length, '| missing src:', missing.join(','), '| no cue:', noCue.join(','));

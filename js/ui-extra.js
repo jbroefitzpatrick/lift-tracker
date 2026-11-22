@@ -1,8 +1,9 @@
 // Exercise detail, gyms & equipment, data & security, measurements & photos, weekly volume, backups.
 import { icon } from './icons.js';
+import { parseCsv, detectFormat, readWorkouts, planImport, applyImport } from './import-apps.js';
 import { account, signOut } from './account.js';
 import { resetSyncState } from './sync.js';
-import { EX_INFO } from './exercise-info.js';
+import { EX_INFO, stepsFor } from './exercise-info.js';
 import { bestRecords } from './records.js';
 import { activeGym, GEAR } from './gym.js';
 import { wt, wtEst, toDisp, wUnit, BAR_CHOICES, PLATE_CHOICES, DB_STEP_CHOICES, MACHINE_STEP_CHOICES, fromDisp } from './units.js';
@@ -27,7 +28,7 @@ export function createExtras(ctx) {
 
   function exerciseInfo(ex) {
     const db = ctx.db;
-    const info = EX_INFO[ex.id] || {};
+    const info = { ...(EX_INFO[ex.id] || {}) };
     const gym = activeGym(db);
     const pref = db.exPrefs[ex.id];
     const unavailable = gym.unavailable.includes(ex.id);
@@ -37,7 +38,7 @@ export function createExtras(ctx) {
       ${info.images ? `<div class="ex-imgs">${info.images.map((src, i) => `<img src="${src}" alt="${esc(ex.name)} — ${i ? 'end' : 'start'} position" loading="lazy" referrerpolicy="no-referrer">`).join('')}</div>
         <p class="muted small">${info.approx ? `Photos show a close variation (${esc(info.src)}). ` : ''}Images & steps: <a href="https://github.com/yuhonas/free-exercise-db" target="_blank" rel="noopener">free-exercise-db</a> (public domain).</p>` : ''}
       ${info.cues ? `<h3 class="sect">Key cues</h3><ul class="cues">${info.cues.split(' · ').map((c) => `<li>${esc(c)}</li>`).join('')}</ul>` : ''}
-      ${info.steps?.length ? `<details class="refs"><summary>Step by step${info.level ? ` · ${esc(info.level)}` : ''}</summary><ol>${info.steps.map((s) => `<li>${esc(s)}</li>`).join('')}</ol></details>` : ''}
+      ${(info.steps = stepsFor(ex.id, () => ctx.render())) ? `<details class="refs"><summary>Step by step${info.level ? ` · ${esc(info.level)}` : ''}</summary><ol>${info.steps.map((s) => `<li>${esc(s)}</li>`).join('')}</ol></details>` : ''}
       ${ex.notes ? `<h3 class="sect">Your notes</h3><p class="small">${esc(ex.notes)}</p>` : ''}
       <a class="btn block demo-link" href="${demo}" target="_blank" rel="noopener">Watch a demo on YouTube</a>
       <button class="btn block" data-a="ex-edit" data-id="${ex.id}">${ex.custom ? 'Edit exercise' : 'Edit muscles and notes'}</button>
@@ -211,6 +212,7 @@ export function createExtras(ctx) {
       <button class="list-row" data-a="export-csv"><span class="grow">Export history as CSV</span>${chev}</button>
       <label class="list-row"><span class="grow">Check a backup file</span>${chev}<input id="check-file" type="file" accept="application/json,.json" hidden></label>
       <label class="list-row"><span class="grow">Import a backup</span>${chev}<input id="import-file" type="file" accept="application/json,.json" hidden></label>
+      <label class="list-row"><span class="grow">Import from Strong or Hevy<span class="pick-sub">Your workout history from their CSV export</span></span>${chev}<input id="apps-file" type="file" accept=".csv,text/csv" hidden></label>
       <button class="list-row" data-a="snapshots"><span class="grow">Restore an automatic snapshot</span>${chev}</button>
       <button class="list-row" data-a="persist-req"><span class="grow">Keep data permanently</span>${chev}</button>
     </div>
@@ -482,6 +484,14 @@ export function createExtras(ctx) {
       ctx.toast(ok ? 'Done — the phone will keep this data.' : 'The browser declined. Keep it on your Home Screen and back up regularly.');
       ctx.render();
     },
+    'apps-unit': (d) => { if (!appImport) return; appImport.unit = d.v; appImportSheet(); },
+    'apps-import': async () => {
+      if (!appImport?.plan) return;
+      await safetySnapshot(ctx.db, 'Before importing workouts');
+      const n = applyImport(ctx.db, appImport.plan, appImport.format === 'strong' ? 'Strong' : 'Hevy');
+      appImport = null;
+      ctx.persist(); ctx.closeSheet(); ctx.render(); ctx.toast(`Imported ${n} workouts.`);
+    },
     'reset-all': async () => {
       const signedIn = !!account();
       if (!(await ctx.ask(`Erase ALL data on this device? A snapshot is kept, but export a backup first.${signedIn ? ' This phone is also signed out of your account; the data in your account stays as it is.' : ''}`, 'Erase', true))) return;
@@ -493,8 +503,42 @@ export function createExtras(ctx) {
     },
   };
 
+  // ---------- Import from Strong or Hevy ----------
+  let appImport = null; // { rows, format, unit }
+  function appImportSheet() {
+    const db = ctx.db;
+    const { rows, format } = appImport;
+    const unit = appImport.unit || (format === 'strong' ? db.settings.units || 'lb' : null);
+    const workouts = readWorkouts(rows, format, unit || 'lb');
+    const plan = planImport(db, workouts);
+    appImport.plan = plan; appImport.unit = unit;
+    const src = format === 'strong' ? 'Strong' : 'Hevy';
+    const first = plan.workouts[0]?.date; const last = plan.workouts[plan.workouts.length - 1]?.date;
+    ctx.openSheet(`<h2>Import from ${src}</h2>
+      <div class="kv-list">
+        <div class="kv"><span>Workouts</span><b>${plan.workouts.length}${first ? ` · ${ctx.fmtDate(first)} to ${ctx.fmtDate(last)}` : ''}</b></div>
+        <div class="kv"><span>Exercises matched</span><b>${plan.names.length - plan.unmatched.length} of ${plan.names.length}</b></div>
+        ${plan.skipped ? `<div class="kv"><span>Already imported</span><b>${plan.skipped}</b></div>` : ''}
+      </div>
+      ${format === 'strong' ? `<div class="field"><span>Weights in the file are in</span><div class="segmented small-seg">${['lb', 'kg'].map((u) => `<button class="${unit === u ? 'on' : ''}" data-a="apps-unit" data-v="${u}">${u === 'lb' ? 'Pounds' : 'Kilograms'}</button>`).join('')}</div><p class="muted small">Strong doesn't say which, so pick what you used there.</p></div>` : ''}
+      ${plan.unmatched.length ? `<p class="small">Added as your own exercises: ${ctx.esc(plan.unmatched.slice(0, 8).join(', '))}${plan.unmatched.length > 8 ? ` and ${plan.unmatched.length - 8} more` : ''}.</p>` : ''}
+      <p class="muted small">History, charts, records and strength standards include imported workouts. Your plan and targets don't change. A snapshot is kept first.</p>
+      <button class="btn primary block big" data-a="apps-import" ${plan.workouts.length ? '' : 'disabled'}>Import ${plan.workouts.length} workouts</button>`);
+  }
+
   async function onChange(e) {
     const el = e.target;
+    if (el.id === 'apps-file' && el.files[0]) {
+      try {
+        const rows = parseCsv(await el.files[0].text());
+        const format = detectFormat(rows);
+        if (!format) throw new Error("That file isn't a Strong or Hevy export. Export a CSV from the app's settings and try again.");
+        appImport = { rows, format, unit: null };
+        appImportSheet();
+      } catch (err) { ctx.toast(err.message || 'Could not read that file.'); }
+      el.value = '';
+      return true;
+    }
     if (el.id === 'check-file' && el.files[0]) {
       try { await checkBackup(await el.files[0].text()); } catch (err) { ctx.toast(`This backup has a problem: ${err.message || 'it could not be read'}`); }
       el.value = '';

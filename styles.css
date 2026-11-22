@@ -1609,3 +1609,39 @@ a.list-row { color: inherit; text-decoration: none; }
 .kv.std-here { background: var(--accent-soft); margin: 0 -14px; padding-left: 14px; padding-right: 14px; }
 .kv.std-here b { color: var(--accent); }
 .kv span .pick-sub { display: block; font-size: 0.75rem; }
+
+/* Rest timer: one slim line; Prev/Next stop floating while it runs */
+#rest { padding: 6px 8px 10px 14px; border-radius: 16px; }
+#rest .row { align-items: center; }
+#rest .grow { display: flex; align-items: baseline; gap: 8px; }
+#rest-time { font-size: 1.5rem; }
+#rest .mini { min-height: 40px; }
+body.resting #main { padding-bottom: calc(var(--tabbar-h) + 84px + env(safe-area-inset-bottom)); }
+body.resting .ex-nav { position: static; }
+/* Elsewhere in the app: a small pill that doesn't cover the page */
+body.rest-mini #rest { left: auto; right: 12px; width: auto; max-width: none; padding: 4px 6px 8px 12px; border-radius: 999px; }
+body.rest-mini #rest-label, body.rest-mini #rest-minus, body.rest-mini #rest-plus { display: none; }
+body.rest-mini #rest-time { font-size: 1.125rem; }
+body.rest-mini #rest .mini { min-height: 34px; min-width: 44px; }
+body.rest-mini #main { padding-bottom: calc(var(--tabbar-h) + 64px + env(safe-area-inset-bottom)); }
+/* During a workout the exercise photo is a strip (tap for full size) */
+body.in-workout .ex-hero:not(.big) { height: 120px; cursor: zoom-in; }
+body.in-workout .ex-hero:not(.big) img { object-position: center 35%; }
+body.in-workout .ex-hero.big { cursor: zoom-out; }
+
+.sub-link { background: none; border: 0; padding: 0; font: inherit; color: inherit; text-decoration: underline dotted; text-underline-offset: 3px; cursor: pointer; }
+
+.ex-note { display: flex; align-items: flex-start; gap: 8px; width: 100%; margin: 4px 0 10px; padding: 10px 12px; border: 0; border-radius: 12px; background: var(--warn-soft); color: var(--text); font: inherit; font-size: 0.875rem; text-align: left; cursor: pointer; }
+.ex-note svg { width: 16px; height: 16px; flex: none; margin-top: 2px; color: var(--warn); }
+.ex-note span { white-space: pre-wrap; }
+
+.rm-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 8px; }
+.rm-cell { display: flex; flex-direction: column; align-items: center; padding: 8px 4px; border-radius: 10px; background: var(--surface-2); }
+.rm-cell span { font-size: 0.75rem; color: var(--muted); }
+.rm-cell b { font-size: 1.125rem; }
+
+/* Long sub-pages: the header with Back stays at the top while scrolling */
+#main > header.top:has(> .back) {
+  position: sticky; top: 0; z-index: 8; margin: calc(-1 * (env(safe-area-inset-top) + 14px)) -16px 14px; padding: calc(env(safe-area-inset-top) + 10px) 16px 10px;
+  background: color-mix(in srgb, var(--bg) 92%, transparent); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+}

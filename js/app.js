@@ -33,6 +33,7 @@ import { createCloud } from './ui-cloud.js';
 import { createAccountUi } from './ui-account.js';
 import { createPeople } from './ui-people.js';
 import { moveDay, copyDayTo, catchUpDay, laggingMuscles } from './week.js';
+import { PROGRAMS, programPlan } from './programs.js';
 import { scheduleRest, cancelRest } from './push.js';
 import { account } from './account.js';
 import { cloudReady } from './cloud.js';
@@ -73,6 +74,7 @@ import { createBuilderScreens } from './screen-builder.js';
 // ---------- Split modules: live access to app state ----------
 const A = {
   get $() { return $; },
+  get effort() { return effort; },
   get openSheet() { return openSheet; },
   get liftTemplatesFor() { return liftTemplates; },
   todayStrNow: () => todayStr(),
@@ -171,6 +173,17 @@ const haptic = (ms = 15) => { try { if (navigator.vibrate) navigator.vibrate(ms)
 
 function defaultDay() {
   return dayKeyOf(todayStr());
+}
+
+// Effort, the way the person reads it: reps in reserve, RPE (10 − reps in reserve; same thing,
+// counted from the top), or plain words for beginners. rir can be a number or a range like "1–2".
+function effort(rir, form = 'aim') {
+  if (rir == null || rir === '') return '';
+  const scale = db.settings.effortScale || 'rir';
+  const map = (fn) => String(rir).replace(/\d+(\.\d+)?/g, (n) => String(fn(+n)));
+  if (scale === 'rpe') return form === 'aim' ? `about RPE ${map((x) => 10 - x)}` : `RPE ${map((x) => 10 - x)}`;
+  if (db.profile?.experience === 'beginner') return form === 'aim' ? `stop about ${rir} ${String(rir) === '1' ? 'rep' : 'reps'} before failure` : `${rir} more ${String(rir) === '1' ? 'rep' : 'reps'} left`;
+  return form === 'aim' ? `about ${rir} in reserve` : `${rir} reps in reserve`;
 }
 
 function fmtW(w, ex) {
@@ -327,6 +340,7 @@ function renderRest() {
   const left = Math.ceil((rest.endAt - Date.now()) / 1000);
   el.hidden = false;
   document.body.classList.add('resting');
+  document.body.classList.toggle('rest-mini', !['today', 'exercise'].includes(ui.tab));
   $('#rest-time').textContent = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`;
   $('#rest-label').textContent = rest.label || 'Rest';
   $('#rest-bar').style.width = `${Math.max(0, Math.min(100, (left / rest.total) * 100))}%`;
@@ -1072,7 +1086,7 @@ function openExerciseSheet(uid, focus) {
     <div class="kv-list">
       ${row('Target', `${t.sets} × ${item.repMin}–${item.repMax}${target != null ? ` at ${fmtW(target, ex)}` : ''}`)}
       ${row('Aim', aim)}
-      ${row('Effort', t.rir ? `${t.rir} reps in reserve` : rir ? `About ${rir} reps in reserve` : '')}
+      ${row('Effort', t.rir || rir ? effort(t.rir || rir, 'done') : '')}
       ${row('Rest', item.restSec ? fmtRest(item.restSec) : '')}
       ${row('Plates', barbell && target ? plateText(target, gym) : '')}
       ${row('Last time', t.st.last ? fmtLast(t.st.last, ex) : '')}
@@ -1268,6 +1282,29 @@ function openDoubleUp(day) {
   openSheet(`<h2>Repeat a lifting day</h2>
     <p class="muted small">Adds that day's lifts to ${FULL_DAY[day]} this week. The original day stays as planned.</p>
     <div class="list-group">${liftTemplates(db).map((t) => `<button class="list-row" data-a="add-copy" data-from="${t.day}" data-day="${day}"><span class="grow"><b>${esc(t.name)}</b><span class="pick-sub">${FULL_DAY[t.day]} · ${t.items.length} exercises</span></span>${icon('right', 'chev')}</button>`).join('')}</div>`);
+}
+
+// A finished workout as plan items (lifts and conditioning; warm-up sets not counted).
+function sessionToItems(s, prefix) {
+  return s.entries.map((e, i) => {
+    const ex = db.exercises[e.exerciseId];
+    const work = e.sets.filter((x) => x.type !== 'w').length || e.sets.length || 3;
+    const planned = Object.values(db.plan).flatMap((p) => p.items).find((x) => x.uid === e.uid);
+    return {
+      uid: `${prefix}${i + 1}`, exerciseId: e.exerciseId, group: e.group || String(i + 1), sets: work,
+      repMin: e.repMin ?? planned?.repMin ?? 8, repMax: e.repMax ?? planned?.repMax ?? 12,
+      restSec: planned?.restSec ?? (ex?.category === 'compound' ? 120 : 90),
+      ...(e.metric ? { metric: e.metric, target: e.target } : {}), manual: true,
+    };
+  }).filter((it) => db.exercises[it.exerciseId]);
+}
+const sessionName = (s) => (s.freestyle ? 'Workout' : db.plan[s.day]?.name || 'Workout');
+function openSaveToPlan(id) {
+  const s = db.sessions.find((x) => x.id === id);
+  if (!s) return;
+  openSheet(`<h2>Save to plan</h2>
+    <p class="muted small">Makes this workout a weekly day in your plan. Pick the day:</p>
+    <div class="list-group">${weekOrder().map((d) => `<button class="list-row" data-a="save-session-plan-go" data-id="${id}" data-day="${d}"><span class="grow"><b>${FULL_DAY[d]}</b><span class="pick-sub">${db.plan[d] ? `Replaces ${esc(db.plan[d].name)}` : 'Free day'}</span></span>${icon('right', 'chev')}</button>`).join('')}</div>`);
 }
 
 function openCardioAll(day) {
@@ -1467,8 +1504,11 @@ function openSetSheet(uid, idx) {
     <div class="field"><span>Set type</span>
       <div class="chips" id="set-types">${[['', 'Normal'], ...Object.entries(SET_TYPES).map(([k, v]) => [k, v[1]])].map(([k, l]) => `<button class="chip ${(s.type || '') === k ? 'on' : ''}" data-a="set-type" data-uid="${uid}" data-i="${idx}" data-v="${k}">${l}</button>`).join('')}</div>
       <p class="muted small">Warm-up sets don't count toward progression, volume or records.</p></div>
-    <div class="field"><span>RIR <span class="muted">(reps in reserve, optional)</span></span>
-      <div class="chips rir">${['–', 0, 1, 2, 3, 4, 5].map((r) => `<button class="chip ${(r === '–' ? s.rir == null : s.rir === r) ? 'on' : ''}" data-a="rir" data-v="${r}">${r}</button>`).join('')}</div>
+    ${db.settings.effortScale === 'rpe'
+      ? `<div class="field"><span>RPE <span class="muted">(how hard, 10 = nothing left; optional)</span></span>
+      <div class="chips rir">${['–', 10, 9, 8, 7, 6, 5].map((r) => `<button class="chip ${(r === '–' ? s.rir == null : s.rir === 10 - r) ? 'on' : ''}" data-a="rir" data-v="${r === '–' ? r : 10 - r}">${r}</button>`).join('')}</div>`
+      : `<div class="field"><span>${db.profile?.experience === 'beginner' ? 'Reps left in the tank' : 'RIR'} <span class="muted">(${db.profile?.experience === 'beginner' ? 'how many more you could have done; optional' : 'reps in reserve, optional'})</span></span>
+      <div class="chips rir">${['–', 0, 1, 2, 3, 4, 5].map((r) => `<button class="chip ${(r === '–' ? s.rir == null : s.rir === r) ? 'on' : ''}" data-a="rir" data-v="${r}">${r}</button>`).join('')}</div>`}
     </div>
     <button class="btn primary block big" data-a="save-set" data-uid="${uid}" data-i="${idx}">${s.done ? 'Update set' : 'Log set'}</button>
     <div class="row">
@@ -1766,6 +1806,8 @@ function screenSettings() {
   // Settings: a short list of pages, like iPhone Settings.
   const pages = {
     training: { title: 'Training', html: `    <div class="card">
+      <div class="field"><span>Effort shown as</span><div class="segmented small-seg" role="radiogroup" aria-label="Effort scale">${[['rir', 'Reps in reserve'], ['rpe', 'RPE']].map(([v, l]) => `<button class="${(s.effortScale || 'rir') === v ? 'on' : ''}" data-a="set-effort-scale" data-v="${v}" role="radio" aria-checked="${(s.effortScale || 'rir') === v}">${l}</button>`).join('')}</div>
+        <p class="muted small">Same measure either way: RPE 8 means 2 reps in reserve.</p></div>
       <div class="field"><span>Week starts on</span><select data-a="week-start" aria-label="Week starts on">${['mon', 'sun', 'sat', 'tue', 'wed', 'thu', 'fri'].map((d) => `<option value="${d}" ${(db.settings.weekStart || 'mon') === d ? 'selected' : ''}>${FULL_DAY[d]}</option>`).join('')}</select></div>
       <div class="field"><span>Exercise variety</span>
         <div class="segmented small-seg" role="radiogroup" aria-label="Exercise variety">${Object.entries(VARIETY).map(([k, v]) => `<button class="${(s.variety || 'low') === k ? 'on' : ''}" data-a="set-variety" data-v="${k}" role="radio" aria-checked="${(s.variety || 'low') === k}">${v.name}</button>`).join('')}</div>
@@ -2862,6 +2904,68 @@ const actions = {
   'cardio-log': (d) => openCardioSheet(d.id),
   'cardio-all': (d) => openCardioAll(d.day || ui.day),
   'std-area': (d) => openStrengthArea(d.v),
+  'programs-open': () => openSheet(`<h2>Start a known program</h2>
+    <p class="muted small">Replaces your weekly plan. Your history and progress stay, and you can switch back from Plan.</p>
+    <div class="list-group">${Object.entries(PROGRAMS).map(([k, p]) => `<button class="list-row" data-a="program-use" data-v="${k}"><span class="grow"><b>${esc(p.name)}</b><span class="pick-sub">${p.days.length} days a week · ${esc(p.level)} · ${esc(p.goal)}</span><span class="pick-sub">${esc(p.desc)}</span></span>${icon('right', 'chev')}</button>`).join('')}</div>`),
+  'program-use': async (d) => {
+    const p = PROGRAMS[d.v];
+    if (!p) return;
+    if (!(await ask(`Switch to ${p.name}? ${p.days.length} days a week. Your history stays, and you can switch back from Plan.`, `Start ${p.name}`))) return;
+    safetySnapshot(db, `Before starting ${p.name}`);
+    db.previousPlan = { plan: db.plan, dayModes: { ...db.settings.dayModes }, deloadEvery: db.settings.deloadEvery, savedAt: Date.now() };
+    const { plan, dayModes } = programPlan(d.v);
+    db.plan = plan; db.settings.dayModes = dayModes;
+    if (p.progression) db.settings.progression = p.progression;
+    if (p.focus) { db.blocks ||= {}; db.blocks.focus ||= {}; db.blocks.focus[blockInfo(db).index] = p.focus.filter((id) => db.exercises[id]); }
+    db.settings.welcomed = true; db.settings.planSince = todayStr();
+    persist(); closeSheet(); ui.tab = 'plan'; ui.planView = 'week'; window.scrollTo(0, 0); render();
+    toast(`${p.name} is your plan. Tap a day to see it.`);
+  },
+  'ex-note': (d) => {
+    const cur = db.exNotes?.[d.id] || '';
+    openSheet(`<h2>Note for ${esc(db.exercises[d.id]?.name || 'this exercise')}</h2>
+      <p class="muted small">Shows every time this exercise comes up: seat height, grip, cable pin, cues.</p>
+      <div class="field"><textarea id="ex-note-text" rows="3" maxlength="300" placeholder="e.g. Seat 4, handles at the middle notch">${esc(cur)}</textarea></div>
+      <button class="btn primary block" data-a="ex-note-save" data-id="${d.id}">Save note</button>
+      ${cur ? `<button class="btn plain block" data-a="ex-note-clear" data-id="${d.id}">Remove note</button>` : ''}`);
+  },
+  'ex-note-save': (d) => { const v = ($('#ex-note-text')?.value || '').trim(); db.exNotes ||= {}; if (v) db.exNotes[d.id] = v.slice(0, 300); else delete db.exNotes[d.id]; persist(); closeSheet(); render(); },
+  'ex-note-clear': (d) => { delete db.exNotes?.[d.id]; persist(); closeSheet(); render(); },
+  // Do a past workout again today (this week only; the plan stays as it is).
+  'repeat-session': async (d) => {
+    const s = db.sessions.find((x) => x.id === d.id);
+    if (!s) return;
+    const today = dayKeyOf(todayStr());
+    if (db.activeSession) return toast('Finish or discard the current workout first.');
+    const planned = dayPlan(db, today)?.items?.some((i) => db.exercises[i.exerciseId]?.category !== 'conditioning');
+    if (planned && !sessionFor(today) && !(await ask(`Replace today's planned workout with ${sessionName(s)} from ${fmtDate(s.date)}? This week only.`, 'Replace'))) return;
+    const items = sessionToItems(s, `${today}-r`);
+    if (!db.week || db.week.start !== mondayOf(todayStr())) db.week = { start: mondayOf(todayStr()), avail: {}, days: {} };
+    db.week.days[today] = { name: sessionName(s), mode: 'lift', from: [], base: items.map((x) => ({ ...x })), items };
+    persist(); ui.summaryFresh = false; ui.tab = 'today'; ui.day = today; window.scrollTo(0, 0); render();
+    toast(`${sessionName(s)} is today. Tap Start workout when you're ready.`);
+  },
+  'save-session-plan': (d) => openSaveToPlan(d.id),
+  'save-session-plan-go': async (d) => {
+    const s = db.sessions.find((x) => x.id === d.id);
+    if (!s) return;
+    if (db.plan[d.day] && !(await ask(`Replace ${db.plan[d.day].name} on ${FULL_DAY[d.day]}s with this workout? Your history is kept.`, 'Replace'))) return;
+    safetySnapshot(db, 'Before saving a workout to the plan');
+    db.plan[d.day] = { name: sessionName(s) === 'Workout' ? `${FULL_DAY[d.day]} workout` : sessionName(s), items: sessionToItems(s, `${d.day}-`) };
+    db.settings.dayModes = { ...(db.settings.dayModes || {}), [d.day]: 'lift' };
+    persist(); closeSheet(); render(); toast(`Saved as your ${FULL_DAY[d.day]} workout.`);
+  },
+  'explain-week': () => {
+    const wi = weekInfo(db);
+    openSheet(`<h2>${db.settings.deloadOff ? `Week ${wi.week}` : `Week ${wi.cyclePos} of ${wi.cycleLen}`}</h2>
+      <p class="small">Training runs in blocks of a few weeks. Each week asks a little more (you stop a rep or so closer to failure), and ${db.settings.deloadOff ? 'you take a lighter week when you choose' : 'the last week is a lighter deload'} so your body catches up and you come back stronger.</p>
+      ${wi.isDeload ? '<p class="small"><b>This is a deload week:</b> half the sets, same or slightly lighter weights.</p>' : ''}
+      <p class="muted small">Block length and deloads: Settings → Training → Advanced. ${refChips(['bell2022'])}</p>
+      <button class="btn block" data-a="close-sheet">Got it</button>`);
+  },
+  'set-effort-scale': (d) => { db.settings.effortScale = d.v; persist(); render(); },
+  // During a workout the photo is a strip; tap it for the full picture.
+  'hero-toggle': () => { if (!db.activeSession) return; ui.heroBig = !ui.heroBig; render(); },
   'ex-info-close': (d) => { closeSheet(); actions['ex-info'](d); },
   'prog-sub-close': (d) => { closeSheet(); actions['prog-sub'](d); },
   'add-workout': (d) => openAddWorkout(d.day || ui.day),
@@ -3094,7 +3198,7 @@ document.addEventListener('click', (e) => {
 document.addEventListener('change', (e) => {
   const el = e.target;
   const a = el.dataset?.a;
-  if (el.id === 'import-file' || el.id === 'photo-file' || el.id === 'check-file') { extras.onChange(e); return; }
+  if (el.id === 'import-file' || el.id === 'photo-file' || el.id === 'check-file' || el.id === 'apps-file') { extras.onChange(e); return; }
   if (food.onChange(e) || year.onChange(e) || train.onChange(e)) return;
   if (el.dataset?.warm) {
     const [uid, i, k] = el.dataset.warm.split(':');

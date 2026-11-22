@@ -150,7 +150,7 @@ export function createWorkoutScreens(A) {
     const dateLabel = parseDate(dateOfDay(day)).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
     const subtitle = [
       dateLabel,
-      !Object.keys(A.db.plan || {}).length ? '' : A.db.settings.deloadOff ? `Week ${wi.week}` : `Week ${wi.cyclePos} of ${wi.cycleLen}${wi.isDeload ? ' (deload)' : ''}`,
+      !Object.keys(A.db.plan || {}).length ? '' : `<button class="sub-link" data-a="explain-week">${A.db.settings.deloadOff ? `Week ${wi.week}` : `Week ${wi.cyclePos} of ${wi.cycleLen}${wi.isDeload ? ' (deload)' : ''}`}</button>`,
       ph ? `${PHASE_TYPES[ph.phase.type].label}, week ${ph.weekInPhase}` : '',
     ].filter(Boolean).join(' · ');
     let html = `
@@ -438,19 +438,26 @@ export function createWorkoutScreens(A) {
 
     const img = info.images?.[0];
     return `${session ? workoutBar(session) : ''}<div class="ex-screen">
-      <div class="ex-hero">${img ? `<img src="${img}" alt="${A.esc(ex.name)}" referrerpolicy="no-referrer">` : `<div class="hero-body">${bodyPair(Object.fromEntries(ex.primary.map((m) => [m, 1])))}</div>`}
+      <div class="ex-hero ${A.ui.heroBig ? 'big' : ''}" data-a="hero-toggle">${img ? `<img src="${img}" alt="${A.esc(ex.name)}" referrerpolicy="no-referrer">` : `<div class="hero-body">${bodyPair(Object.fromEntries(ex.primary.map((m) => [m, 1])))}</div>`}
         ${session ? '' : `<button class="icon-btn hero-btn" data-a="ex-close" aria-label="Back to the day">${icon('left')}</button>`}
         <button class="icon-btn hero-btn right" data-a="ex-sheet" data-uid="${item.uid}" aria-label="More options">${icon('more')}</button>
       </div>
       <div class="ex-title-row"><h1>${A.esc(ex.name)}</h1><button class="btn sm" data-a="ex-info" data-id="${ex.id}">${icon('play')}How-to</button></div>
       <p class="subtitle">${CATEGORIES[ex.category]} · ${A.esc(A.muscleLine(ex))}</p>
       ${session ? '' : (() => { const f = freshness(currentFatigue(A.db)); const gs = [...new Set(ex.primary.map((m) => groupOfMuscle(m)).filter(Boolean))]; return gs.length ? `<button class="rec-line" data-a="open-recovery" data-g="${gs[0].id}">${gs.map((g) => `${g.name} <b class="num">${Math.round(groupFreshness(g, f) * 100)}%</b>`).join(' · ')} recovered ${icon('right', 'chev')}</button>` : ''; })()}
+      ${A.db.exNotes?.[ex.id] ? `<button class="ex-note" data-a="ex-note" data-id="${ex.id}">${icon('note')}<span>${A.esc(A.db.exNotes[ex.id])}</span></button>` : ''}
       <div class="chips quick-row">
+        ${A.db.exNotes?.[ex.id] ? '' : `<button class="chip" data-a="ex-note" data-id="${ex.id}">${icon('note')} Note</button>`}
         <button class="chip" data-a="ex-rest" data-uid="${item.uid}">Rest ${A.fmtRest(item.restSec || grp.items.reduce((a, i) => Math.max(a, i.restSec || 0), 0)) || 'off'}</button>
       </div>
       ${grp.linked ? `<div class="group-note"><b>${linkLabel(grp.items.length)}</b>${entry ? (() => { const n = Math.max(...grp.items.map((i) => session.entries[i.uid]?.sets.length || i.sets)); const r = entry.sets.findIndex((x) => !x.done); return ` · round ${r < 0 ? entry.sets.length : r + 1} of ${n}`; })() : ''} · ${grp.items.map((i) => (i === item ? `<span class="cur">${A.esc(i.ex.name)}</span>` : A.esc(i.ex.name))).join(' → ')}</div>` : ''}
-      <p class="aim-line">${aim}${conditioning || t.aim ? '' : t.rir ? ` · ${t.rir} RIR` : rir ? ` · about ${rir} in reserve` : ''}</p>
-      ${session && t.weight == null && !conditioning && !allDone ? `<button class="btn sm base-find" data-a="base-find" data-uid="${item.uid}">Help me pick a weight</button>` : ''}
+      <p class="aim-line">${aim}${conditioning || t.aim ? '' : t.rir || rir ? ` · ${A.effort(t.rir || rir, 'aim')}` : ''}</p>
+      ${(() => {
+        // A lift never logged before: the weight shown is a starting guess.
+        const fresh = !conditioning && !ex.noLoad && ex.type !== 'bodyweight' && !A.db.sessions.some((x) => x.entries.some((e) => e.exerciseId === ex.id));
+        if (allDone || conditioning || !(fresh || t.weight == null)) return '';
+        return `<div class="first-weight">${t.weight != null ? '<p class="small muted">First time on this lift: the weight is a starting guess. Adjust it after your first set.</p>' : ''}${session ? `<button class="btn sm base-find" data-a="base-find" data-uid="${item.uid}">Help me pick a weight</button>` : ''}</div>`;
+      })()}
       ${ex.modes?.length > 1 ? `<div class="segmented small-seg metric-seg" role="radiogroup" aria-label="Measure by">${ex.modes.map((m) => `<button class="${m === metric ? 'on' : ''}" data-a="set-metric" data-uid="${item.uid}" data-v="${m}" role="radio" aria-checked="${m === metric}">${METRICS[m]}</button>`).join('')}</div>` : ''}
       ${conditioning ? A.train.condInfo(item, entry, ex, metric) : ''}
       ${item.note && conditioning ? `<p class="small">${A.esc(item.note)}</p>` : ''}
@@ -544,7 +551,7 @@ export function createWorkoutScreens(A) {
         ${ex.noLoad ? '' : `<input class="cell" type="text" inputmode="decimal" data-set="${item.uid}:${i}:weight" value="${toDisp(s.weight) ?? ''}" placeholder="—" aria-label="Set ${i + 1} weight in ${wUnit() === 'kg' ? 'kilograms' : 'pounds'}" ${disabled ? 'disabled' : ''}>`}
         <input class="cell" type="text" inputmode="numeric" data-set="${item.uid}:${i}:reps" value="${s.reps ?? ''}" aria-label="Set ${i + 1} reps" ${disabled ? 'disabled' : ''}>
         <button class="check" data-a="check-inline" data-uid="${item.uid}" data-i="${i}" ${disabled || s.pain ? 'disabled' : ''} aria-pressed="${s.done}" aria-label="${s.done ? 'Undo' : 'Complete'} set ${i + 1}">${icon('check')}</button>
-      </div>${s.rir != null || s.pain ? `<p class="set-extra">${s.pain ? 'Pain flagged' : `${s.rir} reps in reserve`}</p>` : ''}`;
+      </div>${s.rir != null || s.pain ? `<p class="set-extra">${s.pain ? 'Pain flagged' : A.effort(s.rir, 'done')}</p>` : ''}`;
     }).join('');
   }
 
@@ -664,6 +671,7 @@ export function createWorkoutScreens(A) {
       <div class="card"><h3>Notes</h3><textarea id="session-note" data-sid="${s.id}" rows="3" placeholder="How did it go? Sleep, energy, anything to remember">${A.esc(s.note || '')}</textarea></div>
       ${A.health.button(s)}
       <div class="row"><button class="btn grow" data-a="share-session" data-id="${s.id}">Share</button><button class="btn grow" data-a="edit-session" data-id="${s.id}">Edit workout</button></div>
+    <div class="row"><button class="btn grow" data-a="repeat-session" data-id="${s.id}">Do it again</button><button class="btn grow" data-a="save-session-plan" data-id="${s.id}">Save to plan</button></div>
       <button class="btn primary block" data-a="tab" data-tab="${A.ui.summaryFresh ? 'today' : 'history'}">Done</button>
       ${A.canReopen(s.id) ? '<button class="text-link center-link" data-a="resume-finished">Finished too soon? Resume workout</button>' : ''}`;
   }

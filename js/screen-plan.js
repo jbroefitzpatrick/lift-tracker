@@ -14,6 +14,8 @@ import { ROW_ROTATION, TYPES } from './plan.js';
 import { fromDisp, toDisp, wUnit } from './units.js';
 
 export function createPlanScreens(A) {
+  // Program notation for the order: A, B, then supersets as C1, C2 (stored as 1, 2, 3a, 3b).
+  const groupLabel = (g) => { const m = /^(\d+)([a-z]?)$/i.exec(String(g || '')); if (!m) return String(g || ''); const letter = String.fromCharCode(64 + Math.min(26, +m[1])); return m[2] ? letter + (m[2].toLowerCase().charCodeAt(0) - 96) : letter; };
   // ---------- Plan editor ----------
 
   function builderEntry() {
@@ -69,7 +71,8 @@ export function createPlanScreens(A) {
         <button class="list-row" data-a="plan-view" data-v="program"><span class="grow"><b>Block ${b.index} · week ${b.weekInBlock} of ${b.n}</b><span class="pick-sub">Focus lifts, deloads, progression</span></span>${icon('right', 'chev')}</button>
         <button class="list-row" data-a="rv-open"><span class="grow"><b>Last week</b><span class="pick-sub">${rv.sessions ? (nSug ? (nSug > 3 ? `Top 3 of ${nSug} suggestions` : `${nSug} suggestion${nSug === 1 ? '' : 's'}`) : 'Nothing to change') : 'No workouts logged'}</span></span>${icon('right', 'chev')}</button>
         <button class="list-row" data-a="plan-view" data-v="year"><span class="grow"><b>Goals and year</b><span class="pick-sub">Running goal, training phases</span></span>${icon('right', 'chev')}</button>
-        <button class="list-row" data-a="open-builder"><span class="grow"><b>Rebuild plan from goals</b><span class="pick-sub">Days, sets, reps and exercises</span></span>${icon('right', 'chev')}</button>
+        <button class="list-row" data-a="programs-open"><span class="grow"><b>Start a known program</b><span class="pick-sub">5/3/1, GZCLP, Starting Strength, PHUL, Push Pull Legs</span></span>${icon('right', 'chev')}</button>
+      <button class="list-row" data-a="open-builder"><span class="grow"><b>Rebuild plan from goals</b><span class="pick-sub">Days, sets, reps and exercises</span></span>${icon('right', 'chev')}</button>
       </div>`;
   }
 
@@ -109,7 +112,7 @@ export function createPlanScreens(A) {
           return `<div class="plan-row region-${ex ? A.regionOf(ex) : 'core'}" data-drag-item data-drag-list="plan" data-drag-id="${it.uid}">
             <button class="drag-handle" data-drag-handle aria-label="Reorder ${A.esc(ex?.name || '')} (arrow keys move it)">${A.GRIP}</button>
             <button class="plan-row-main" data-a="plan-edit" data-i="${i}" aria-label="Edit ${A.esc(ex?.name || it.exerciseId)}">
-              <span class="tag">${A.esc(it.group)}</span>
+              <span class="tag" title="Group ${A.esc(it.group)}">${A.esc(groupLabel(it.group))}</span>
               <span class="grow"><b>${A.esc(ex?.name || it.exerciseId)}</b><span class="pick-sub">${it.metric || ex?.category === 'conditioning' ? `${it.sets} × ${fmtTarget(it.metric || ex?.metric || 'reps', it.target ?? it.repMax)}` : `${it.sets} × ${it.repMin}–${it.repMax}`}${it.restSec ? ` · rest ${A.fmtRest(it.restSec)}` : ''}${rot}</span></span>
               ${icon('right', 'chev')}
             </button>
