@@ -19,6 +19,7 @@ import { fromDisp, toDisp, wUnit } from './units.js';
 import { addOptions, muscleWork } from './review.js';
 import { workoutBurn, workoutMinutes } from './energy.js';
 import { detectPRs } from './records.js';
+import { peakWeek } from './maxes.js';
 
 export function createWorkoutScreens(A) {
   // ---------- Screens: Today ----------
@@ -152,6 +153,7 @@ export function createWorkoutScreens(A) {
       dateLabel,
       !Object.keys(A.db.plan || {}).length ? '' : `<button class="sub-link" data-a="explain-week">${A.db.settings.deloadOff ? `Week ${wi.week}` : `Week ${wi.cyclePos} of ${wi.cycleLen}${wi.isDeload ? ' (deload)' : ''}`}</button>`,
       ph ? `${PHASE_TYPES[ph.phase.type].label}, week ${ph.weekInPhase}` : '',
+      A.db.peak && peakWeek(A.db) ? `<button class="sub-link" data-a="peak-open">${peakWeek(A.db).test ? 'Test week' : `Peak ${peakWeek(A.db).idx + 1} of ${peakWeek(A.db).total}`}</button>` : '',
     ].filter(Boolean).join(' · ');
     let html = `
       <header class="top">
@@ -414,7 +416,7 @@ export function createWorkoutScreens(A) {
     const barbell = ex.type?.startsWith('barbell');
     const grp = groupsOf(items).find((g) => g.items.includes(item));
     const firstCompound = items.find((i) => i.ex.category === 'compound' && i.ex.type !== 'bodyweight');
-    const warm = entry?.warm || (A.db.settings.warmups && item === firstCompound && target ? warmupSets(ex, target, gym) : []);
+    const warm = entry?.warm || t.warm || (A.db.settings.warmups && item === firstCompound && target ? warmupSets(ex, target, gym) : []);
     const rir = rirTarget(weekInfo(A.db));
     const allDone = entry && sets.every((s) => s.done);
     const prev = items[idx - 1];
@@ -470,8 +472,8 @@ export function createWorkoutScreens(A) {
         ${rows}
       </div>
       ${barbell && target ? `<p class="muted small plates">Plates: ${plateText(target, gym)}</p>` : ''}
-      ${!ended ? `<button class="text-btn" data-a="add-set" data-uid="${item.uid}">${icon('plus')} ${conditioning ? 'Add round' : 'Add set'}</button>${conditioning ? '' : `<button class="text-btn" data-a="add-drop" data-uid="${item.uid}">${icon('arrowDown')} Drop set</button>`}` : ''}
-      ${ex.rules?.rehab && !ended ? `<label class="toggle"><input type="checkbox" data-a="painfree" data-uid="${item.uid}" ${entry?.painFree ? 'checked' : ''}><span>Pain-free today (needed to increase weight)</span></label>` : ''}
+      ${!ended ? `<button class="text-btn" data-a="add-set" data-uid="${item.uid}">${icon('plus')} ${conditioning ? 'Add round' : 'Add set'}</button>${conditioning || entry?.maxTest ? '' : `<button class="text-btn" data-a="add-drop" data-uid="${item.uid}">${icon('arrowDown')} Drop set</button>`}` : ''}
+      ${ex.rules?.rehab && !ended && !entry?.maxTest ? `<label class="toggle"><input type="checkbox" data-a="painfree" data-uid="${item.uid}" ${entry?.painFree ? 'checked' : ''}><span>Pain-free today (needed to increase weight)</span></label>` : ''}
       ${checkin}
       ${comingUp(items, idx, session)}
       <div class="ex-nav">
@@ -488,7 +490,7 @@ export function createWorkoutScreens(A) {
   function warmBlock(item, entry, warm, ex, gym, barbell) {
     if (!warm.length) return '';
     const done = warm.filter((w) => w.done).length;
-    const open = A.ui.warmOpen?.[item.uid];
+    const open = A.ui.warmOpen?.[item.uid] ?? !!entry?.maxTest; // a max test starts with its warm-ups showing
     return `<details class="warmup" data-uid="${item.uid}" ${open ? 'open' : ''}>
       <summary>Warm-up · ${done ? `${done} of ${warm.length} done` : `${warm.length} sets`}</summary>
       <div class="set-head warm" aria-hidden="true"><span></span><span>${ex.type === 'dumbbell' ? `${wUnit()} each` : wUnit()}</span><span>Reps</span><span></span></div>
@@ -633,6 +635,8 @@ export function createWorkoutScreens(A) {
     pain: ['x', 'Pain', 'bad'],
     deload: ['minus', 'Deload', ''],
     logged: ['check', 'Logged', ''],
+    tested: ['up', 'Max test', 'good'],
+    peak: ['check', 'Peaking', ''],
     skipped: ['minus', 'Skipped', 'muted'],
   };
 

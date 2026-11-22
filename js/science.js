@@ -259,6 +259,11 @@ export const REFS = {
     finding: 'Novices: 1–3 sets of 8–12 reps, 2–3 days/week, full body. Intermediate: 3–4 days/week; advanced: 4–6 days with splits. Heavier loads and 2–3+ min rest for strength; moderate loads and 1–2 min for growth; light loads, 10–25 reps and short rest for muscular endurance.',
     url: search('Progression models in resistance training for healthy adults'),
   },
+  travis2020: {
+    cite: 'Travis SK, Mujika I, Gentles JA, Stone MH, Bazyler CD (2020). Tapering and peaking maximal strength for powerlifting performance: a review. Sports 8(9):125.',
+    finding: 'Before a max test or meet, strength athletes raise intensity and cut volume; a taper of about 1–2 weeks with volume cut by roughly half, while keeping heavy singles, appears to work best. The evidence base is still small.',
+    url: 'https://doi.org/10.3390/sports8090125',
+  },
   nsca2016: {
     cite: 'Haff GG, Triplett NT, eds. (2016). Essentials of Strength Training and Conditioning, 4th ed. NSCA / Human Kinetics.',
     finding: 'Load–rep guidelines: strength ≥85% 1RM for ≤6 reps with 2–5 min rest; hypertrophy 67–85% for 6–12 reps; muscular endurance ≤67% for ≥12 reps with ≤30 s rest. Also defines core (multi-joint) vs assistance (single-joint) exercises.',

@@ -32,7 +32,8 @@ import { createExtras } from './ui-extra.js';
 import { createCloud } from './ui-cloud.js';
 import { createAccountUi } from './ui-account.js';
 import { createPeople } from './ui-people.js';
-import { moveDay, copyDayTo, catchUpDay, laggingMuscles } from './week.js';
+import { moveDay, copyDayTo, catchUpDay, laggingMuscles, maxDayTo } from './week.js';
+import { estimatedMax, testPlan, PEAKS, peakLength, peakWeek, startPeak, peakTestDate, TEST_REST, MAX_AIM } from './maxes.js';
 import { PROGRAMS, programPlan } from './programs.js';
 import { scheduleRest, cancelRest } from './push.js';
 import { account } from './account.js';
@@ -58,7 +59,7 @@ import { dayExtras, setDayExtra, warmupItems, cooldownItems, shuffleWarmup } fro
 import { weekReview, applySuggestion, lastWeekStart, muscleWork, addOptions } from './review.js';
 import { createTour } from './tour.js';
 import { initGestures } from './gestures.js';
-import { setUnit, wUnit, toDisp, fromDisp, wt, KG_GYM, LB_GYM, weightStepper } from './units.js';
+import { setUnit, wUnit, toDisp, fromDisp, wt, wtEst, KG_GYM, LB_GYM, weightStepper } from './units.js';
 import { adjustDay } from './week.js';
 import { splitTemplates, mainLiftOptions } from './builder.js';
 import { createPlanTools, keepManual, countManual } from './ui-plantools.js';
@@ -416,8 +417,9 @@ function makeEntry(item, isDeload) {
     group: item.group,
     repMin: item.repMin,
     repMax: item.repMax,
-    restSec: item.restSec,
+    restSec: t.restSec ?? item.restSec,
     scheme: t.scheme !== 'double' ? t.scheme : undefined,
+    ...(t.maxTest ? { maxTest: true, warm: t.warm.map((w) => ({ ...w, done: false })) } : {}),
     ...(t.ratios ? { ratios: t.ratios } : {}),
     ...(t.fixedLadder ? { fixedLadder: true } : {}),
     dropSet: false,
@@ -668,8 +670,8 @@ function finishWorkout() {
       entries.push({
         uid, exerciseId: e.exerciseId, name: ex.name, group: e.group, repMin: e.repMin, repMax: e.repMax,
         dropSet: e.dropSet || undefined, pain: e.pain || undefined, painFree: e.painFree || undefined,
-        excluded: e.pain || s.isDeload || undefined, sets, metric: e.metric || undefined, target: e.target ?? undefined, rpe: e.rpe ?? undefined,
-        feedback: e.feedback || undefined, joint: e.joint || undefined, note: e.note || undefined,
+        excluded: e.pain || (s.isDeload && !e.maxTest) || undefined, sets, metric: e.metric || undefined, target: e.target ?? undefined, rpe: e.rpe ?? undefined,
+        feedback: e.feedback || undefined, joint: e.joint || undefined, note: e.note || undefined, maxTest: e.maxTest || undefined,
       });
     }
   }
@@ -998,6 +1000,7 @@ function painNotice(ex, entry) {
   return [p.level === 3 ? 'bad' : 'warn', `${p.labels[0]}${p.labels.length > 1 ? ` and ${p.labels.length - 1} more` : ''}: ${p.verb}`, 'pain'];
 }
 
+const entry0MaxTest = (session, item) => !!session?.entries[item.uid]?.maxTest;
 function cardModel(item, session, isDeload) {
   const ex = item.ex;
   const gym = activeGym(db);
@@ -1012,7 +1015,9 @@ function cardModel(item, session, isDeload) {
     if (pn) notices.push(pn);
     return { ex, gym, metric, t: { sets: n, weight: null, reps: item.target, st: getState(db, ex.id) }, target: null, entry, sets, notices, conditioning: true };
   }
-  const t = targetsFor(db, item, isDeload);
+  // A lift switched to a max test mid-workout keeps that label, whatever the plan says.
+  const t0 = targetsFor(db, item, isDeload);
+  const t = entry0MaxTest(session, item) ? { ...t0, aim: MAX_AIM, rir: null } : t0;
   const target = t.weight == null ? null : roundToGym(ex, t.weight, gym);
   const entry = session?.entries[item.uid];
   const sets = entry ? entry.sets : t.setWeights ? t.setWeights.map((w, i) => newSet(roundToGym(ex, w, gym), t.setReps[i])) : Array.from({ length: t.sets }, () => newSet(target, t.reps));
@@ -1040,6 +1045,7 @@ function openExMenu(uid) {
     <div class="list-group menu">
       ${row('log-all', 'check', 'Log all sets')}
       ${row('swap', 'swap', 'Swap exercise')}
+      ${sessionFor(ui.day) && !sessionFor(ui.day).entries[uid]?.maxTest && item.ex.category !== 'conditioning' && item.ex.type !== 'bodyweight' && !item.ex.noLoad && (item.metric || item.ex.metric || 'reps') === 'reps' ? row('max-test', 'up', 'Test your max') : ''}
       ${grp?.linked ? row('unlink-one', 'x', 'Unlink') : i < items.length - 1 ? row('link-next', 'plus', 'Link with next') : ''}
       ${planIt && item.ex.category !== 'conditioning' ? row('ex-lock', 'bookmark', planIt.lock ? 'Allow variety' : 'Keep every week') : ''}
       ${row('ex-details', 'info', 'More info')}
@@ -1059,7 +1065,7 @@ function openExerciseSheet(uid, focus) {
   const info = EX_INFO[ex.id] || {};
   const barbell = ex.type?.startsWith('barbell');
   const firstCompound = items.find((i) => i.ex.category === 'compound' && i.ex.type !== 'bodyweight');
-  const warm = db.settings.warmups && item === firstCompound && target ? warmupSets(ex, target, gym) : [];
+  const warm = t.warm || (db.settings.warmups && item === firstCompound && target ? warmupSets(ex, target, gym) : []);
   const rir = rirTarget(weekInfo(db));
   const i = session ? session.order.indexOf(uid) : items.indexOf(item);
   const count = session ? session.order.length : items.length;
@@ -1274,7 +1280,74 @@ function openAddWorkout(day) {
       ${row('add-catchup', 'Train what\'s behind', `Least trained this week: ${esc(low.join(', '))}`)}
       ${lifts.length ? row('add-double', 'Repeat a lifting day', `Do ${esc(lifts.slice(0, 3).map((t) => t.name).join(', '))} again today`) : ''}
       ${row('start-empty', 'Build your own', 'Pick exercises as you go')}
+      ${maxCandidates().length ? row('maxday-open', 'Max-out day', 'Test your one-rep max on a few lifts') : ''}
     </div>`);
+}
+
+// ---------- Max testing ----------
+// Lifts worth testing: loaded compounds with a recent estimate, the big four first, then the rest
+// by how often they're trained.
+const MAIN_LIFTS = ['back-squat', 'bench-press', 'deadlift', 'ohp'];
+function maxCandidates() {
+  const seen = {};
+  for (const s of db.sessions.slice(-60)) for (const e of s.entries) seen[e.exerciseId] = (seen[e.exerciseId] || 0) + 1;
+  return Object.keys(seen).map((id) => ({ ex: db.exercises[id], est: estimatedMax(db, id), n: seen[id] }))
+    .filter((x) => x.ex && x.est && x.ex.category === 'compound' && x.ex.type !== 'bodyweight' && !x.ex.noLoad && (x.ex.metric || 'reps') === 'reps')
+    .sort((a, b) => ((MAIN_LIFTS.indexOf(a.ex.id) + 1 || 99) - (MAIN_LIFTS.indexOf(b.ex.id) + 1 || 99)) || b.n - a.n)
+    .slice(0, 8);
+}
+function liftPicker(sel, act) {
+  return `<div class="list-group">${maxCandidates().map(({ ex, est }) => { const on = sel.includes(ex.id); return `<button class="list-row pick-row ${on ? 'on' : ''}" data-a="${act}" data-id="${ex.id}" aria-pressed="${on}"><span class="grow"><b>${esc(ex.name)}</b><span class="pick-sub">Estimated max ${wtEst(est)}</span></span><span class="pick-check">${on ? icon('check') : ''}</span></button>`; }).join('')}</div>`;
+}
+function openMaxDay(day) {
+  const st = (ui.maxDay ||= { sel: [] }); st.day = day;
+  const n = st.sel.length;
+  openSheet(`<h2>Max-out day</h2>
+    <p class="muted small">Guided warm-ups, then three single attempts per lift. Best when rested; once every few months is plenty. ${refChips(['nsca2016'])}</p>
+    ${liftPicker(st.sel, 'maxday-pick')}
+    <button class="btn primary block" data-a="maxday-go" ${n ? '' : 'disabled'}>${n ? `Test ${n} ${n === 1 ? 'lift' : 'lifts'} on ${FULL_DAY[day]}` : 'Pick the lifts to test'}</button>
+    <button class="btn plain block" data-a="peak-open">Build up to it over 4–8 weeks</button>`);
+}
+function openPeak() {
+  const pk = db.peak && peakWeek(db);
+  if (pk) {
+    const p = db.peak;
+    openSheet(`<h2>${PEAKS[p.weeks].name}</h2>
+      <p class="small">Week ${pk.idx + 1} of ${pk.total}. Test week starts ${fmtDate(peakTestDate(p))}.</p>
+      <div class="kv-list">${p.lifts.map((id) => `<div class="kv"><span>${esc(db.exercises[id]?.name || id)}</span><b>${p.est[id] ? `from ${wtEst(p.est[id])}` : '—'}</b></div>`).join('')}</div>
+      <h3 class="sheet-h">The block</h3>${peakTable(p.weeks, pk.idx)}
+      <button class="btn plain block danger-text" data-a="peak-end">End the block</button>`);
+    return;
+  }
+  const st = (ui.peak ||= { sel: [], weeks: 6 });
+  openSheet(`<h2>Peak for a max test</h2>
+    <p class="muted small">Heavier, lower-rep work on the lifts you pick, a lighter taper week, then a test week. They stay on the days they're already planned; everything else is unchanged. ${refChips(['travis2020', 'nsca2016'])}</p>
+    <div class="segmented small-seg" role="radiogroup" aria-label="Length">${[4, 6, 8].map((w) => `<button class="${st.weeks === w ? 'on' : ''}" data-a="peak-weeks" data-v="${w}" role="radio" aria-checked="${st.weeks === w}">${w} weeks</button>`).join('')}</div>
+    <p class="muted small">${PEAKS[st.weeks].desc}</p>
+    ${peakTable(st.weeks)}
+    <h3 class="sheet-h">Lifts</h3>
+    ${maxCandidates().length ? liftPicker(st.sel, 'peak-pick') : '<p class="small">Log a few heavy sets on a lift first.</p>'}
+    <button class="btn primary block" data-a="peak-go" ${st.sel.length ? '' : 'disabled'}>Start · test week ${fmtDate(addDays(mondayOf(todayStr()), (peakLength(st.weeks) - 1) * 7))}</button>`);
+}
+function peakTable(n, cur = -1) {
+  const rows = PEAKS[n].weeks.map((sets, i) => {
+    const [p, r] = sets[0];
+    const text = i === PEAKS[n].weeks.length - 1 ? `Taper: 1 × 1 at ${Math.round(p * 100)}%, 2 × 2 light` : `${sets.length} × ${r} at ${Math.round(p * 100)}%`;
+    return `<div class="kv ${i === cur ? 'std-here' : ''}"><span>Week ${i + 1}</span><b>${text}</b></div>`;
+  });
+  rows.push(`<div class="kv ${cur === PEAKS[n].weeks.length ? 'std-here' : ''}"><span>Week ${PEAKS[n].weeks.length + 1}</span><b>Test: warm-ups, then 3 attempts</b></div>`);
+  return `<div class="kv-list">${rows.join('')}</div>`;
+}
+function openLogMax(exId) {
+  const ex = db.exercises[exId];
+  openSheet(`<h2>Log a max</h2>
+    <p class="muted small">A max you tested somewhere else, for ${esc(ex.name)}. It counts toward your estimated max and strength standards.</p>
+    <div class="row">
+      <label class="field grow"><span>Weight (${wUnit()})</span><input id="lm-w" type="text" inputmode="decimal"></label>
+      <label class="field"><span>Reps</span><input id="lm-r" type="text" inputmode="numeric" value="1" style="width:5em"></label>
+    </div>
+    <label class="field"><span>Date</span><input id="lm-d" type="date" value="${todayStr()}" max="${todayStr()}"></label>
+    <button class="btn primary block" data-a="logmax-save" data-id="${exId}">Save</button>`);
 }
 function openDoubleUp(day) {
   openSheet(`<h2>Repeat a lifting day</h2>
@@ -1603,7 +1676,10 @@ function closeSheet() {
   }, 260);
 }
 let typingSave = null;
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#sheet').hidden) closeSheet(); });
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !$('#sheet').hidden) closeSheet();
+  if (e.key === 'Enter' && e.target.id === 'ppl-find-q') { e.preventDefault(); actions['ppl-find-go']({}); }
+});
 document.addEventListener('toggle', (e) => { const d = e.target; if (d.matches?.('details.warmup')) (ui.warmOpen ||= {})[d.dataset.uid] = d.open; }, true);
 
 const num = (id) => {
@@ -1880,9 +1956,10 @@ function screenSettings() {
   return `<header class="top"><button class="back" data-a="settings-back" aria-label="Back">${icon('left')}</button><h1 class="grow">Settings</h1></header>
     <div class="list-group">
       ${row('settings-page', 'account', 'Account and sync', esc(acctUi.summary()))}
+      ${account()?.token ? row('ppl-my-profile', '', 'Your profile', 'Photo, username and bio') : ''}
     </div>
     <div class="list-group">
-      ${row('open-builder', '', 'Profile and goals', p ? 'Plan builder · ' + (EXPERIENCE[p.experience]?.label || '') : 'Set up your goals')}
+      ${row('open-builder', '', 'Training goals', p ? 'Plan builder · ' + (EXPERIENCE[p.experience]?.label || '') : 'Set up your goals')}
       ${row('settings-page', 'training', 'Training', `Week starts ${FULL_DAY[s.weekStart || 'mon']} · ${esc(prog)}`)}
       ${row('settings-page', 'gym', 'Gym', esc(activeGym(db).name))}
     </div>
@@ -2902,6 +2979,45 @@ const actions = {
   'cardio-log': (d) => openCardioSheet(d.id),
   'cardio-all': (d) => openCardioAll(d.day || ui.day),
   'std-area': (d) => openStrengthArea(d.v),
+  // Max testing
+  'max-test': (d) => {
+    const session = sessionFor(ui.day); const e = session?.entries[d.uid];
+    if (!e) return;
+    const ex = db.exercises[e.exerciseId];
+    const done = e.sets.filter((x) => x.done && x.type !== 'w');
+    const est = estimatedMax(db, ex.id) || (e.sets[0]?.weight && e.sets[0]?.reps ? Math.round(e.sets[0].weight * (1 + e.sets[0].reps / 30)) : null);
+    if (!est) return toast('Log this lift once first, so there is a starting point.');
+    const { warm, attempts } = testPlan(ex, est, activeGym(db));
+    Object.assign(e, { maxTest: true, scheme: 'max', fixedLadder: true, restSec: TEST_REST, warm: done.length ? e.warm : warm.map((w) => ({ ...w, done: false })), sets: [...done, ...attempts.map((w) => newSet(w, 1))] });
+    persist(); closeSheet(); render();
+    toast(`Max test: opener ${wt(attempts[0])}.`);
+  },
+  'maxday-open': (d) => { closeSheet(); setTimeout(() => openMaxDay(d.day || ui.day), 0); },
+  'maxday-pick': (d) => { const st = ui.maxDay; st.sel = st.sel.includes(d.id) ? st.sel.filter((x) => x !== d.id) : [...st.sel, d.id].slice(-4); openMaxDay(st.day); },
+  'maxday-go': () => {
+    const st = ui.maxDay;
+    if (!st?.sel.length) return;
+    maxDayTo(db, st.day, st.sel); persist(); closeSheet(); ui.day = st.day; ui.tab = 'today'; ui.maxDay = null; window.scrollTo(0, 0); render();
+    toast('Max-out day is ready.');
+  },
+  'peak-open': () => openPeak(),
+  'peak-weeks': (d) => { ui.peak.weeks = +d.v; openPeak(); },
+  'peak-pick': (d) => { const st = ui.peak; st.sel = st.sel.includes(d.id) ? st.sel.filter((x) => x !== d.id) : [...st.sel, d.id].slice(-4); openPeak(); },
+  'peak-go': () => {
+    const st = ui.peak; if (!st?.sel.length) return;
+    startPeak(db, st.sel, st.weeks); persist(); closeSheet(); ui.peak = null; render();
+    toast(`Peaking started. Test week: ${fmtDate(peakTestDate(db.peak))}.`);
+  },
+  'peak-end': async () => { if (!(await ask('End the peaking block? Your lifts go back to their usual progression.', 'End block', true))) return; db.peak = null; persist(); closeSheet(); render(); },
+  'logmax-open': (d) => openLogMax(d.id),
+  'logmax-save': (d) => {
+    const w = fromDisp(num('lm-w')); const r = Math.round(num('lm-r') || 1); const date = $('#lm-d')?.value || todayStr();
+    if (!(w > 0)) return toast('Enter the weight.');
+    if (!(r >= 1 && r <= 10)) return toast('Reps from 1 to 10.');
+    (db.maxes ||= []).push({ id: `m${Date.now()}`, exerciseId: d.id, date: date > todayStr() ? todayStr() : date, weight: w, reps: r });
+    persist(); closeSheet(); render(); toast('Max saved.');
+  },
+  'logmax-del': async (d) => { if (!(await ask('Delete this logged max?', 'Delete', true))) return; db.maxes = (db.maxes || []).filter((m) => m.id !== d.id); persist(); render(); },
   'session-more-go': (d) => { if (d.v === 'edit-session') closeSheet(); actions[d.v]({ id: d.id }); },
   'session-more': (d) => {
     const row = (a, t, sub) => `<button class="list-row" data-a="session-more-go" data-v="${a}" data-id="${d.id}"><span class="grow"><b>${t}</b><span class="pick-sub">${sub}</span></span>${icon('right', 'chev')}</button>`;
@@ -2916,6 +3032,7 @@ const actions = {
     openSheet(`<h2>Change plan</h2><div class="list-group">
       ${row('plan-change-builder', 'Rebuild from goals', 'Days, time, equipment and focus')}
       ${row('programs-open', 'Start a known program', '5/3/1, GZCLP, Starting Strength and more')}
+      ${row('peak-open', db.peak && peakWeek(db) ? 'Peaking block' : 'Peak for a max test', db.peak && peakWeek(db) ? `Week ${peakWeek(db).idx + 1} of ${peakWeek(db).total}` : 'A 4–8 week build-up to a max-out day')}
       ${db.previousPlan ? row('undo-plan', 'Switch back', `To your plan from ${new Date(db.previousPlan.savedAt).toLocaleDateString()}`) : ''}
     </div><p class="muted small">Your history and progress always stay.</p>`);
   },

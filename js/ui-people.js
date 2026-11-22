@@ -3,7 +3,7 @@
 // Server side: cloud/social.js. What friends see is the card from card.js, published by this phone.
 
 import { icon } from './icons.js';
-import { account, api } from './account.js';
+import { account, api, setAccountName } from './account.js';
 import { buildCard, weekOf, progressOf, contestScore, contestEnd, recentRecords, weekPoints, POINTS } from './card.js';
 import { cloudConfig } from './cloud.js';
 import { todayStr, addDays, mondayOf, weekOrder, safetySnapshot } from './store.js';
@@ -15,6 +15,7 @@ const isIos = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.p
 const standalone = () => window.matchMedia?.('(display-mode: standalone)').matches || navigator.standalone === true;
 const SEEN = 'lift.social.seen';
 const INVITE = 'lift.invite';
+const GOAL_LABELS = { strength: 'Strength', size: 'Muscle size', fitness: 'General fitness', sport: 'A sport' };
 const PERM_LABELS = { plan: 'Plan', workouts: 'Workouts', body: 'Body weight and measurements', food: 'Food' };
 const FULL_DAY = { mon: 'Monday', tue: 'Tuesday', wed: 'Wednesday', thu: 'Thursday', fri: 'Friday', sat: 'Saturday', sun: 'Sunday' };
 const ls = {
@@ -100,7 +101,17 @@ export function createPeople(ctx) {
   const friends = () => links().filter((l) => l.kind === 'friend');
   const coaches = () => links().filter((l) => l.role === 'coach');
   const myClients = () => links().filter((l) => l.role === 'client');
-  const nameOf = (id) => (id === me() ? 'You' : links().find((l) => l.user.id === id)?.user.name || 'Someone');
+  const reqs = () => [...(data?.requests?.in || []), ...(data?.requests?.out || [])];
+  const nameOf = (id) => (id === me() ? 'You' : links().find((l) => l.user.id === id)?.user.name || reqs().find((r) => r.user.id === id)?.user.name || 'Someone');
+  const myName = () => data?.me?.name || account()?.user?.name || 'You';
+  const profOf = (id) => data?.profiles?.[id] || null;
+  const myHandle = () => profOf(me())?.handle || null;
+  // A round photo, or initials when there's none.
+  function avatarOf(owner, name, photo, size = '') {
+    const ini = String(name || '?').trim().split(/\s+/).map((w) => w[0] || '').join('').slice(0, 2).toUpperCase();
+    return photo ? `<span class="avatar ${size}"><img src="${mediaUrl(owner, { id: photo })}" alt="" loading="lazy"></span>` : `<span class="avatar ${size}" aria-hidden="true">${esc(ini)}</span>`;
+  }
+  const avatar = (id, size = '') => avatarOf(id, id === me() ? myName() : nameOf(id), profOf(id)?.photo, size);
   const cardOf = (id) => data?.cards?.[id] || null;
   const fmtPct = (p) => (p == null ? '—' : `${p > 0 ? '+' : ''}${p.toFixed(1)}%`);
   const ago = (d) => { const n = Math.round((Date.parse(todayStr()) - Date.parse(d)) / 86400000); return n <= 0 ? 'today' : n === 1 ? 'yesterday' : `${n} days ago`; };
@@ -118,17 +129,21 @@ export function createPeople(ctx) {
     if (v.client && v.edit) return planEditor(v.client);
     if (v.client) return clientScreen(v.client);
     if (!data && !lastError) { refresh(); }
-    const head = `<header class="top"><div class="grow"><h1>People</h1></div><button class="icon-btn" data-a="ppl-invite" aria-label="Invite someone">${icon('plus')}</button></header>`;
+    const head = `<header class="top">${data ? `<button class="ppl-me" data-a="ppl-friend" data-id="${me()}" aria-label="Your profile">${avatar(me(), 'md')}</button>` : ''}<div class="grow"><h1>People</h1></div><button class="icon-btn" data-a="ppl-invite" aria-label="Add friends">${icon('plus')}</button></header>`;
     if (!data) return `${head}<p class="muted small pad">${lastError ? esc(lastError) : 'Loading…'}</p>`;
     if (!links().length) {
       return `${head}
         <div class="card ppl-empty">
           <h3>Train with friends or a coach</h3>
-          <p class="small">Compare weeks and progress with friends, cheer each other's records, and run head-to-head challenges. A coach can follow what you choose to share and suggest changes to your plan.</p>
-          <button class="btn primary block" data-a="ppl-new" data-v="friend">Invite a friend</button>
+          <p class="small">Compare weeks with friends, like each other's records, and run challenges. A coach can follow what you share.</p>
+          <button class="btn primary block" data-a="ppl-invite">Find a friend by username</button>
+          <button class="btn block" data-a="ppl-new" data-v="friend">Invite a friend</button>
           <button class="btn block" data-a="ppl-new" data-v="coach">Ask someone to coach you</button>
           <button class="btn block" data-a="ppl-new" data-v="client">Coach someone</button>
         </div>
+        ${todo()}
+        ${myHandle() ? '' : '<p class="muted small center pad">Choose a username so friends can find you. <button class="text-link small-link" data-a="ppl-edit-profile">Set up your profile</button></p>'}
+        ${sentRequests()}
         ${openInvites()}
         <div class="list-group"><button class="list-row" data-a="ppl-code"><span class="grow"><b>Enter an invite code</b></span>${icon('right', 'chev')}</button></div>`;
     }
@@ -139,6 +154,7 @@ export function createPeople(ctx) {
       ${contests()}
       ${feed()}
       ${clientsCard()}
+      ${sentRequests()}
       ${openInvites()}
       <div class="list-group"><button class="list-row" data-a="ppl-code"><span class="grow"><b>Enter an invite code</b></span>${icon('right', 'chev')}</button></div>`;
   }
@@ -146,6 +162,11 @@ export function createPeople(ctx) {
   // Things waiting on me: challenges to answer, plan suggestions to review.
   function todo() {
     const out = [];
+    for (const r of data.requests?.in || []) {
+      const p = profOf(r.user.id);
+      out.push(`<div class="notice-card req-card"><div class="row">${avatar(r.user.id, 'md')}<div class="grow"><b>${esc(r.user.name)}</b><span class="pick-sub">${p?.handle ? `@${esc(p.handle)} · ` : ''}wants to be friends</span></div></div>
+        <div class="row"><button class="btn primary" data-a="ppl-req-answer" data-id="${r.user.id}" data-v="1">Accept</button><button class="btn" data-a="ppl-req-answer" data-id="${r.user.id}" data-v="0">Decline</button></div></div>`);
+    }
     for (const c of (data.contests || []).filter((x) => x.status === 'pending' && x.b === me())) {
       out.push(`<div class="notice-card"><b>${esc(nameOf(c.a))} challenged you</b><p class="small">${esc(contestLabel(c))} over ${c.days === 7 ? 'a week' : `${c.days / 7} weeks`}, starting when you accept.</p>
         <div class="row"><button class="btn primary" data-a="ppl-contest-answer" data-id="${c.id}" data-v="1">Accept</button><button class="btn" data-a="ppl-contest-answer" data-id="${c.id}" data-v="0">Not now</button></div></div>`);
@@ -189,7 +210,7 @@ export function createPeople(ctx) {
   }
   function row(id, i, big, sub) {
     const mine = id === me();
-    return `<button class="ppl-row ${mine ? 'me' : ''}" data-a="ppl-friend" data-id="${id}"><span class="rank">${i + 1}</span><span class="grow"><b>${esc(nameOf(id))}</b><span class="pick-sub">${sub}</span></span><b class="num">${big}</b></button>`;
+    return `<button class="ppl-row ${mine ? 'me' : ''}" data-a="ppl-friend" data-id="${id}"><span class="rank">${i + 1}</span>${avatar(id)}<span class="grow"><b>${esc(nameOf(id))}</b><span class="pick-sub">${sub}</span></span><b class="num">${big}</b></button>`;
   }
 
   // ---------- Challenges ----------
@@ -255,7 +276,7 @@ export function createPeople(ctx) {
     const p = it.post;
     const to = p?.audience === 'one' ? (p.user.id === me() ? ` · to ${esc(nameOf(p.to))}` : ' · to you') : '';
     return `<article class="feed-post">
-      <div class="fp-head"><b>${esc(nameOf(it.owner))}</b><span class="pick-sub">${p ? when(p.created) : when(todayStr(new Date(it.sort)))}${to}</span></div>
+      <div class="fp-head">${avatar(it.owner)}<div class="grow"><b>${esc(nameOf(it.owner))}</b><span class="pick-sub">${p ? when(p.created) : when(todayStr(new Date(it.sort)))}${to}</span></div></div>
       ${p ? postBody(p) : `<p class="post-text">${esc(it.text)}</p>`}
       <div class="fp-actions">
         <button class="fp-btn ${liked ? 'on' : ''}" data-a="ppl-cheer" data-o="${it.owner}" data-i="${esc(it.key)}" aria-pressed="${liked}">${liked ? 'Liked' : 'Like'}${who.length ? ` · ${who.length}` : ''}</button>
@@ -276,12 +297,23 @@ export function createPeople(ctx) {
   function profileScreen(id) {
     const mine = id === me();
     const l = friends().find((x) => x.user.id === id);
-    const head = `<header class="top"><button class="back" data-a="ppl-profile-back" aria-label="Back">${icon('left')}</button><div class="grow"><h1>${esc(mine ? (account()?.user?.name || 'You') : nameOf(id))}</h1>${mine ? '<p class="subtitle">What your friends see</p>' : ''}</div></header>`;
+    const head = `<header class="top"><button class="back" data-a="ppl-profile-back" aria-label="Back">${icon('left')}</button><div class="grow"><h1>Profile</h1></div></header>`;
     if (!mine && !l) return `${head}<p class="muted small pad">Not connected any more.</p>`;
+    const pr = profOf(id);
+    const meta = [pr?.gym, GOAL_LABELS[pr?.goal] && `Training for ${GOAL_LABELS[pr.goal].toLowerCase()}`].filter(Boolean).map(esc).join(' · ');
+    const intro = `<section class="profile-intro">${avatar(id, 'xl')}<div class="grow">
+        <h2>${esc(mine ? myName() : nameOf(id))}</h2>
+        ${pr?.handle ? `<p class="muted small">@${esc(pr.handle)}</p>` : ''}
+        ${pr?.bio ? `<p class="small">${esc(pr.bio)}</p>` : ''}
+        ${meta ? `<p class="muted small">${meta}</p>` : ''}
+      </div></section>
+      ${mine ? `<div class="row profile-actions"><button class="btn grow" data-a="ppl-edit-profile">Edit profile</button>${pr?.handle ? '<button class="btn grow" data-a="ppl-share-profile">Share profile</button>' : ''}</div>
+        ${pr?.handle ? '' : '<p class="muted small">Add a photo and a username so friends can find you.</p>'}` : ''}`;
     const c = cardOf(id); const w = weekOf(c); const pts = weekPoints(w); const p = progressOf(c);
     const items = feedItems().filter((it) => it.owner === id);
     const records = (c?.records || []).slice(0, 6);
     return `${head}
+      ${intro}
       <section class="card profile-week">
         <div class="row between"><h3>This week</h3><b class="num big-pts">${pts.total}<small> pts</small></b></div>
         <div class="kv-list">
@@ -389,6 +421,12 @@ export function createPeople(ctx) {
     }).join('')}</div>`;
   }
 
+  function sentRequests() {
+    const out = data?.requests?.out || [];
+    if (!out.length) return '';
+    return `<h2 class="group-title">Requests sent</h2><div class="list-group">${out.map((r) => `<div class="list-row">${avatar(r.user.id)}<span class="grow"><b>${esc(r.user.name)}</b><span class="pick-sub">Waiting · ${ago(todayStr(new Date(r.created)))}</span></span><button class="mini" data-a="ppl-req-cancel" data-id="${r.user.id}">Cancel</button></div>`).join('')}</div>`;
+  }
+
   function openInvites() {
     const inv = data?.invites || [];
     if (!inv.length) return '';
@@ -403,14 +441,54 @@ export function createPeople(ctx) {
   const readPerms = () => Object.fromEntries(Object.keys(PERM_LABELS).map((k) => [k, !!document.querySelector(`#sheet [data-perm="${k}"]`)?.checked]));
 
   function inviteSheet() {
-    ctx.openSheet(`<h2>Invite</h2>
+    const f = pv().find ||= { q: '' };
+    const r = f.result;
+    const st = r ? (friends().some((l) => l.user.id === r.user.id) ? 'friend' : r.status) : null;
+    ctx.openSheet(`<h2>Add friends</h2>
+      <div class="field"><span>Find by username</span><div class="row"><div class="handle-in grow"><span>@</span><input id="ppl-find-q" type="text" autocapitalize="none" autocomplete="off" spellcheck="false" enterkeyhint="search" value="${esc(f.q)}" placeholder="username"></div><button class="btn primary" data-a="ppl-find-go">Find</button></div></div>
+      ${f.err ? `<p class="muted small">${esc(f.err)}</p>` : ''}
+      ${r ? `<div class="find-card">${avatarOf(r.user.id, r.user.name, r.profile.photo, 'md')}<div class="grow"><b>${esc(r.user.name)}</b><span class="pick-sub">@${esc(r.profile.handle)}${r.profile.gym ? ` · ${esc(r.profile.gym)}` : ''}</span>${r.profile.bio ? `<span class="pick-sub">${esc(r.profile.bio)}</span>` : ''}</div>
+        ${st === 'friend' ? '<span class="muted small">Friends</span>' : st === 'sent' ? '<span class="muted small">Requested</span>' : `<button class="btn sm primary" data-a="ppl-request" data-id="${r.user.id}">${st === 'received' ? 'Accept' : 'Add'}</button>`}</div>` : ''}
+      <p class="muted small">${myHandle() ? `You're <b>@${esc(myHandle())}</b>. <button class="text-link small-link" data-a="ppl-share-profile">Share it</button>` : 'Choose a username so friends can find you. <button class="text-link small-link" data-a="ppl-edit-profile">Set up your profile</button>'}</p>
+      <h3 class="sheet-h">Or send an invite</h3>
       <div class="list-group">
         <button class="list-row" data-a="ppl-new" data-v="friend"><span class="grow"><b>Invite a friend</b><span class="pick-sub">Compare weeks and progress, cheer records, challenge each other</span></span>${icon('right', 'chev')}</button>
         <button class="list-row" data-a="ppl-new" data-v="coach"><span class="grow"><b>Ask someone to coach you</b><span class="pick-sub">You choose what they can see</span></span>${icon('right', 'chev')}</button>
         <button class="list-row" data-a="ppl-new" data-v="client"><span class="grow"><b>Coach someone</b><span class="pick-sub">They choose what to share with you</span></span>${icon('right', 'chev')}</button>
         <button class="list-row" data-a="ppl-code"><span class="grow"><b>Enter an invite code</b></span>${icon('right', 'chev')}</button>
       </div>
-      <p class="muted small">Friends see your workouts per week, sets, streak, strength change in percent, and records without weights. Nothing else.</p>`);
+      <p class="muted small">Friends see your profile, workouts per week, sets, streak, strength change in percent, records, and what you post.</p>`);
+  }
+
+  // ---------- Your profile ----------
+  function editProfileSheet(err = '') {
+    const e = pv().pedit;
+    const pic = e.file ? `<span class="avatar xl"><img src="${e.file.url}" alt=""></span>` : avatarOf(me(), e.name, e.photo, 'xl');
+    ctx.openSheet(`<h2>Edit profile</h2>
+      <div class="pe-photo">${pic}<div class="row"><label class="btn sm file-btn">${e.file || e.photo ? 'Change photo' : 'Add photo'}<input id="ppl-photo-file" type="file" accept="image/*" hidden></label>${e.file || e.photo ? '<button class="btn sm plain" data-a="ppl-photo-del">Remove</button>' : ''}</div></div>
+      <label class="field"><span>Name</span><input id="pp-name" type="text" maxlength="40" autocomplete="name" value="${esc(e.name)}"></label>
+      <div class="field"><span>Username</span><div class="handle-in"><span>@</span><input id="pp-handle" type="text" maxlength="20" autocapitalize="none" autocomplete="off" spellcheck="false" value="${esc(e.handle || '')}" placeholder="yourname" aria-label="Username"></div></div>
+      <label class="field"><span>Bio</span><textarea id="pp-bio" rows="2" maxlength="160" placeholder="What you train for, PRs you're chasing">${esc(e.bio)}</textarea></label>
+      <label class="field"><span>Gym</span><input id="pp-gym" type="text" maxlength="40" value="${esc(e.gym)}" placeholder="Optional"></label>
+      <div class="field"><span>Training for</span><div class="chips wrap">${['', ...Object.keys(GOAL_LABELS)].map((k) => `<button class="chip ${e.goal === k ? 'on' : ''}" data-a="ppl-pp-goal" data-v="${k}">${k ? GOAL_LABELS[k] : 'Not shown'}</button>`).join('')}</div></div>
+      <label class="toggle"><input type="checkbox" id="pp-find" ${e.findable !== false ? 'checked' : ''}><span>Let people find me by username</span></label>
+      ${err ? `<p class="notice bad">${esc(err)}</p>` : ''}
+      <button class="btn primary block" data-a="ppl-pp-save">Save</button>`);
+  }
+  function readProfileForm() {
+    const e = pv().pedit; const v = (id) => document.getElementById(id);
+    if (!v('pp-name')) return e;
+    Object.assign(e, { name: v('pp-name').value, handle: v('pp-handle').value.trim().replace(/^@/, '').toLowerCase(), bio: v('pp-bio').value, gym: v('pp-gym').value, findable: v('pp-find').checked });
+    return e;
+  }
+  // Profile photos: a centered square, 512 px.
+  async function prepareAvatar(file) {
+    const bmp = await createImageBitmap(file);
+    const side = Math.min(bmp.width, bmp.height);
+    const cv = document.createElement('canvas'); cv.width = cv.height = Math.min(512, side);
+    cv.getContext('2d').drawImage(bmp, (bmp.width - side) / 2, (bmp.height - side) / 2, side, side, 0, 0, cv.width, cv.height);
+    const blob = await new Promise((r) => cv.toBlob(r, 'image/jpeg', 0.85));
+    return { kind: 'image', blob, type: 'image/jpeg', url: URL.createObjectURL(blob) };
   }
   async function createInvite(kind, perms) {
     try {
@@ -625,7 +703,56 @@ export function createPeople(ctx) {
 
   // ---------- Actions ----------
   const actions = {
-    'ppl-invite': () => inviteSheet(),
+    'ppl-invite': () => { pv().find = { q: '' }; inviteSheet(); },
+    'ppl-find-go': async () => {
+      const f = pv().find ||= { q: '' };
+      f.q = (document.getElementById('ppl-find-q')?.value || '').trim().replace(/^@/, '');
+      f.result = null; f.err = '';
+      if (!f.q) return inviteSheet();
+      try { f.result = await api('/v2/social/find', { handle: f.q }, { auth: true }); } catch (e) { f.err = e.message; }
+      inviteSheet();
+    },
+    'ppl-request': async (d) => {
+      try {
+        const r = await api('/v2/social/request', { to: d.id }, { auth: true });
+        if (pv().find?.result) pv().find.result.status = r.friends ? 'friend' : 'sent';
+        ctx.toast(r.friends ? 'You are now friends.' : 'Request sent.');
+        await refresh(); if (document.getElementById('ppl-find-q')) inviteSheet();
+      } catch (e) { ctx.toast(e.message); }
+    },
+    'ppl-req-answer': async (d) => {
+      try { await api('/v2/social/request/respond', { from: d.id, accept: d.v === '1' }, { auth: true }); if (d.v === '1') ctx.toast(`You and ${nameOf(d.id)} are now friends.`); await refresh(); } catch (e) { ctx.toast(e.message); }
+    },
+    'ppl-req-cancel': async (d) => { try { await api('/v2/social/request/cancel', { to: d.id }, { auth: true }); await refresh(); } catch (e) { ctx.toast(e.message); } },
+    'ppl-edit-profile': () => {
+      const p = profOf(me()) || {};
+      pv().pedit = { name: myName(), handle: p.handle || '', bio: p.bio || '', gym: p.gym || '', goal: p.goal || '', findable: p.findable !== false, photo: p.photo || null, file: null };
+      editProfileSheet();
+    },
+    'ppl-pp-goal': (d) => { readProfileForm().goal = d.v; editProfileSheet(); },
+    'ppl-photo-del': () => { const e = readProfileForm(); if (e.file) URL.revokeObjectURL(e.file.url); e.file = null; e.photo = null; editProfileSheet(); },
+    'ppl-pp-save': async (d, el) => {
+      const e = readProfileForm();
+      if (!e.name.trim()) return editProfileSheet('Add a name.');
+      if (e.handle && !/^[a-z0-9_.]{3,20}$/.test(e.handle)) return editProfileSheet('Usernames are 3–20 letters, numbers, _ or .');
+      if (el) { el.disabled = true; el.textContent = 'Saving…'; }
+      try {
+        let photo = e.photo;
+        if (e.file) photo = (await upload(e.file)).id;
+        const r = await api('/v2/social/profile', { name: e.name.trim(), handle: e.handle || null, bio: e.bio, gym: e.gym, goal: e.goal, findable: e.findable, photo }, { auth: true });
+        if (e.file) { URL.revokeObjectURL(e.file.url); e.file = null; }
+        data.me = { ...data.me, name: r.name }; (data.profiles ||= {})[me()] = r.profile; ls.set(CACHE, data);
+        setAccountName(r.name);
+        ctx.closeSheet(); ctx.render(); ctx.toast('Profile saved.');
+        publish();
+      } catch (err) { editProfileSheet(err.message); }
+    },
+    'ppl-share-profile': async () => {
+      const h = myHandle(); if (!h) return;
+      const text = `Add me on Lift Tracker: @${h}\n${APP_URL}`;
+      try { if (navigator.share) await navigator.share({ title: 'Lift Tracker', text }); else { await navigator.clipboard.writeText(text); ctx.toast('Copied.'); } } catch {}
+    },
+    'ppl-my-profile': () => { ctx.ui.prevTab = ctx.ui.tab; ctx.ui.tab = 'people'; pv().profile = me(); window.scrollTo(0, 0); ctx.render(); },
     'ppl-new': (d) => {
       if (d.v === 'coach') {
         ctx.openSheet(`<h2>Ask someone to coach you</h2><p class="small">Choose what your coach can see. You can change it or stop at any time.</p>
@@ -808,6 +935,11 @@ export function createPeople(ctx) {
   // Typing in the plan editor and the exercise search.
   // A photo or video picked in the composer.
   document.addEventListener('change', async (e) => {
+    if (e.target.id === 'ppl-photo-file' && e.target.files?.[0] && pv().pedit) {
+      const ed = readProfileForm();
+      try { const f = await prepareAvatar(e.target.files[0]); if (ed.file) URL.revokeObjectURL(ed.file.url); ed.file = f; editProfileSheet(); } catch { editProfileSheet('That photo could not be used.'); }
+      return;
+    }
     if (e.target.id !== 'ppl-c-file' || !e.target.files?.[0]) return;
     const c = pv().compose; if (!c) return;
     c.text = document.getElementById('ppl-c-text')?.value || c.text;
@@ -816,6 +948,7 @@ export function createPeople(ctx) {
 
   function onInput(e) {
     const el = e.target;
+    if (el.id === 'ppl-find-q') return true;
     if (el.dataset?.ed) {
       const it = pv().edit?.days[el.dataset.d]?.items[+el.dataset.i];
       const n = parseInt(el.value, 10);
@@ -834,7 +967,7 @@ export function createPeople(ctx) {
   // Badge for the tab: things waiting on me.
   function pendingCount() {
     if (!data) return 0;
-    return (data.contests || []).filter((c) => c.status === 'pending' && c.b === me()).length
+    return (data.requests?.in || []).length + (data.contests || []).filter((c) => c.status === 'pending' && c.b === me()).length
       + (data.proposals || []).filter((p) => p.status === 'pending' && p.client === me()).length
       + coaches().concat(myClients()).reduce((a, l) => a + unread(l), 0);
   }

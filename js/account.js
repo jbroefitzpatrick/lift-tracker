@@ -6,6 +6,7 @@ import { cloudConfig, newRecoveryCode, normalizeCode } from './cloud.js';
 
 const KEY = 'lift.account';
 export function account() { try { return JSON.parse(localStorage.getItem(KEY) || 'null'); } catch { return null; } }
+export function setAccountName(name) { const a = account(); if (a?.user) { a.user.name = name; saveAccount(a); } }
 function saveAccount(a) { try { if (a) localStorage.setItem(KEY, JSON.stringify(a)); else localStorage.removeItem(KEY); } catch {} }
 
 const b64u = {

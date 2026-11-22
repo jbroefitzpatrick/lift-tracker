@@ -1552,7 +1552,8 @@ a.list-row { color: inherit; text-decoration: none; }
 .feed-card .row { margin-bottom: 6px; }
 .feed-post { padding: 14px 0; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; }
 .feed-post:first-of-type { border-top: 0; }
-.fp-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.fp-head { display: flex; align-items: center; gap: 10px; }
+.fp-head .grow { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; min-width: 0; }
 .fp-head .pick-sub { margin: 0; }
 .post-text { margin: 0; white-space: pre-wrap; }
 .post-metric { display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; border-radius: 14px; background: var(--surface-2); }
@@ -1650,3 +1651,27 @@ body.in-workout .ex-hero.big { cursor: zoom-out; }
 .note-card summary { list-style: none; cursor: pointer; font-weight: 600; color: var(--accent); }
 .note-card summary::-webkit-details-marker { display: none; }
 .note-card[open] summary { color: var(--text); margin-bottom: 8px; }
+
+/* Profiles: avatars, the profile header, edit and find sheets */
+.avatar { flex: none; width: 32px; height: 32px; border-radius: 50%; display: inline-grid; place-items: center; overflow: hidden; background: var(--surface-3); color: var(--muted); font-size: 0.75rem; font-weight: 700; letter-spacing: 0.02em; }
+.avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.avatar.md { width: 40px; height: 40px; font-size: 0.85rem; }
+.avatar.xl { width: 84px; height: 84px; font-size: 1.6rem; }
+.ppl-me { border: 0; padding: 0; background: none; margin-right: 10px; border-radius: 50%; cursor: pointer; }
+.profile-intro { display: flex; align-items: center; gap: 16px; margin: 4px 0 14px; }
+.profile-intro h2 { margin: 0 0 2px; font-size: 1.35rem; }
+.profile-intro p { margin: 2px 0; }
+.profile-actions { margin-bottom: 14px; }
+.pe-photo { display: flex; align-items: center; gap: 16px; margin: 6px 0 14px; }
+.handle-in { display: flex; align-items: center; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); padding-left: 12px; }
+.handle-in > span { color: var(--muted); font-weight: 600; }
+.handle-in input[type="text"] { border: 0; background: transparent; box-shadow: none; flex: 1; min-width: 0; padding-left: 4px; }
+.find-card { display: flex; align-items: center; gap: 12px; padding: 12px; margin: 4px 0 10px; border-radius: 14px; background: var(--surface-2); }
+.find-card .pick-sub { display: block; }
+.req-card .row:first-child { gap: 12px; align-items: center; margin-bottom: 10px; }
+.req-card .pick-sub { display: block; }
+.list-row > .avatar { margin-right: 10px; }
+
+/* Lift picker (max-out day, peaking): a check on the right when chosen */
+.pick-row .pick-check { width: 22px; height: 22px; display: grid; place-items: center; color: var(--accent); }
+.pick-row.on { background: var(--accent-soft); }

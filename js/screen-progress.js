@@ -16,6 +16,7 @@ import { lineChart } from './chart.js';
 import { strengthAreas, LEVELS } from './standards.js';
 import { roundToGym, activeGym } from './gym.js';
 import { CATEGORIES } from './bank.js';
+import { maxesFor } from './maxes.js';
 
 export function createProgressScreens(A) {
   // ---------- This week at a glance ----------
@@ -297,13 +298,15 @@ export function createProgressScreens(A) {
         if (!good.length) continue;
         const top = good.reduce((a, b) => (b.weight > a.weight || (b.weight === a.weight && b.reps > a.reps) ? b : a));
         out.push({
-          date: s.date, isDeload: s.isDeload, excluded: e.excluded, sets: e.sets,
+          date: s.date, isDeload: s.isDeload && !e.maxTest, excluded: e.excluded, sets: e.sets,
           top, best1rm: Math.max(...good.map((x) => e1rm(x.weight, x.reps))),
           totalReps: good.reduce((a, x) => a + x.reps, 0),
         });
       }
     }
-    return out;
+    // Maxes logged by hand (tested somewhere else).
+    for (const m of A.db.maxes || []) if (m.exerciseId === exId) out.push({ date: m.date, logged: true, sets: [{ weight: m.weight, reps: m.reps || 1 }], top: { weight: m.weight, reps: m.reps || 1 }, best1rm: e1rm(m.weight, m.reps || 1), totalReps: m.reps || 1 });
+    return out.sort((a, b) => a.date.localeCompare(b.date));
   }
 
   function screenHistory() {
@@ -374,13 +377,22 @@ export function createProgressScreens(A) {
       <div class="rm-grid">${rows}</div></div>`;
   }
 
+  // Tested and logged maxes, with a quiet way to add one.
+  function maxesCard(ex) {
+    const list = maxesFor(A.db, ex.id);
+    return `<div class="card"><div class="row between"><h3>Maxes</h3><button class="btn sm" data-a="logmax-open" data-id="${ex.id}">Log a max</button></div>
+      ${list.length ? `<div class="kv-list">${list.slice(0, 8).map((m) => `<div class="kv"><span>${A.fmtDate(m.date)}<span class="pick-sub">${m.tested ? 'Tested in a workout' : 'Logged'}</span></span><b>${wt(m.weight)}${m.reps > 1 ? ` × ${m.reps}` : ''}${m.logged ? ` <button class="mini" data-a="logmax-del" data-id="${m.id}" aria-label="Delete">${icon('x')}</button>` : ''}</b></div>`).join('')}</div>`
+        : '<p class="muted small">Test one from a workout (exercise menu → Test your max) or log one you did elsewhere.</p>'}
+    </div>`;
+  }
+
   function screenExerciseHistory(exId) {
     const ex = A.db.exercises[exId];
     const hist = exerciseHistory(exId);
     const bw = ex.type === 'bodyweight' && hist.every((h) => h.top.weight === 0);
     const histRow = (h) => `
       <div class="hist-row">
-        <div class="row between"><b>${A.fmtDate(h.date)}</b><span class="muted small">${h.isDeload ? 'deload' : h.excluded ? 'not counted' : bw ? `${h.totalReps} reps` : `est. max ${Math.round(toDisp(h.best1rm))}`}</span></div>
+        <div class="row between"><b>${A.fmtDate(h.date)}</b><span class="muted small">${h.logged ? 'logged max' : h.isDeload ? 'deload' : h.excluded ? 'not counted' : bw ? `${h.totalReps} reps` : `est. max ${Math.round(toDisp(h.best1rm))}`}</span></div>
         <p class="small">${h.sets.map((x) => `${A.fmtW(x.weight, ex).replace(` ${wUnit()}`, '')}×${x.reps}${x.rir != null ? ` @${x.rir}` : ''}${x.pain ? ' (pain)' : ''}`).join(', ')}</p>
       </div>`;
     // The last five, the rest one tap away.
@@ -397,6 +409,7 @@ export function createProgressScreens(A) {
       ${A.extras.exerciseInfo(ex)}
       ${hist.length ? `<div class="card"><p class="muted small">${bw ? 'Total reps per workout' : 'Estimated max and heaviest set'}</p><div id="hist-chart"></div></div>` : ''}
       ${bw ? '' : repMaxCard(ex, hist)}
+      ${bw || ex.category === 'conditioning' || ex.noLoad ? '' : maxesCard(ex)}
       <div class="card"><h3>Workouts</h3>${rows || '<p class="muted small">No workouts yet.</p>'}</div>`;
   }
 

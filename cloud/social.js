@@ -46,6 +46,25 @@ async function linkBetween(env, a, b, kind) {
 }
 const inList = (n) => Array.from({ length: n }, () => '?').join(',');
 
+// Profiles: username, photo, bio, gym and training goal.
+const GOALS = ['strength', 'size', 'fitness', 'sport'];
+const HANDLE = /^[a-z0-9_.]{3,20}$/;
+const normHandle = (h) => String(h || '').trim().toLowerCase().replace(/^@/, '');
+const pubProfile = (p) => (p ? { handle: p.handle || null, bio: p.bio || '', photo: p.photo || null, gym: p.gym || '', goal: p.goal || '', findable: !!p.findable } : null);
+async function profilesOf(env, ids, me) {
+  if (!ids.length) return {};
+  const r = await env.DB.prepare(`SELECT * FROM profiles WHERE user_id IN (${inList(ids.length)})`).bind(...ids).all();
+  return Object.fromEntries((r.results || []).map((p) => { const { findable, ...rest } = pubProfile(p); return [p.user_id, p.user_id === me ? { ...rest, findable } : rest]; }));
+}
+async function makeFriends(env, a, b) {
+  const id = rid();
+  await env.DB.batch([
+    env.DB.prepare("INSERT INTO links (id, a, b, kind, perms, created) VALUES (?, ?, ?, 'friend', NULL, ?)").bind(id, a, b, now()),
+    env.DB.prepare('DELETE FROM requests WHERE (from_user = ? AND to_user = ?) OR (from_user = ? AND to_user = ?)').bind(a, b, b, a),
+  ]);
+  return id;
+}
+
 export async function handleSocial(path, body, user, env, json) {
   const me = user.id;
 
@@ -76,7 +95,15 @@ export async function handleSocial(path, body, user, env, json) {
     const comments = (cm.results || []).filter((c) => !c.item.startsWith('p:') || visiblePosts.has(c.item))
       .map((c) => ({ id: c.id, owner: c.item_owner, item: c.item, user: { id: c.user_id, name: c.user_name }, text: c.text, created: c.created }));
     const inv = await env.DB.prepare('SELECT code, kind, created FROM invites WHERE user_id = ? AND created > ? ORDER BY created DESC').bind(me, now() - INVITE_DAYS * 86400000).all();
+    const rq = await env.DB.prepare('SELECT r.from_user, r.to_user, r.created, uf.name AS from_name, ut.name AS to_name FROM requests r JOIN users uf ON uf.id = r.from_user JOIN users ut ON ut.id = r.to_user WHERE r.from_user = ? OR r.to_user = ? ORDER BY r.created DESC LIMIT 100').bind(me, me).all();
+    const reqs = rq.results || [];
+    const profiles = await profilesOf(env, [...new Set([...ids, ...reqs.map((x) => (x.from_user === me ? x.to_user : x.from_user))])], me);
     return json({
+      profiles,
+      requests: {
+        in: reqs.filter((x) => x.to_user === me).map((x) => ({ user: { id: x.from_user, name: x.from_name }, created: x.created })),
+        out: reqs.filter((x) => x.from_user === me).map((x) => ({ user: { id: x.to_user, name: x.to_name }, created: x.created })),
+      },
       me: { id: me, name: user.name },
       links, cards, cheers,
       contests: (ct.results || []).map((c) => ({ id: c.id, a: c.a, b: c.b, kind: c.kind, ex: c.ex, exName: c.ex_name, days: c.days, start: c.start, status: c.status, created: c.created })),
@@ -136,6 +163,70 @@ export async function handleSocial(path, body, user, env, json) {
     ]);
     await pushTo(env, inv.user_id, { title: kind === 'friend' ? `${user.name} accepted your invite` : `${user.name} is connected for coaching`, body: kind === 'friend' ? 'You can now compare weeks and cheer each other on.' : 'Open People to get started.', tag: `link-${id}`, url: './?open=people' });
     return json({ ok: true, link: { id, kind, role: kind === 'friend' ? 'friend' : inv.kind === 'coach' ? 'client' : 'coach', user: { id: inv.user_id, name: inv.name } } });
+  }
+
+  // My profile. The display name is the account name.
+  if (path === '/v2/social/profile') {
+    const old = await env.DB.prepare('SELECT * FROM profiles WHERE user_id = ?').bind(me).first();
+    const name = String(body.name ?? user.name).trim().slice(0, 40);
+    if (!name) return json({ error: 'Add a name.' }, 400);
+    const handle = body.handle ? normHandle(body.handle) : null;
+    if (handle && !HANDLE.test(handle)) return json({ error: 'Usernames are 3–20 letters, numbers, _ or .' }, 400);
+    if (handle && await env.DB.prepare('SELECT user_id FROM profiles WHERE handle = ? AND user_id != ?').bind(handle, me).first()) return json({ error: 'That username is taken.' }, 409);
+    const photo = body.photo && /^[0-9a-f]{32}$/.test(body.photo) ? body.photo : null;
+    const p = { handle, bio: String(body.bio || '').trim().slice(0, 160), photo, gym: String(body.gym || '').trim().slice(0, 40), goal: GOALS.includes(body.goal) ? body.goal : '', findable: body.findable === false ? 0 : 1 };
+    await env.DB.batch([
+      env.DB.prepare('INSERT INTO profiles (user_id, handle, bio, photo, gym, goal, findable, updated) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET handle = excluded.handle, bio = excluded.bio, photo = excluded.photo, gym = excluded.gym, goal = excluded.goal, findable = excluded.findable, updated = excluded.updated')
+        .bind(me, p.handle, p.bio, p.photo, p.gym, p.goal, p.findable, now()),
+      env.DB.prepare('UPDATE users SET name = ? WHERE id = ?').bind(name, me),
+    ]);
+    if (old?.photo && old.photo !== photo) await deleteMedia(env, me, [old.photo]);
+    return json({ ok: true, name, profile: pubProfile(p) });
+  }
+
+  // Find someone by their exact username (no browsing or partial matches).
+  if (path === '/v2/social/find') {
+    const handle = normHandle(body.handle);
+    if (!HANDLE.test(handle)) return json({ error: 'Usernames are 3–20 letters, numbers, _ or .' }, 400);
+    const p = await env.DB.prepare('SELECT p.*, u.name FROM profiles p JOIN users u ON u.id = p.user_id WHERE p.handle = ? AND p.findable = 1').bind(handle).first();
+    if (!p) return json({ error: `No one goes by @${handle}.` }, 404);
+    if (p.user_id === me) return json({ error: 'That is your username.' }, 400);
+    const friend = await linkBetween(env, me, p.user_id, 'friend');
+    const rq = await env.DB.prepare('SELECT from_user FROM requests WHERE (from_user = ? AND to_user = ?) OR (from_user = ? AND to_user = ?)').bind(me, p.user_id, p.user_id, me).first();
+    const { findable: _hidden, ...shown } = pubProfile(p);
+    return json({ user: { id: p.user_id, name: p.name }, profile: shown, status: friend ? 'friend' : rq ? (rq.from_user === me ? 'sent' : 'received') : null });
+  }
+
+  // Friend requests: send (or accept, if they already asked), answer, take back.
+  if (path === '/v2/social/request') {
+    const to = String(body.to || '');
+    const target = to && to !== me && await env.DB.prepare('SELECT u.id, u.name, p.findable FROM users u LEFT JOIN profiles p ON p.user_id = u.id WHERE u.id = ?').bind(to).first();
+    if (!target) return json({ error: 'Not found.' }, 404);
+    if (await linkBetween(env, me, to, 'friend')) return json({ error: `You and ${target.name} are already friends.` }, 400);
+    if (await env.DB.prepare('SELECT 1 FROM requests WHERE from_user = ? AND to_user = ?').bind(to, me).first()) {
+      const id = await makeFriends(env, to, me);
+      await pushTo(env, to, { title: `${user.name} accepted your friend request`, body: '', tag: `link-${id}`, url: './?open=people' });
+      return json({ ok: true, friends: true, link: { id, kind: 'friend', role: 'friend', user: { id: to, name: target.name } } });
+    }
+    if (!target.findable) return json({ error: 'Not found.' }, 404);
+    const n = await env.DB.prepare('SELECT COUNT(*) AS n FROM requests WHERE from_user = ?').bind(me).first();
+    if ((n?.n || 0) >= 50) return json({ error: 'Too many requests waiting. Cancel some first.' }, 400);
+    await env.DB.prepare('INSERT OR IGNORE INTO requests (from_user, to_user, created) VALUES (?, ?, ?)').bind(me, to, now()).run();
+    await pushTo(env, to, { title: `${user.name} sent you a friend request`, body: 'Open People to answer.', tag: `req-${me}`, url: './?open=people' });
+    return json({ ok: true, sent: true });
+  }
+  if (path === '/v2/social/request/respond') {
+    const from = String(body.from || '');
+    const r = await env.DB.prepare('SELECT r.*, u.name FROM requests r JOIN users u ON u.id = r.from_user WHERE r.from_user = ? AND r.to_user = ?').bind(from, me).first();
+    if (!r) return json({ error: 'That request is no longer open.' }, 404);
+    if (!body.accept) { await env.DB.prepare('DELETE FROM requests WHERE from_user = ? AND to_user = ?').bind(from, me).run(); return json({ ok: true }); }
+    const id = await makeFriends(env, from, me);
+    await pushTo(env, from, { title: `${user.name} accepted your friend request`, body: '', tag: `link-${id}`, url: './?open=people' });
+    return json({ ok: true, link: { id, kind: 'friend', role: 'friend', user: { id: from, name: r.name } } });
+  }
+  if (path === '/v2/social/request/cancel') {
+    await env.DB.prepare('DELETE FROM requests WHERE from_user = ? AND to_user = ?').bind(me, String(body.to || '')).run();
+    return json({ ok: true });
   }
 
   // Change what a client shares (client only), or end a link (either side).

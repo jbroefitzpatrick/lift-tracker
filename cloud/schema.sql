@@ -167,3 +167,21 @@ CREATE TABLE IF NOT EXISTS uploads (
   bytes INTEGER NOT NULL,
   PRIMARY KEY (user_id, day)
 );
+
+CREATE TABLE IF NOT EXISTS profiles (   -- what a person shows friends: username, photo, bio
+  user_id TEXT PRIMARY KEY,
+  handle TEXT UNIQUE,           -- username, lowercase a-z 0-9 _ . (3-20); how friends find each other
+  bio TEXT,
+  photo TEXT,                   -- media id (media/<user>/<id>)
+  gym TEXT,
+  goal TEXT,                    -- strength | size | fitness | sport | ''
+  findable INTEGER NOT NULL DEFAULT 1, -- 0: the username search doesn't find them
+  updated INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS requests (   -- friend requests sent by username
+  from_user TEXT NOT NULL,
+  to_user TEXT NOT NULL,
+  created INTEGER NOT NULL,
+  PRIMARY KEY (from_user, to_user)
+);
+CREATE INDEX IF NOT EXISTS requests_to ON requests (to_user);

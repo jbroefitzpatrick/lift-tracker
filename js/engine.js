@@ -5,6 +5,7 @@ import { ROW_ROTATION } from './plan.js';
 import { activeGym, isAvailable } from './gym.js';
 import { similarExercises } from './bank.js';
 import { wt } from './units.js';
+import { maxOverride } from './maxes.js';
 
 export const DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 export const DAY_NAMES = { mon: 'Mon', tue: 'Tue', wed: 'Wed', thu: 'Thu', fri: 'Fri', sat: 'Sat', sun: 'Sun' };
@@ -260,6 +261,9 @@ export function targetsFor(db, item, isDeload) {
   const st = getState(db, item.exerciseId);
   const scheme = schemeFor(db, item.exerciseId);
   const base = { scheme, total: null, stalled: false, painWarning: painWarning(st), st };
+  // A max test or a peaking week replaces the usual progression.
+  const mo = maxOverride(db, item, isDeload);
+  if (mo) return { ...base, ...mo };
   if (CYCLES[scheme]) {
     const w = cycleFor(db, scheme, st);
     if (w) {
@@ -416,6 +420,12 @@ export function evaluate(db, entry, session) {
   const ex = db.exercises[entry.exerciseId];
   const st = getState(db, entry.exerciseId);
   const scheme = entry.scheme || 'double';
+  // Max tests and peaking weeks follow their own plan; they don't move the usual targets.
+  if (scheme === 'max' || entry.maxTest) {
+    const best = entry.sets.filter((x) => x.done && x.reps >= 1 && x.weight > 0).reduce((a, x) => Math.max(a, x.weight), 0);
+    return { result: { exerciseId: entry.exerciseId, name: ex.name, status: best ? 'tested' : 'skipped', message: best ? `Tested max: ${wt(best)}` : 'No attempts logged.' }, state: null };
+  }
+  if (scheme === 'peak') return { result: { exerciseId: entry.exerciseId, name: ex.name, status: 'peak', message: 'Peaking block: next week\'s weights are set by the block.' }, state: null };
   if (CYCLES[scheme] && !session.isDeload && !entry.pain) {
     const r = evaluateCycle(db, scheme, entry, session, ex, st);
     if (r) return r;

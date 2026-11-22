@@ -457,3 +457,14 @@ export function catchUpDay(db, to, now = Date.now()) {
   db.week.days[to] = { ...dst, name, mode: cond.length ? 'both' : 'lift', from: [], base: clone(items), items: [...items, ...cond], note: undefined };
   return { name, muscles: low };
 }
+
+// A max-out day: each chosen lift becomes a max test (guided warm-ups, then three attempts).
+// Cardio already on that day stays.
+export function maxDayTo(db, to, ids) {
+  const items = ids.filter((id) => db.exercises[id]).map((id, i) => ({ uid: `${to}-x${i}`, exerciseId: id, group: String(i + 1), sets: 3, repMin: 1, repMax: 1, restSec: 240, maxTest: true, manual: true }));
+  if (!items.length) return null;
+  const dst = weekDay(db, to);
+  const cond = (dst.items || []).filter((i) => !isLiftItem(db, i));
+  db.week.days[to] = { ...dst, name: 'Max-out day', mode: cond.length ? 'both' : 'lift', from: [], base: clone(items), items: [...items, ...cond], note: undefined };
+  return items;
+}
