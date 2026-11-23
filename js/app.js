@@ -1690,6 +1690,7 @@ function closeSheet() {
   }, 260);
 }
 let typingSave = null;
+document.addEventListener('input', (e) => { if (e.target.id === 'photo-cmp-range') $('#photo-cmp')?.style.setProperty('--p', `${e.target.value}%`); });
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && !$('#sheet').hidden) closeSheet();
   if (e.key === 'Enter' && e.target.id === 'ppl-find-q') { e.preventDefault(); actions['ppl-find-go']({}); }
@@ -3035,7 +3036,7 @@ const actions = {
     if (!e) return;
     const ex = db.exercises[e.exerciseId];
     const done = e.sets.filter((x) => x.done && x.type !== 'w');
-    const est = estimatedMax(db, ex.id) || (e.sets[0]?.weight && e.sets[0]?.reps ? Math.round(e.sets[0].weight * (1 + e.sets[0].reps / 30)) : null);
+    const est = estimatedMax(db, ex.id) || (e.sets[0]?.weight && e.sets[0]?.reps ? Math.round(e1rm(e.sets[0].weight, e.sets[0].reps)) : null);
     if (!est) return toast('Log this lift once first, so there is a starting point.');
     const { warm, attempts } = testPlan(ex, est, activeGym(db));
     Object.assign(e, { maxTest: true, scheme: 'max', fixedLadder: true, restSec: TEST_REST, warm: done.length ? e.warm : warm.map((w) => ({ ...w, done: false })), sets: [...done, ...attempts.map((w) => newSet(w, 1))] });
@@ -3194,6 +3195,8 @@ const actions = {
     db.bodyweight.push({ date, weight: Math.round(w * 10) / 10 });
     persist(); render(); toast('Saved.');
   },
+  'bw-range': (d) => { ui.bwRange = +d.v; render(); },
+  'bw-all': () => { ui.bwAll = !ui.bwAll; render(); },
   'bw-del': (d) => { db.bodyweight = db.bodyweight.filter((b) => b.date !== d.date); persist(); render(); },
   'plan-day': (d) => { ui.planDay = d.day; render(); },
   'plan-up': (d) => {

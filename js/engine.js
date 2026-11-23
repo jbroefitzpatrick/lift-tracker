@@ -14,7 +14,8 @@ export function dayKeyOf(dateStr) {
   return DAY_KEYS[(parseDate(dateStr).getDay() + 6) % 7];
 }
 
-export const e1rm = (weight, reps) => (weight || 0) * (1 + (reps || 0) / 30);
+// Epley's formula for sets of two or more. A single is already a one-rep max, so it isn't inflated.
+export const e1rm = (weight, reps) => ((reps || 0) <= 1 ? (weight || 0) : weight * (1 + reps / 30));
 
 export function roundTo(w, step) {
   const s = step > 0 ? step : 5;

@@ -8,6 +8,7 @@ import { bestRecords } from './records.js';
 import { activeGym, GEAR } from './gym.js';
 import { wt, wtEst, toDisp, wUnit, BAR_CHOICES, PLATE_CHOICES, DB_STEP_CHOICES, MACHINE_STEP_CHOICES, fromDisp } from './units.js';
 import { MUSCLES } from './bank.js';
+import { muscleIcon } from './body.js';
 import { TRACKED_MUSCLES, volumeTarget } from './builder.js';
 import {
   defaultGym, todayStr, daysBetween, exportJson, exportCsv, download, parseBackup, importData, storageInfo, requestPersistence,
@@ -16,6 +17,7 @@ import {
 import { GROUPS, PARTS, weeklySets } from './groups.js';
 import { encryptText, decryptText, isEncrypted, cryptoAvailable } from './crypto.js';
 
+const MEASURE_ICON = { waist: 'abs', chest: 'chest', arms: 'biceps', thighs: 'quads', hips: 'glutes', neck: 'traps' };
 const MEASURES = { waist: 'Waist', chest: 'Chest', arms: 'Arms', thighs: 'Thighs', hips: 'Hips', neck: 'Neck' };
 const EQUIP = { barbell: 'Barbells', dumbbell: 'Dumbbells', machine: 'Machines', cable: 'Cables', bodyweight: 'Bodyweight' };
 
@@ -103,21 +105,23 @@ export function createExtras(ctx) {
     const last = list[0];
     const first = list[list.length - 1];
     const today = list.find((m) => m.date === todayStr()) || {};
-    const delta = (k) => (last && first && last !== first && last[k] != null && first[k] != null ? last[k] - first[k] : null);
+    const latest = (k) => list.find((m) => m[k] != null);
+    const earliest = (k) => [...list].reverse().find((m) => m[k] != null);
+    const delta = (k) => { const a = latest(k); const b = earliest(k); return a && b && a !== b ? a[k] - b[k] : null; };
     const photos = [...db.photos].sort((a, b) => b.date.localeCompare(a.date));
     setTimeout(loadThumbs);
-    const measure = `<div class="card"><h3>Measurements</h3><p class="muted small">Inches${last && last.date !== todayStr() ? ` · last measured ${ctx.fmtDate(last.date)}, shown in gray` : ''}</p>
-        <div class="grid3">${Object.entries(MEASURES).map(([k, v]) => `<div class="field"><span>${v}</span><input id="ms-${k}" type="text" inputmode="decimal" value="${today[k] ?? ''}" placeholder="${last?.[k] ?? '—'}"></div>`).join('')}</div>
-        <button class="btn primary block" data-a="ms-save">${today.date ? 'Update' : 'Save'} today's measurements</button>
-        ${list.length > 1 ? `<p class="small">Since ${ctx.fmtDate(first.date)}: ${Object.entries(MEASURES).map(([k, v]) => { const d = delta(k); return d == null ? '' : `${v} ${d >= 0 ? '+' : ''}${d.toFixed(1)}`; }).filter(Boolean).join(' · ')}</p>` : ''}
-        ${list.slice(0, 5).map((m) => `<div class="list-row small"><span class="grow">${ctx.fmtDate(m.date)}</span><span class="muted">${Object.keys(MEASURES).filter((k) => m[k] != null).map((k) => `${MEASURES[k][0]} ${m[k]}`).join(' · ')}</span><button class="mini" data-a="ms-del" data-date="${m.date}" aria-label="Delete">${icon('x')}</button></div>`).join('')}
-      </div>`;
-    const photoCard = `<div class="card"><h3>Progress photos</h3>
-        <p class="muted small">Stored only on this phone (resized to save space). Same pose and lighting each time makes them easier to compare.</p>
-        <label class="btn block file-btn">Add photo<input id="photo-file" type="file" accept="image/*" hidden></label>
-        ${photos.length >= 2 ? '<button class="btn block" data-a="photo-compare">Compare first and latest</button>' : ''}
-        <div class="photo-grid">${photos.map((p) => `<button class="photo-thumb" data-a="photo-open" data-id="${p.id}"><img data-photo="${p.id}" alt="Progress photo ${ctx.fmtDate(p.date)}"><span>${ctx.fmtDate(p.date)}</span></button>`).join('')}</div>
-      </div>`;
+    const changeText = (k) => { const v = delta(k); return v == null ? '' : Math.abs(v) < 0.05 ? 'No change' : `${v > 0 ? '+' : '−'}${Math.abs(v).toFixed(2).replace(/0$/, '')} in`; };
+    const measure = `<section class="ms-list">${Object.entries(MEASURES).map(([k, v]) => `<label class="ms-row" for="ms-${k}"><span class="mus-i main">${muscleIcon(MEASURE_ICON[k])}</span><span class="grow"><b>${v}</b><small>${changeText(k) || (latest(k) ? `Last ${latest(k)[k]} in` : 'Not logged')}</small></span><input id="ms-${k}" type="text" inputmode="decimal" value="${today[k] ?? ''}" placeholder="${latest(k)?.[k] ?? '—'}" aria-label="${v} in inches"></label>`).join('')}</section>
+      <p class="muted small bw-hint">Inches${last && last.date !== todayStr() ? ` · last measured ${ctx.fmtDate(last.date)}` : ''}${list.length > 1 ? ` · changes since ${ctx.fmtDate(first.date)}` : ''}</p>
+      <button class="btn primary block" data-a="ms-save">${today.date ? 'Update' : 'Save'} measurements</button>
+      ${list.length ? `<details class="ms-history"><summary>History</summary>${list.map((m) => `<div class="hrow" data-swipe="ms-del" data-swipe-label="Delete measurements from ${ctx.fmtDate(m.date)}" data-date="${m.date}"><span>${ctx.fmtDate(m.date)}</span><span class="muted small">${Object.keys(MEASURES).filter((k) => m[k] != null).map((k) => `${MEASURES[k]} ${m[k]}`).join(' · ')}</span></div>`).join('')}</details>` : ''}`;
+    const oldest = photos[photos.length - 1]; const newest = photos[0];
+    const compare = photos.length >= 2
+      ? `<div class="cmp" id="photo-cmp" style="--p:50%"><img data-photo="${newest.id}" alt="Latest photo, ${ctx.fmtDate(newest.date)}"><img class="front" data-photo="${oldest.id}" alt="First photo, ${ctx.fmtDate(oldest.date)}"><i aria-hidden="true"></i><span class="l">${ctx.fmtDate(oldest.date)}</span><span class="r">${ctx.fmtDate(newest.date)}</span></div><input id="photo-cmp-range" type="range" min="0" max="100" value="50" aria-label="Slide between first and latest photo">`
+      : `<div class="cmp-empty" aria-hidden="true"><div>First</div><div>Latest</div></div><p class="muted small bw-hint">Add two photos to slide between them.</p>`;
+    const photoCard = `${compare}
+      <div class="photo-grid">${photos.map((p) => `<button class="photo-thumb" data-a="photo-open" data-id="${p.id}"><img data-photo="${p.id}" alt="Progress photo ${ctx.fmtDate(p.date)}"><span>${ctx.fmtDate(p.date)}</span></button>`).join('')}<label class="photo-add file-btn">+ Add photo<input id="photo-file" type="file" accept="image/*" hidden></label></div>
+      <p class="muted small bw-hint">Photos stay on this phone. The same pose and light make them easier to compare.</p>`;
     return part === 'measure' ? measure : part === 'photos' ? photoCard : measure + photoCard;
   }
 
@@ -212,7 +216,7 @@ export function createExtras(ctx) {
       <button class="list-row" data-a="export-csv"><span class="grow">Export history as CSV</span>${chev}</button>
       <label class="list-row"><span class="grow">Check a backup file</span>${chev}<input id="check-file" type="file" accept="application/json,.json" hidden></label>
       <label class="list-row"><span class="grow">Import a backup</span>${chev}<input id="import-file" type="file" accept="application/json,.json" hidden></label>
-      <label class="list-row"><span class="grow">Import from Strong or Hevy<span class="pick-sub">Your workout history from their CSV export</span></span>${chev}<input id="apps-file" type="file" accept=".csv,text/csv" hidden></label>
+      <label class="list-row"><span class="grow">Import from Strong, Hevy or FitBod<span class="pick-sub">Your workout history from their CSV export</span></span>${chev}<input id="apps-file" type="file" accept=".csv,text/csv" hidden></label>
       <button class="list-row" data-a="snapshots"><span class="grow">Restore an automatic snapshot</span>${chev}</button>
       <button class="list-row" data-a="persist-req"><span class="grow">Keep data permanently</span>${chev}</button>
     </div>
@@ -488,7 +492,7 @@ export function createExtras(ctx) {
     'apps-import': async () => {
       if (!appImport?.plan) return;
       await safetySnapshot(ctx.db, 'Before importing workouts');
-      const n = applyImport(ctx.db, appImport.plan, appImport.format === 'strong' ? 'Strong' : 'Hevy');
+      const n = applyImport(ctx.db, appImport.plan, APP_NAMES[appImport.format]);
       appImport = null;
       ctx.persist(); ctx.closeSheet(); ctx.render(); ctx.toast(`Imported ${n} workouts.`);
     },
@@ -503,22 +507,25 @@ export function createExtras(ctx) {
     },
   };
 
-  // ---------- Import from Strong or Hevy ----------
+  // ---------- Import from Strong, Hevy or FitBod ----------
+  const APP_NAMES = { strong: 'Strong', hevy: 'Hevy', fitbod: 'FitBod' };
+  const monthYear = (d) => new Date(`${d}T12:00:00`).toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
   let appImport = null; // { rows, format, unit }
   function appImportSheet() {
     const db = ctx.db;
     const { rows, format } = appImport;
     const unit = appImport.unit || (format === 'strong' ? db.settings.units || 'lb' : null);
     const workouts = readWorkouts(rows, format, unit || 'lb');
-    const plan = planImport(db, workouts);
+    const plan = planImport(db, workouts, format);
     appImport.plan = plan; appImport.unit = unit;
-    const src = format === 'strong' ? 'Strong' : 'Hevy';
+    const src = APP_NAMES[format];
     const first = plan.workouts[0]?.date; const last = plan.workouts[plan.workouts.length - 1]?.date;
     ctx.openSheet(`<h2>Import from ${src}</h2>
       <div class="kv-list">
-        <div class="kv"><span>Workouts</span><b>${plan.workouts.length}${first ? ` · ${ctx.fmtDate(first)} to ${ctx.fmtDate(last)}` : ''}</b></div>
+        <div class="kv"><span>Workouts</span><b>${plan.workouts.length}${first ? ` · ${monthYear(first)} to ${monthYear(last)}` : ''}</b></div>
         <div class="kv"><span>Exercises matched</span><b>${plan.names.length - plan.unmatched.length} of ${plan.names.length}</b></div>
         ${plan.skipped ? `<div class="kv"><span>Already imported</span><b>${plan.skipped}</b></div>` : ''}
+        ${plan.overlap ? `<div class="kv"><span>Skipped, day already logged here</span><b>${plan.overlap}</b></div>` : ''}
       </div>
       ${format === 'strong' ? `<div class="field"><span>Weights in the file are in</span><div class="segmented small-seg">${['lb', 'kg'].map((u) => `<button class="${unit === u ? 'on' : ''}" data-a="apps-unit" data-v="${u}">${u === 'lb' ? 'Pounds' : 'Kilograms'}</button>`).join('')}</div><p class="muted small">Strong doesn't say which, so pick what you used there.</p></div>` : ''}
       ${plan.unmatched.length ? `<p class="small">Added as your own exercises: ${ctx.esc(plan.unmatched.slice(0, 8).join(', '))}${plan.unmatched.length > 8 ? ` and ${plan.unmatched.length - 8} more` : ''}.</p>` : ''}
@@ -532,7 +539,7 @@ export function createExtras(ctx) {
       try {
         const rows = parseCsv(await el.files[0].text());
         const format = detectFormat(rows);
-        if (!format) throw new Error("That file isn't a Strong or Hevy export. Export a CSV from the app's settings and try again.");
+        if (!format) throw new Error("That file isn't a Strong, Hevy or FitBod export. Export a CSV from the app's settings and try again.");
         appImport = { rows, format, unit: null };
         appImportSheet();
       } catch (err) { ctx.toast(err.message || 'Could not read that file.'); }

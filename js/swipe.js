@@ -17,7 +17,8 @@ function ensureButton(el) {
   if (el.querySelector(':scope > .swipe-act')) return;
   const b = document.createElement('button');
   b.className = 'swipe-act';
-  b.textContent = el.dataset.swipeLabel || 'Delete';
+  b.setAttribute('aria-label', el.dataset.swipeLabel || 'Delete');
+  b.innerHTML = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v5M14 11v5"/></svg>';
   b.dataset.a = el.dataset.swipe;
   for (const [k, v] of Object.entries(el.dataset)) if (!k.startsWith('swipe') && !k.startsWith('drag')) b.dataset[k] = v;
   el.appendChild(b);

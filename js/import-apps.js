@@ -1,4 +1,4 @@
-// Import workout history from Strong or Hevy (their CSV exports).
+// Import workout history from Strong, Hevy or FitBod (their CSV exports). FitBod's format is in import-fitbod.js.
 //
 // Strong: Settings → Export data. Columns: Date, Workout Name, Duration, Exercise Name, Set Order,
 //   Weight, Reps, Distance, Seconds, Notes, Workout Notes, RPE (comma or semicolon separated).
@@ -14,6 +14,7 @@
 
 import { KG } from './units.js';
 import { dayKeyOf } from './engine.js';
+import { FITBOD_NAMES, isFitbod, readFitbod, customExercise } from './import-fitbod.js';
 
 // RFC 4180-style CSV: quoted fields, doubled quotes, commas or semicolons.
 export function parseCsv(text) {
@@ -43,6 +44,7 @@ export function detectFormat(rows) {
   const k = Object.keys(rows[0] || {});
   if (k.includes('exercise name') && k.includes('set order')) return 'strong';
   if (k.includes('exercise_title') && k.includes('start_time')) return 'hevy';
+  if (isFitbod(rows)) return 'fitbod';
   return null;
 }
 
@@ -90,6 +92,7 @@ const localDay = (t) => `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(
 
 // Rows → { workouts: [{ name, date, start, end, entries: [{ name, sets: [{ weight, reps, type, rpe }] }] }] }
 export function readWorkouts(rows, format, strongUnit = 'lb') {
+  if (format === 'fitbod') return readFitbod(rows);
   const byKey = new Map();
   for (const r of rows) {
     let key; let name; let start; let end; let exName; let set;
@@ -119,13 +122,27 @@ export function readWorkouts(rows, format, strongUnit = 'lb') {
 }
 
 // Plan what an import would do (nothing changes yet).
-export function planImport(db, workouts) {
+export function planImport(db, workouts, format) {
   const names = [...new Set(workouts.flatMap((w) => w.entries.map((e) => e.name)))];
   const map = {}; const unmatched = [];
-  for (const n of names) { const ex = matchExercise(db.exercises, n); if (ex) map[n] = ex.id; else unmatched.push(n); }
+  const fitbod = format === 'fitbod';
+  const exactName = (n) => Object.values(db.exercises).find((e) => e?.name?.toLowerCase() === n.toLowerCase());
+  for (const n of names) {
+    const ex = fitbod ? db.exercises[FITBOD_NAMES[n]] || exactName(n) : matchExercise(db.exercises, n);
+    if (ex) map[n] = ex.id; else unmatched.push(n);
+  }
+  if (fitbod) {
+    // Workouts are identified by start time, since some days have two. A day already logged in
+    // Lift is left alone so the same workout isn't counted twice.
+    const seen = new Set([...(db.sessions || []).filter((s) => s.imported === 'FitBod').map((s) => s.startedAt), ...(db.cardio || []).filter((c) => c.imported === 'FitBod').map((c) => c.ts)]);
+    const logged = new Set((db.sessions || []).filter((s) => !s.imported).map((s) => s.date));
+    const notSeen = workouts.filter((w) => !seen.has(w.start));
+    const fresh = notSeen.filter((w) => !logged.has(w.date));
+    return { names, map, unmatched, workouts: fresh, skipped: workouts.length - notSeen.length, overlap: notSeen.length - fresh.length };
+  }
   const existing = new Set((db.sessions || []).map((s) => `${s.date}|${s.importedFrom || ''}`));
   const fresh = workouts.filter((w) => !existing.has(`${w.date}|${w.name}`));
-  return { names, map, unmatched, workouts: fresh, skipped: workouts.length - fresh.length };
+  return { names, map, unmatched, workouts: fresh, skipped: workouts.length - fresh.length, overlap: 0 };
 }
 
 const slug = (s) => `imp-${s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40)}`;
@@ -144,18 +161,24 @@ export function applyImport(db, plan, source) {
     const id = slug(n);
     if (!db.exercises[id]) {
       db.exercises[id] = { id, name: n, type: guessType(n), category: /squat|deadlift|press|row|pull ?up|chin|dip|lunge|clean/i.test(n) ? 'compound' : 'accessory', primary: [], secondary: [], pattern: '', metric: 'reps', increment: 5, notes: `Imported from ${source}`, rules: {}, minRir: 0, startWeight: null, customMeta: true, needs: [], modes: ['reps'] };
+      if (source === 'FitBod') Object.assign(db.exercises[id], customExercise(id, n, plan.workouts.flatMap((w) => w.entries.filter((e) => e.name === n).flatMap((e) => e.sets))));
     }
     plan.map[n] = id;
   }
   let n = 0;
   for (const w of plan.workouts) {
     const id = `imp${w.start.toString(36)}${n}`;
+    (w.cardio || []).forEach((c, i) => {
+      db.cardio = db.cardio || [];
+      db.cardio.push({ id: `c${id}-${i}`, date: w.date, ts: w.start, cardioId: c.modality === 'run' ? 'zone2-run' : 'easy-swim', minutes: Math.max(1, Math.round(c.seconds / 60)), ...(c.modality === 'run' && c.meters > 0 ? { distance: Math.round((c.meters / 1609.34) * 100) / 100 } : {}), note: `From ${source}`, imported: source });
+    });
+    n++;
+    if (!w.entries.length) continue;
     db.sessions.push({
       id, date: w.date, day: dayKeyOf(w.date), freestyle: true, imported: source, importedFrom: w.name, name: w.name,
       startedAt: w.start, finishedAt: w.end, results: [], prs: [],
-      entries: w.entries.map((e, i) => ({ uid: `${id}-${i}`, exerciseId: plan.map[e.name], name: e.name, group: String(i + 1), sets: e.sets.map((s) => ({ weight: s.weight, reps: s.reps, done: true, ...(s.type ? { type: s.type } : {}), ...(s.rpe ? { rir: Math.max(0, Math.round(10 - s.rpe)) } : {}) })) })),
+      entries: w.entries.map((e, i) => ({ uid: `${id}-${i}`, exerciseId: plan.map[e.name], name: e.name, group: String(i + 1), ...(e.sets.every((s) => s.seconds > 0 && !s.reps) ? { metric: 'time' } : {}), ...(e.note ? { note: e.note } : {}), sets: e.sets.map((s) => ({ weight: s.weight, reps: s.reps, done: true, ...(s.seconds > 0 && !s.reps ? { time: s.seconds } : {}), ...(s.type ? { type: s.type } : {}), ...(s.rpe ? { rir: Math.max(0, Math.round(10 - s.rpe)) } : {}) })) })),
     });
-    n++;
   }
   db.sessions.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : (a.finishedAt || 0) - (b.finishedAt || 0)));
   return n;

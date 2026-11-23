@@ -23,16 +23,13 @@ export const fmtTime = (sec) => `${Math.floor(sec / 60)}:${String(Math.round(sec
 
 const goodSets = (e) => (e.sets || []).filter((x) => x.done !== false && !x.pain && x.type !== 'w' && x.reps > 0);
 
-// A single is the max itself; higher reps are estimated.
-const maxOf = (weight, reps) => (reps <= 1 ? weight : e1rm(weight, reps));
-
 function bestEver(db, ids) {
   let best = 0;
   for (const s of db.sessions || []) for (const e of s.entries) {
     if (!ids.includes(e.exerciseId) || e.pain) continue;
-    for (const x of goodSets(e)) if (x.weight > 0 && x.reps <= 10) best = Math.max(best, maxOf(x.weight, x.reps));
+    for (const x of goodSets(e)) if (x.weight > 0 && x.reps <= 10) best = Math.max(best, e1rm(x.weight, x.reps));
   }
-  for (const m of db.maxes || []) if (ids.includes(m.exerciseId)) best = Math.max(best, maxOf(m.weight, m.reps || 1));
+  for (const m of db.maxes || []) if (ids.includes(m.exerciseId)) best = Math.max(best, e1rm(m.weight, m.reps || 1));
   return Math.round(best);
 }
 

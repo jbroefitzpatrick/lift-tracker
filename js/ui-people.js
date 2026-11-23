@@ -135,7 +135,7 @@ export function createPeople(ctx) {
     if (v.client && v.edit) return planEditor(v.client);
     if (v.client) return clientScreen(v.client);
     if (!data && !lastError) { refresh(); }
-    const head = `<header class="top">${data ? `<button class="ppl-me" data-a="ppl-friend" data-id="${me()}" aria-label="Your profile">${avatar(me(), 'md')}</button>` : ''}<div class="grow"><h1>People</h1></div><button class="icon-btn" data-a="ppl-invite" aria-label="Add friends">${icon('plus')}</button></header>`;
+    const head = `<header class="top">${data ? `<button class="ppl-me" data-a="ppl-friend" data-id="${me()}" aria-label="Your profile">${avatar(me(), 'md')}</button>` : ''}<div class="grow"><h1>People</h1></div>${links().length ? '<button class="link-btn head-share" data-a="ppl-compose">Share</button>' : ''}<button class="icon-btn" data-a="ppl-invite" aria-label="Add friends">${icon('plus')}</button></header>`;
     if (!data) return `${head}<p class="muted small pad">${lastError ? esc(lastError) : 'Loading…'}</p>`;
     if (!links().length) {
       return `${head}
@@ -188,7 +188,7 @@ export function createPeople(ctx) {
     return coaches().map((l) => {
       const n = unread(l);
       const last = (data.messages || []).filter((m) => m.link === l.id).sort((a, b) => b.created - a.created)[0];
-      return `<div class="list-group"><button class="list-row" data-a="ppl-thread" data-id="${l.id}"><span class="grow"><b>Coach: ${esc(l.user.name)}</b><span class="pick-sub">${last ? esc(`${last.from === me() ? 'You: ' : ''}${last.text}`.slice(0, 80)) : 'Send a note, or change what you share'}</span></span>${n ? `<span class="badge">${n}</span>` : ''}${icon('right', 'chev')}</button></div>`;
+      return `<div class="list-group coach-strip"><button class="list-row" data-a="ppl-thread" data-id="${l.id}"><span class="grow"><b>Coach ${esc(l.user.name)}</b><span class="pick-sub">${last ? esc(`${last.from === me() ? 'You: ' : ''}${last.text}`.slice(0, 80)) : 'Send a note, or change what you share'}</span></span>${n ? `<span class="badge">${n}</span>` : ''}${icon('right', 'chev')}</button></div>`;
     }).join('');
   }
 
@@ -196,6 +196,11 @@ export function createPeople(ctx) {
     if (!friends().length) return `<div class="card"><h3>Leaderboard</h3><p class="small muted">Invite a friend to compare weeks and progress.</p><button class="btn block" data-a="ppl-new" data-v="friend">Invite a friend</button></div>`;
     const mode = pv().board;
     const ids = [me(), ...friends().map((l) => l.user.id)];
+    const weekly = ids.map((id) => { const w = weekOf(cardOf(id)); return { id, pts: weekPoints(w).total, sets: w.sets }; }).sort((x, y) => y.pts - x.pts || y.sets - x.sets);
+    const place = weekly.findIndex((x) => x.id === me()) + 1;
+    const nth = (n) => { const t = n % 100; return `${n}${t >= 11 && t <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] || 'th'}`; };
+    const fold = `<button class="board-fold" data-a="ppl-board-open" aria-expanded="${!!pv().boardOpen}"><span>You're ${nth(place)} this week</span><small>${weekly[place - 1].pts} pts ${pv().boardOpen ? '▴' : '▾'}</small></button>`;
+    if (!pv().boardOpen) return fold;
     let rows;
     if (mode === 'progress') {
       rows = ids.map((id) => ({ id, p: progressOf(cardOf(id)) })).sort((a, b) => (b.p.pct ?? -1e9) - (a.p.pct ?? -1e9))
@@ -204,8 +209,7 @@ export function createPeople(ctx) {
       rows = ids.map((id) => { const w = weekOf(cardOf(id)); return { id, w, pts: weekPoints(w), c: cardOf(id) }; }).sort((a, b) => b.pts.total - a.pts.total || b.w.sets - a.w.sets)
         .map((r, i) => row(r.id, i, `${r.pts.total}<small> pts</small>`, `${r.w.workouts ?? r.w.done} ${(r.w.workouts ?? r.w.done) === 1 ? 'workout' : 'workouts'} · ${r.w.sets} sets${r.w.cardioMin ? ` · ${r.w.cardioMin} min cardio` : ''}${r.w.planned && r.w.done >= r.w.planned ? ' · plan done' : ''}`));
     }
-    return `<section class="card ppl-board">
-      <h3>Leaderboard</h3>
+    return `${fold}<section class="ppl-board">
       <div class="segmented small-seg" role="tablist" aria-label="Leaderboard">
         <button class="${mode !== 'progress' ? 'on' : ''}" data-a="ppl-board" data-v="week" role="tab" aria-selected="${mode !== 'progress'}">This week</button>
         <button class="${mode === 'progress' ? 'on' : ''}" data-a="ppl-board" data-v="progress" role="tab" aria-selected="${mode === 'progress'}">Progress</button>
@@ -249,18 +253,17 @@ export function createPeople(ctx) {
     const today = todayStr();
     const list = (data.contests || []).filter((c) => (c.status === 'active' && addDays(contestEnd(c), 7) >= today) || (c.status === 'pending' && c.a === me()));
     if (!list.length) return '';
-    return `<section class="card"><h3>Challenges</h3>${list.map((c) => {
+    return `<section class="challenges">${list.map((c) => {
       const other = c.a === me() ? c.b : c.a;
       if (c.status === 'pending') return `<div class="contest"><div class="row between"><b>${esc(contestLabel(c))} · ${esc(nameOf(other))}</b><button class="mini" data-a="ppl-contest-cancel" data-id="${c.id}">Cancel</button></div><p class="muted small">Waiting for ${esc(nameOf(other))} to accept.</p></div>`;
       const end = contestEnd(c);
       const done = today > end;
       const av = scoreOf(c, me(), today); const bv = scoreOf(c, other, today);
-      const max = Math.max(1, Math.abs(av || 0), Math.abs(bv || 0));
-      const fmt = (v) => fmtScore(c, v);
+            const fmt = (v) => fmtScore(c, v);
       const left = Math.round((Date.parse(end) - Date.parse(today)) / 86400000) + 1;
       const verdict = done ? (av == null && bv == null ? 'No result' : (av ?? -1e9) > (bv ?? -1e9) ? 'You won' : (av ?? -1e9) < (bv ?? -1e9) ? `${esc(nameOf(other))} won` : 'A tie') : c.start > today ? 'Starts tomorrow' : `${left} ${left === 1 ? 'day' : 'days'} left`;
-      const bar = (label, v, cls) => `<div class="c-bar"><span>${label}</span><span class="c-track"><span class="c-fill ${cls}" style="width:${Math.max(4, (Math.max(0, v || 0) / max) * 100)}%"></span></span><b class="num">${fmt(v)}</b></div>`;
-      return `<div class="contest"><div class="row between"><b>${esc(contestLabel(c))}</b><span class="muted small">${verdict}</span></div>${bar('You', av, 'me')}${bar(esc(nameOf(other)), bv, 'them')}</div>`;
+      const ax = Math.max(0, av || 0); const bx = Math.max(0, bv || 0); const share = ax + bx > 0 ? Math.round((ax / (ax + bx)) * 100) : 50;
+      return `<div class="contest"><div class="row between"><b>${esc(contestLabel(c))}</b><span class="muted small">${verdict}</span></div><div class="vs-names"><span>You <b class="num">${fmt(av)}</b></span><span><b class="num">${fmt(bv)}</b> ${esc(nameOf(other))}</span></div><div class="vs-bar" role="img" aria-label="You ${fmt(av)}, ${esc(nameOf(other))} ${fmt(bv)}"><i style="width:${share}%"></i></div></div>`;
     }).join('')}</section>`;
   }
 
@@ -318,7 +321,7 @@ export function createPeople(ctx) {
   function feed() {
     const items = feedItems();
     const n = pv().feedN || 8;
-    return `<section class="card feed-card"><div class="row between"><h3>Recent</h3><button class="btn sm primary" data-a="ppl-compose">Share</button></div>
+    return `<h2 class="group-title">Recent</h2><section class="feed-card flat">
       ${items.length ? items.slice(0, n).map(feedItem).join('') : '<p class="muted small">Nothing yet. Share a new best, a workout or a photo.</p>'}
       ${items.length > n ? '<button class="btn plain block" data-a="ppl-more">Show more</button>' : ''}</section>`;
   }
@@ -344,24 +347,14 @@ export function createPeople(ctx) {
     const records = (c?.records || []).slice(0, 6);
     return `${head}
       ${intro}
-      <section class="card profile-week">
-        <div class="row between"><h3>This week</h3><b class="num big-pts">${pts.total}<small> pts</small></b></div>
-        <div class="kv-list">
-          <div class="kv"><span>Workouts</span><b>${w.workouts ?? w.done}${w.planned ? ` · ${w.done} of ${w.planned} planned` : ''}</b></div>
-          <div class="kv"><span>Hard sets</span><b>${w.sets}</b></div>
-          ${w.cardioMin ? `<div class="kv"><span>Cardio</span><b>${w.cardioMin} min</b></div>` : ''}
-          <div class="kv"><span>Streak</span><b>${c?.streak || 0} ${c?.streak === 1 ? 'week' : 'weeks'}</b></div>
-        </div>
-      </section>
-      <section class="card">
-        <div class="row between"><h3>Strength</h3><b class="${(p.pct ?? 0) >= 0 ? 'up' : 'down'}">${fmtPct(p.pct)}</b></div>
-        <p class="muted small">Change in estimated max over about four weeks.</p>
-        ${p.lifts.length ? `<div class="kv-list">${p.lifts.slice(0, 6).map((x) => `<div class="kv"><span>${esc(x.name)}</span><b>${fmtPct(x.pct)}</b></div>`).join('')}</div>` : '<p class="muted small">Not enough lifts logged yet.</p>'}
-      </section>
-      ${records.length ? `<section class="card"><h3>Recent bests</h3><div class="kv-list">${records.map((r) => `<div class="kv"><span>${esc(r.ex)} · ${ctx.fmtDate(r.date)}</span><b>${r.pct ? `+${r.pct}%` : 'New'}</b></div>`).join('')}</div></section>` : ''}
-      <section class="card feed-card"><h3>Posts and activity</h3>${items.length ? items.slice(0, 20).map(feedItem).join('') : '<p class="muted small">Nothing in the last two weeks.</p>'}</section>
-      ${mine ? '<button class="btn primary block" data-a="ppl-compose">Share something</button>' : `<button class="btn primary block" data-a="ppl-challenge" data-id="${id}">Challenge ${esc(nameOf(id))}</button>
-      <button class="btn plain block" data-a="ppl-person-menu" data-id="${id}">More</button>`}
+      <div class="pstats"><div><b class="num">${w.workouts ?? w.done}</b><small>This week</small></div><div><b class="num">${c?.streak || 0}</b><small>Week streak</small></div><div><b class="num">${pts.total}</b><small>Points</small></div></div>
+      ${records[0] ? `<div class="post-metric"><span class="pm-label">Latest best · ${ctx.fmtDate(records[0].date)}</span><b>${esc(records[0].ex)}</b>${records[0].pct ? `<span class="pm-sub">Up ${records[0].pct}%</span>` : ''}</div>` : ''}
+      ${mine ? '<button class="btn primary block" data-a="ppl-compose">Share something</button>' : `<button class="btn primary block" data-a="ppl-challenge" data-id="${id}">Challenge ${esc(nameOf(id))}</button>`}
+      <details class="profile-more"><summary>Strength and records</summary>
+        <div class="kv-list"><div class="kv"><span>Strength change, 4 weeks</span><b class="${(p.pct ?? 0) >= 0 ? 'up' : 'down'}">${fmtPct(p.pct)}</b></div>${w.cardioMin ? `<div class="kv"><span>Cardio this week</span><b>${w.cardioMin} min</b></div>` : ''}<div class="kv"><span>Hard sets this week</span><b>${w.sets}</b></div>${p.lifts.slice(0, 6).map((x) => `<div class="kv"><span>${esc(x.name)}</span><b>${fmtPct(x.pct)}</b></div>`).join('')}${records.map((r) => `<div class="kv"><span>${esc(r.ex)} · ${ctx.fmtDate(r.date)}</span><b>${r.pct ? `+${r.pct}%` : 'New'}</b></div>`).join('')}</div>
+      </details>
+      <h2 class="group-title">Posts and activity</h2><section class="feed-card flat">${items.length ? items.slice(0, 20).map(feedItem).join('') : '<p class="muted small">Nothing in the last two weeks.</p>'}</section>
+      ${mine ? '' : `<button class="btn plain block" data-a="ppl-person-menu" data-id="${id}">More</button>`}
       ${mine && data.blocked?.length ? `<div class="list-group"><button class="list-row" data-a="ppl-blocked"><span class="grow"><b>Blocked people</b><span class="pick-sub">${data.blocked.length}</span></span>${icon('right', 'chev')}</button></div>` : ''}`;
   }
   function pointsSheet() {
@@ -404,6 +397,9 @@ export function createPeople(ctx) {
     if (c.kind === 'record') body = ch.records.length ? pick(ch.records, (r) => `<b>${esc(r.name)}</b><span class="pick-sub">${wt(r.weight)} × ${r.reps} · ${ctx.fmtDate(r.date)}${r.pct ? ` · up ${r.pct}%` : ''}</span>`) : '<p class="muted small">No new bests in the last few weeks yet.</p>';
     if (c.kind === 'workout') body = pick(ch.workouts, (w) => `<b>${esc(w.name)}</b><span class="pick-sub">${ctx.fmtDate(w.date)} · ${w.sets} sets${w.prs ? ` · ${w.prs} records` : ''}</span>`);
     if (c.kind === 'progress') body = ch.prog.length ? pick(ch.prog, (l) => `<b>${esc(l.name)}</b><span class="pick-sub">${l.pct > 0 ? '+' : ''}${l.pct.toFixed(1)}% over about 8 weeks</span>`) : '<p class="muted small">Log a few weeks of a lift to share its progress.</p>';
+    const picked = c.kind === 'record' ? ch.records[c.ref] : null;
+    const pickedArt = picked && c.showWeight && ctx.db.exercises?.[picked.exId] ? loadArt(ctx.db.exercises[picked.exId], picked.weight, activeGym(ctx.db)) : '';
+    if (pickedArt) body += `<div class="post-metric has-art">${pickedArt}<span class="pm-label">New best · ${esc(picked.name)}</span><b class="num">${wt(picked.weight)} × ${picked.reps}</b>${picked.pct ? `<span class="pm-sub">Up ${picked.pct}%</span>` : ''}</div>`;
     const weightToggle = c.kind === 'record' || c.kind === 'progress' ? `<label class="list-row toggle"><span class="grow">Show the weight<span class="pick-sub">Off shows only the percentage</span></span><input type="checkbox" data-a="ppl-c-weight" ${c.showWeight ? 'checked' : ''}></label>` : '';
     const files = (c.files || []).map((f, i) => `<div class="cf-thumb">${f.kind === 'video' ? `<video src="${f.url}" muted playsinline></video>` : `<img src="${f.url}" alt="">`}<button class="cf-x" data-a="ppl-c-file-del" data-v="${i}" aria-label="Remove">${icon('x')}</button></div>`).join('');
     ctx.openSheet(`<h2>Share</h2>
@@ -867,6 +863,7 @@ export function createPeople(ctx) {
       const perms = document.querySelector('#sheet [data-perm]') ? readPerms() : undefined;
       try { const r = await api('/v2/social/accept', { code: d.v, perms }, { auth: true }); ctx.closeSheet(); await publish(); await refresh(); ctx.toast(r.link.kind === 'friend' ? `You and ${r.link.user.name} are now friends.` : `Connected with ${r.link.user.name}.`); } catch (e) { ctx.toast(e.message); }
     },
+    'ppl-board-open': () => { pv().boardOpen = !pv().boardOpen; ctx.render(); },
     'ppl-board': (d) => { pv().board = d.v; ctx.render(); },
     'ppl-friend': (d) => { pv().profile = d.id; window.scrollTo(0, 0); ctx.render(); },
     'ppl-profile-back': () => { pv().profile = null; window.scrollTo(0, 0); ctx.render(); },

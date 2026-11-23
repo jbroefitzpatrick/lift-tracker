@@ -472,37 +472,37 @@ export function createProgressScreens(A) {
     const { list, avg7, prev7 } = bwStats();
     const todays = list.find((b) => b.date === todayStr());
     const last = list[list.length - 1];
+    const fmtLb = (x) => `${x >= 0 ? '+' : '−'}${Math.abs(toDisp(x)).toFixed(1)}`;
     let rate = '';
     if (avg7 && prev7) {
       const pct = ((avg7 - prev7) / prev7) * 100;
-      const verdict = pct < tr[0] ? 'below target range' : pct > tr[1] ? 'above target range' : 'on target';
-      rate = `<p class="small">Weekly change: <b>${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%</b> (${(avg7 - prev7 >= 0 ? '+' : '')}${toDisp(avg7 - prev7)} ${wUnit()}) · ${verdict}</p>`;
+      const verdict = pct < tr[0] ? 'below target' : pct > tr[1] ? 'above target' : 'on target';
+      rate = `<div class="bw-rate"><b>${fmtLb(avg7 - prev7)} ${wUnit()}</b><span>a week · ${verdict}</span></div><p class="muted small bw-target">${goalLabel} target: ${fmtLb((avg7 * tr[0]) / 100)} to ${fmtLb((avg7 * tr[1]) / 100)} ${wUnit()} a week</p>`;
     }
-    const lb = (x) => `${x >= 0 ? '+' : '−'}${Math.abs(toDisp((avg7 * x) / 100)).toFixed(1)}`;
-    const target = avg7 ? `<p class="muted small">${goalLabel} target: ${lb(tr[0])} to ${lb(tr[1])} ${wUnit()}/week (${tr[0]}% to ${tr[1]}%)</p>` : '';
+    const range = A.ui.bwRange || 84;
+    const since = addDays(todayStr(), -range);
     // 7-day rolling average per entry for the chart.
-    const pts = list.slice(-60).map((b) => {
+    const pts = list.filter((b) => b.date >= since).map((b) => {
       const win = list.filter((x) => { const d = daysBetween(x.date, b.date); return d >= 0 && d <= 6; });
       return { x: b.date, values: [toDisp(b.weight), toDisp(win.reduce((a, x) => a + x.weight, 0) / win.length)] };
     });
-    setTimeout(() => { const el = A.$('#bw-chart'); if (el && pts.length) lineChart(el, { points: pts, series: [{ name: 'Weigh-in', cls: 's2' }, { name: '7-day average', cls: 's1' }], unit: wUnit() }); });
+    setTimeout(() => { const el = A.$('#bw-chart'); if (el && pts.length) lineChart(el, { points: pts, series: [{ name: 'Weigh-ins', cls: 's2' }, { name: 'Average', cls: 's1' }], unit: wUnit() }); });
     const tab = A.ui.bodyTab || 'weight';
     const tabs = `<div class="segmented" role="tablist" aria-label="Body">${[['weight', 'Weight'], ['measure', 'Measurements'], ['photos', 'Photos']].map(([k, l]) => `<button class="${tab === k ? 'on' : ''}" data-a="body-tab" data-v="${k}" role="tab" aria-selected="${tab === k}">${l}</button>`).join('')}</div>`;
     if (tab !== 'weight') return `${A.subHeader('Body', 'progress-back')}${tabs}${A.extras.bodyCards(tab)}`;
+    const recent = [...list].reverse();
+    const shown = A.ui.bwAll ? recent : recent.slice(0, 4);
+    const start = todays?.weight ?? last?.weight ?? null;
     return `${A.subHeader('Body', 'progress-back')}
       ${tabs}
-      <div class="card">
-        <div class="field"><span>Today's weigh-in (${wUnit()})</span>${A.stepper('bw-input', toDisp(todays?.weight ?? last?.weight ?? null) ?? '', wUnit() === 'kg' ? 0.1 : 0.2, { placeholder: wUnit() === 'kg' ? 'e.g. 84.1' : 'e.g. 185.4' })}</div>
-        <button class="btn primary block" data-a="bw-save">${todays ? 'Update' : 'Save'} weigh-in</button>
-      </div>
-      <div class="stats">
-        <div class="stat"><b>${avg7 ? toDisp(avg7).toFixed(1) : '—'}</b><span>7-day avg</span></div>
-        <div class="stat"><b>${prev7 ? toDisp(prev7).toFixed(1) : '—'}</b><span>prior 7 days</span></div>
-      </div>
-      ${rate || target ? `<div class="card">${rate}${target}</div>` : ''}
-      ${pts.length > 1 ? '<div class="card"><div id="bw-chart"></div></div>' : ''}
-      ${list.length ? `<div class="card"><h3>Entries</h3>${[...list].reverse().slice(0, 10).map((b) => `
-        <div class="list-row"><span class="grow">${A.fmtDate(b.date)}</span><b>${toDisp(b.weight)}</b><button class="mini" data-a="bw-del" data-date="${b.date}" aria-label="Delete">${icon('x')}</button></div>`).join('')}</div>` : ''}
+      <section class="body-log">
+        <div class="body-dial">${A.stepper('bw-input', toDisp(start) ?? '', wUnit() === 'kg' ? 0.1 : 0.2, { placeholder: wUnit() === 'kg' ? '84.1' : '185.4' })}<span class="dial-unit">${wUnit()} today</span></div>
+        <button class="btn primary block" data-a="bw-save">${todays ? 'Update weight' : 'Save weight'}</button>
+      </section>
+      ${rate}
+      ${pts.length > 1 ? `<div class="segmented bw-range" role="radiogroup" aria-label="Chart range">${[[28, '4 weeks'], [84, '12 weeks'], [365, 'Year']].map(([v, l]) => `<button class="${range === v ? 'on' : ''}" data-a="bw-range" data-v="${v}" role="radio" aria-checked="${range === v}">${l}</button>`).join('')}</div><div class="bw-chart"><div id="bw-chart"></div></div>` : ''}
+      ${list.length ? `<h2 class="group-title">History</h2><div class="bw-history">${shown.map((b) => `<div class="hrow" data-swipe="bw-del" data-swipe-label="Delete weigh-in from ${A.fmtDate(b.date)}" data-date="${b.date}"><span>${A.fmtDate(b.date)}</span><b class="num">${toDisp(b.weight)}</b></div>`).join('')}</div>
+        <p class="muted small bw-hint">Swipe left to delete.${recent.length > 4 ? ` <button class="text-link small-link" data-a="bw-all">${A.ui.bwAll ? 'Show less' : `Show all ${recent.length}`}</button>` : ''}</p>` : ''}
   `;
   }
 
