@@ -2,6 +2,7 @@
 // plates on a bar, a pair of dumbbells, a pinned stack, a cable, a machine horn, a belt or a bell.
 
 import { platesFor, weightStep } from './gym.js';
+import { PLATE_PER_SIDE } from './bank.js';
 import { toDisp } from './units.js';
 
 // Machines loaded with plates by hand; every other machine has a pin stack.
@@ -99,8 +100,8 @@ function drawBelt(lb) {
 function beltPlates(lb) { const out = []; let left = lb; for (const p of [45, 35, 25, 10, 5, 2.5]) while (left >= p - 1e-9 && out.length < 6) { out.push(p); left -= p; } return out; }
 
 // Plates per side for anything loaded by hand. Machines carry no bar in the count.
-function sides(kind, lb, gym) {
-  if (kind === 'peg') return platesFor(lb + gym.barWeight, gym).perSide;
+function sides(kind, lb, gym, perSide = false) {
+  if (kind === 'peg') return platesFor((perSide ? lb * 2 : lb) + gym.barWeight, gym).perSide;
   return lb > gym.barWeight ? platesFor(lb, gym).perSide : [];
 }
 
@@ -109,7 +110,7 @@ export function loadSetup(ex, lb, gym) {
   if (lb == null) return null;
   const k = kindOf(ex);
   if (k === 'bar' || k === 'smith' || k === 'peg') {
-    const list = sides(k, lb, gym);
+    const list = sides(k, lb, gym, PLATE_PER_SIDE.has(ex.id));
     return { art: k === 'bar' ? drawBar(list) : k === 'smith' ? drawSmith(list) : drawPeg(list), line: list.length ? list.map(toDisp).join(' + ') : (k === 'peg' ? 'Empty machine' : 'Empty bar'), sub: list.length ? 'on each side' : '' };
   }
   if (k === 'db') return { art: drawDumbbell(lb) };

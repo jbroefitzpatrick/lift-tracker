@@ -258,6 +258,26 @@ export const waveFor = (db, st, date) => cycleFor(db, 'wave', st, date);
 
 const pctText = (p) => `${Math.round(p * 90)}%`; // of estimated max (training max is 90% of it)
 
+// How a deload week is built (Settings, Blocks and deloads).
+export const DELOAD_STYLES = {
+  sets: { name: 'Fewer sets', desc: 'Half the sets, same weight' },
+  load: { name: 'Lighter', desc: 'Same sets, about 15% lighter' },
+  both: { name: 'Both', desc: 'Half the sets, about 10% lighter' },
+};
+export const DELOAD_ACCESSORIES = { same: 'Same', one: 'One set', full: 'All sets' };
+export const deloadOf = (db) => ({ style: 'sets', accessories: 'same', ...(db.settings?.deload || {}) });
+export const deloadText = (db) => DELOAD_STYLES[deloadOf(db).style]?.desc || DELOAD_STYLES.sets.desc;
+// Sets and load for one exercise in a deload. Warm-ups and cool-downs stay as they are.
+export function deloadDose(db, item) {
+  if (['warmup', 'cooldown'].includes(item.phase)) return { sets: item.sets, load: 1 };
+  const d = deloadOf(db);
+  const accessory = db.exercises?.[item.exerciseId]?.category === 'accessory';
+  let sets = d.style === 'load' ? item.sets : Math.ceil(item.sets / 2);
+  if (accessory && d.accessories === 'one') sets = 1;
+  if (accessory && d.accessories === 'full') sets = item.sets;
+  return { sets, load: d.style === 'load' ? 0.85 : d.style === 'both' ? 0.9 : 1 };
+}
+
 export function targetsFor(db, item, isDeload) {
   const st = getState(db, item.exerciseId);
   const scheme = schemeFor(db, item.exerciseId);
@@ -298,12 +318,13 @@ export function targetsFor(db, item, isDeload) {
     const p = st.setPlan;
     return { ...base, weight: Math.max(...p.map((x) => x.weight)), reps: p[0].reps, sets: p.length, rir: null, setWeights: p.map((x) => x.weight), setReps: p.map((x) => x.reps), fixedLadder: true, aim: 'Your weights from last time, one more rep on each set' };
   }
-  const sets = isDeload ? Math.ceil(item.sets / 2) : item.sets;
+  const dose = isDeload ? deloadDose(db, item) : { sets: item.sets, load: 1 };
+  const sets = dose.sets;
   const repMax = scheme === 'linear' ? item.repMin : item.repMax;
   const reps = Math.min(Math.max(st.targetReps ?? item.repMin, item.repMin), repMax);
   return {
     ...base,
-    weight: st.targetWeight, // null = TBD
+    weight: st.targetWeight == null ? st.targetWeight : st.targetWeight * dose.load, // null = TBD
     reps,
     sets,
     total: isDeload ? null : st.targetTotal,

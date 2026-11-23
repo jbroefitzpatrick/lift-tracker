@@ -2,7 +2,7 @@
 // Split out of app.js. App state and the helpers this needs come from A: live getters (and
 // setters for variables), so db and the rest stay shared with app.js.
 import { icon } from './icons.js';
-import { DAY_NAMES, PROGRESSIONS, dayKeyOf, dayPlan, getState, groupNum, resolveDay, weekOverride } from './engine.js';
+import { DAY_NAMES, PROGRESSIONS, dayKeyOf, deloadDose, deloadText, dayPlan, getState, groupNum, resolveDay, weekOverride } from './engine.js';
 import { addDays, mondayOf, todayStr, weekOrder } from './store.js';
 import { dayMode } from './fatigue.js';
 import { estimateMinutes } from './builder.js';
@@ -325,11 +325,12 @@ export function weekPeek(A, day, off) {
   const items = resolveDay(A.db, day, { template: true });
   const rows = items.map((it) => {
     const metric = it.metric || it.ex.metric || 'reps';
-    const dose = metric === 'reps' ? `${it.sets} × ${it.repMin === it.repMax ? it.repMin : `${it.repMin}–${it.repMax}`}` : `${it.sets} × ${fmtTarget(metric, it.target)}`;
+    const n = b.isDeload ? deloadDose(A.db, it).sets : it.sets;
+    const dose = metric === 'reps' ? `${n} × ${it.repMin === it.repMax ? it.repMin : `${it.repMin}–${it.repMax}`}` : `${n} × ${fmtTarget(metric, it.target)}`;
     return `<div class="kv"><span>${A.esc(it.ex.name)}</span><b>${dose}</b></div>`;
   }).join('');
   return `<h2>${A.esc(p?.name || 'Workout')}</h2>
-    <p class="muted small">${new Date(`${date}T12:00:00`).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })}${b.isDeload ? ' · Deload week, lighter weights' : ''}</p>
+    <p class="muted small">${new Date(`${date}T12:00:00`).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })}${b.isDeload ? ` · Deload week: ${A.esc(deloadText(A.db).toLowerCase())}` : ''}</p>
     <div class="kv-list">${rows}</div>
     <p class="muted small">Weights are set from your latest workouts when the day arrives. Changes to your plan show here too.</p>
     <button class="btn block" data-a="close-sheet">Close</button>`;

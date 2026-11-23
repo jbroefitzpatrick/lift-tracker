@@ -14,7 +14,7 @@ import { activeGym, isAvailable, plateText, roundToGym, warmupSets } from './gym
 import { GROUPS, groupById, groupFreshness, groupOfMuscle, weeklySets as setsByPart } from './groups.js';
 import { METRIC_FIELDS, fmtTarget } from './conditioning.js';
 import { VARIETY } from './variety.js';
-import { CATEGORIES, METRICS, MUSCLES, sideNote } from './bank.js';
+import { CATEGORIES, METRICS, MUSCLES, sideNote, loadNote } from './bank.js';
 import { fromDisp, toDisp, wUnit } from './units.js';
 import { addOptions, muscleWork } from './review.js';
 import { workoutBurn, workoutMinutes } from './energy.js';
@@ -101,6 +101,8 @@ export function createWorkoutScreens(A) {
   }
 
   const linkLabel = (n) => (n > 2 ? 'Circuit' : 'Superset');
+  const repsLabel = (ex, word = 'Reps') => (sideNote(ex) ? `${word} ${sideNote(ex)}` : word);
+  const unitLabel = (ex) => (loadNote(ex) ? `${wUnit()} ${loadNote(ex)}` : wUnit());
 
   function thumb(ex) {
     const img = EX_INFO[ex.id]?.images?.[0];
@@ -240,6 +242,7 @@ export function createWorkoutScreens(A) {
     A.ui.nextUid = session ? ((A.ui.exUid && items.find((i) => i.uid === A.ui.exUid && setsLeft(session, i))) || items.find((i) => setsLeft(session, i)))?.uid : null;
     html += '<div class="ex-list">';
     let lastPhase = null;
+    let linkN = 0;
     const warmOpen = A.ui.warmList ?? !!session;
     const warmItems = items.filter((x) => x.phase === 'warmup');
     for (const grp of groupsOf(items)) {
@@ -251,8 +254,9 @@ export function createWorkoutScreens(A) {
       if (phase === 'warmup' && !warmOpen) continue;
       if (grp.linked) {
         const restSec = Math.max(...grp.items.map((i) => i.restSec || 0));
-        html += `<section class="link-group" aria-label="${linkLabel(grp.items.length)}">
-          <div class="link-label"><b>${linkLabel(grp.items.length)}</b></div>${rows}</section>`;
+        const letter = 'ABCDEFGH'[linkN++ % 8];
+        html += `<section class="link-group" style="--g:'${letter}'" aria-label="${linkLabel(grp.items.length)} ${letter}">
+          <div class="link-label"><b>${linkLabel(grp.items.length)} ${letter}</b>${restSec ? `<span>Rest ${A.fmtRest(restSec)} after each round</span>` : ''}</div>${rows}</section>`;
       } else html += rows;
     }
     html += '</div>';
@@ -314,12 +318,12 @@ export function createWorkoutScreens(A) {
     const reps = item.repMin === item.repMax ? item.repMin : `${item.repMin}–${item.repMax}`;
     const weight = '';
     const showLoad = !conditioning && target != null && !ex.noLoad && ex.type !== 'bodyweight';
-    const rowVal = conditioning ? [fmtTarget(metric, item.target), ''] : showLoad ? [toDisp(target), ex.type === 'dumbbell' ? `${wUnit()} each` : wUnit()] : [item.repMin === item.repMax ? item.repMin : `${item.repMin}–${item.repMax}`, 'reps'];
+    const rowVal = conditioning ? [fmtTarget(metric, item.target), ''] : showLoad ? [toDisp(target), unitLabel(ex)] : [item.repMin === item.repMax ? item.repMin : `${item.repMin}–${item.repMax}`, 'reps'];
     const meta = conditioning
       ? `${entry && doneN ? `${doneN} of ${sets.length} rounds` : `${t.sets} ${t.sets === 1 ? 'round' : 'rounds'}`} · ${fmtTarget(metric, item.target)}${item.restSec ? ` · rest ${A.fmtRest(item.restSec)}` : ''}`
       : entry && doneN ? `${doneN} of ${sets.length} sets${weight}`
         : t.setReps ? (t.setReps.every((r) => r === t.setReps[0]) ? `${t.setReps.length} × ${t.setReps[0]}${t.cycle?.amrap ? '+' : ''}` : `${t.setReps.join(' / ')}${t.cycle?.amrap ? '+' : ''} reps`) + (t.setWeights.every((w) => w === t.setWeights[0]) ? weight : ` · top set ${A.fmtW(t.weight, ex)}`)
-          : t.scheme === 'linear' || t.scheme === 'stages' ? `${t.sets} × ${t.reps}${weight}` : `${t.sets} sets · ${reps} reps${weight}`;
+          : t.scheme === 'linear' || t.scheme === 'stages' ? `${t.sets} × ${t.reps}${weight}` : `${t.sets} ${t.sets === 1 ? 'set' : 'sets'} · ${reps} ${repsLabel(ex, 'reps')}${weight}`;
     const checked = sel.has(item.uid);
     const isNext = session && item.uid === A.ui.nextUid;
     return `<div class="ex-item ${allDone ? 'is-done' : ''} ${checked ? 'is-selected' : ''} ${isNext ? 'is-next' : ''}" data-drag-item data-drag-press ${session || (item.phase || 'main') === 'main' ? 'data-drag-join' : ''} data-drag-list="session" data-drag-id="${item.uid}" ${session && !selecting ? `data-swipe="ex-remove" data-swipe-label="Remove" data-uid="${item.uid}"` : ''}>
@@ -439,11 +443,12 @@ export function createWorkoutScreens(A) {
       : t.weight == null ? 'Pick a working weight to set your baseline'
       : t.aim ? t.aim
       : t.scheme === 'linear' ? `${t.sets} × ${t.reps} · complete every set to add weight next time`
-      : t.total ? `Aim for ${t.reps}+ reps · beat ${t.total - 1} total` : `Aim for ${t.reps} reps`;
+      : t.total ? `Aim for ${t.reps}+ reps · beat ${t.total - 1} total` : `Aim for ${t.reps} ${repsLabel(ex, 'reps')}`;
 
     const rows = conditioning ? condRows(item, sets, fields, metric, ended, A.train.condPlaceholder(item, ex, metric)) : liftRows(item, sets, ended, t, ex);
 
-    const checkin = entry && allDone && !ended && !session.isDeload ? `<div class="checkin" role="group" aria-label="How did that feel">
+    const prep = ['warmup', 'cooldown'].includes(item.phase || entry?.phase) || ['mobility', 'prehab'].includes(ex.pattern);
+    const checkin = entry && allDone && !ended && !session.isDeload && !prep ? `<div class="checkin" role="group" aria-label="How did that feel">
       <span class="muted small">How did that feel?</span>
       <div class="seg-mini">${[['easy', 'Easy'], ['right', 'Right'], ['hard', 'Too hard']].map(([v, l]) => `<button class="${entry.feedback === v ? 'on' : ''}" data-a="fb" data-uid="${item.uid}" data-v="${v}" aria-pressed="${entry.feedback === v}">${l}</button>`).join('')}</div>
       <button class="text-btn" data-a="pain-report" data-uid="${item.uid}">Log pain</button>
@@ -508,7 +513,7 @@ export function createWorkoutScreens(A) {
     const repsFirst = !conditioning && (ex.noLoad || ex.type === 'bodyweight');
     const k = conditioning ? fields[0][0] : repsFirst ? 'reps' : 'weight';
     const raw = cur[k];
-    const unit = conditioning ? ({ time: 'seconds', dist: 'meters', cal: 'calories', reps: 'reps' }[k]) : repsFirst ? 'reps' : ex.type === 'dumbbell' ? `${wUnit()} each` : wUnit();
+    const unit = conditioning ? ({ time: 'seconds', dist: 'meters', cal: 'calories', reps: 'reps' }[k]) : repsFirst ? repsLabel(ex, 'reps') : unitLabel(ex);
     const shown = raw == null || raw === '' ? '—' : k === 'weight' ? toDisp(raw) : raw;
     const live = !!session && !ended;
     const dial = `<div class="dial ${live ? '' : 'solo'}">${live ? `<button class="dial-btn" data-a="dial" data-uid="${item.uid}" data-k="${k}" data-v="-1" aria-label="Less">−</button>` : ''}<div><span class="dial-val">${shown}</span><span class="dial-unit">${unit}</span></div>${live ? `<button class="dial-btn" data-a="dial" data-uid="${item.uid}" data-k="${k}" data-v="1" aria-label="More">+</button>` : ''}</div>`;
@@ -532,7 +537,7 @@ export function createWorkoutScreens(A) {
     const open = A.ui.warmOpen?.[item.uid] ?? !!entry?.maxTest; // a max test starts with its warm-ups showing
     return `<details class="warmup" data-uid="${item.uid}" ${open ? 'open' : ''}>
       <summary>Ramp-up sets · ${done ? `${done} of ${warm.length} done` : `${warm.length}`}</summary>
-      <div class="set-head warm" aria-hidden="true"><span></span><span>${ex.type === 'dumbbell' ? `${wUnit()} each` : wUnit()}</span><span>Reps</span><span></span></div>
+      <div class="set-head warm" aria-hidden="true"><span></span><span>${unitLabel(ex)}</span><span>${repsLabel(ex)}</span><span></span></div>
       ${warm.map((w, i) => `<div class="set-row warm ${w.done ? 'done' : ''}" data-swipe="warm-del" data-swipe-label="Delete" data-uid="${item.uid}" data-i="${i}">
         <span class="set-badge ty-w">R</span>
         <input class="cell" type="text" inputmode="decimal" data-warm="${item.uid}:${i}:weight" value="${toDisp(w.weight) ?? ''}" aria-label="Ramp-up set ${i + 1} weight">
@@ -571,15 +576,14 @@ export function createWorkoutScreens(A) {
 
   function setHead(conditioning, fields, ex) {
     if (conditioning) return `<div class="set-head" aria-hidden="true"><span>Round</span><span>${fields[0][1]}${sideNote(ex) ? ` ${sideNote(ex)}` : ''}</span><span>${fields[1][1]}</span><span></span></div>`;
-    if (ex.noLoad) return '<div class="set-head lift no-load" aria-hidden="true"><span>Set</span><span>Previous</span><span>Reps</span><span></span></div>';
-    return `<div class="set-head lift" aria-hidden="true"><span>Set</span><span>Previous</span><span>${ex.type === 'bodyweight' ? `+ ${wUnit()}` : ex.type === 'dumbbell' ? `${wUnit()} each` : wUnit()}</span><span>Reps</span><span></span></div>`;
+    if (ex.noLoad) return '<div class="set-head lift no-load" aria-hidden="true"><span>Set</span><span>Previous</span><span>' + repsLabel(ex) + '</span><span></span></div>';
+    return `<div class="set-head lift" aria-hidden="true"><span>Set</span><span>Previous</span><span>${ex.type === 'bodyweight' ? `+ ${wUnit()}` : unitLabel(ex)}</span><span>${repsLabel(ex)}</span><span></span></div>`;
   }
 
   // Set rows for lifts: set number (tap for type and effort), last time's result (tap to copy),
   // weight, reps and the check. Weight comes before reps, the way lifters say it: "135 for 8".
   function liftRows(item, sets, ended, t, ex) {
     const last = t.st?.last;
-    const per = sideNote(ex) ? `<small class="per">${sideNote(ex)}</small>` : '';
     return sets.map((s, i) => {
       const disabled = ended && !s.done && !s.pain;
       const pw = last?.weights?.[i];
@@ -588,9 +592,9 @@ export function createWorkoutScreens(A) {
       const ty = SET_TYPES[s.type];
       return `<div class="set-row lift ${ex.noLoad ? 'no-load' : ''} ${s.done ? 'done' : ''} ${s.pain ? 'pain' : ''} ${disabled ? 'disabled' : ''}" data-swipe="del-set" data-uid="${item.uid}" data-i="${i}" data-swipe-label="Delete">
         <button class="set-badge ${ty ? `ty-${s.type}` : ''}" data-a="open-set" data-uid="${item.uid}" data-i="${i}" aria-label="Set ${i + 1}${ty ? `, ${ty[1]}` : ''}. Options: type, effort, pain">${ty ? ty[0] : i + 1}</button>
-        ${prev ? `<button class="prev" data-a="copy-prev" data-uid="${item.uid}" data-i="${i}" data-w="${pw ?? 0}" data-r="${pr}" ${s.done || disabled ? 'disabled' : ''} aria-label="Last time ${prev}${per ? ` ${sideNote(ex)}` : ''}. Tap to use these numbers">${prev}${per}</button>` : `<span class="prev none" aria-label="No previous set">—${per}</span>`}
+        ${prev ? `<button class="prev" data-a="copy-prev" data-uid="${item.uid}" data-i="${i}" data-w="${pw ?? 0}" data-r="${pr}" ${s.done || disabled ? 'disabled' : ''} aria-label="Last time ${prev}${sideNote(ex) ? ` ${sideNote(ex)}` : ''}. Tap to use these numbers">${prev}</button>` : '<span class="prev none" aria-label="No previous set">—</span>'}
         ${ex.noLoad ? '' : `<input class="cell" type="text" inputmode="decimal" data-set="${item.uid}:${i}:weight" value="${toDisp(s.weight) ?? ''}" placeholder="—" aria-label="Set ${i + 1} weight in ${wUnit() === 'kg' ? 'kilograms' : 'pounds'}" ${disabled ? 'disabled' : ''}>`}
-        <input class="cell" type="text" inputmode="numeric" data-set="${item.uid}:${i}:reps" value="${s.reps ?? ''}" aria-label="Set ${i + 1} reps" ${disabled ? 'disabled' : ''}>
+        <input class="cell" type="text" inputmode="numeric" data-set="${item.uid}:${i}:reps" value="${s.reps ?? ''}" aria-label="Set ${i + 1} reps${sideNote(ex) ? ` ${sideNote(ex)}` : ''}" ${disabled ? 'disabled' : ''}>
         <button class="check" data-a="check-inline" data-uid="${item.uid}" data-i="${i}" ${disabled || s.pain ? 'disabled' : ''} aria-pressed="${s.done}" aria-label="${s.done ? 'Undo' : 'Complete'} set ${i + 1}">${icon('check')}</button>
       </div>${s.rir != null || s.pain ? `<p class="set-extra">${s.pain ? 'Pain flagged' : A.effort(s.rir, 'done')}</p>` : ''}`;
     }).join('');

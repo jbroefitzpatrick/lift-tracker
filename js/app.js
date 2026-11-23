@@ -6,6 +6,7 @@ import { blockInfo, focusFor, liftProgress, checkinDue, planCompounds, adherence
 import { TEMPLATES, TEMPLATE_KINDS, templateItems, fmtTarget, METRIC_FIELDS } from './conditioning.js';
 import { METRICS, sideNote } from './bank.js';
 import { rankOf } from './exercise-rank.js';
+import { DELOAD_ACCESSORIES, DELOAD_STYLES, deloadDose, deloadOf, deloadText } from './engine.js';
 import { weekPeek } from './screen-plan.js';
 import { TYPES, ROW_ROTATION, defaultPlan } from './plan.js';
 import {
@@ -412,7 +413,7 @@ function makeEntry(item, isDeload) {
   const metric = metricOf(item);
   if (metric !== 'reps' || db.exercises[item.exerciseId]?.category === 'conditioning') {
     // Conditioning: sets are rounds measured in time, distance, calories or reps.
-    const n = isDeload ? Math.ceil(item.sets / 2) : item.sets;
+    const n = isDeload ? deloadDose(db, item).sets : item.sets;
     const key = METRIC_FIELDS[metric][0][0];
     const target = targetOf(item, metric);
     return {
@@ -945,7 +946,7 @@ function openDayOptions() {
   // Two groups: this workout, then everything else. Changing what a weekday is (lift, cardio,
   // rest) lives in Plan, since it applies every week.
   const today = [
-    db.plan[day] && !session?.freestyle ? `<label class="list-row toggle"><span class="grow">Deload workout<span class="pick-sub">Half the sets, same or slightly lighter weights</span></span><input type="checkbox" data-a="deload-toggle" ${isDeload ? 'checked' : ''} ${session ? 'disabled' : ''}></label>` : '',
+    db.plan[day] && !session?.freestyle ? `<label class="list-row toggle"><span class="grow">Deload workout<span class="pick-sub">${esc(deloadText(db))}</span></span><input type="checkbox" data-a="deload-toggle" ${isDeload ? 'checked' : ''} ${session ? 'disabled' : ''}></label>` : '',
     canReopen() && db.lastFinish.reopen.active.day === day ? go('resume-finished', 'Resume finished workout') : '',
     !db.activeSession ? go('start-empty', 'Empty workout') : '',
     session ? go('leave-workout-view', 'Plan, food and progress') : '',
@@ -1024,7 +1025,7 @@ function cardModel(item, session, isDeload) {
   const metric = metricOf(item);
   if (metric !== 'reps' || ex.category === 'conditioning') {
     const entry = session?.entries[item.uid];
-    const n = isDeload ? Math.ceil(item.sets / 2) : item.sets;
+    const n = entry ? entry.sets.length : isDeload ? deloadDose(db, item).sets : item.sets;
     const key = METRIC_FIELDS[metric][0][0];
     const sets = entry ? entry.sets : Array.from({ length: n }, () => ({ [key]: item.target ?? null, done: false }));
     const notices = isAvailable(db, ex) ? [] : [['warn', `Not available at ${gym.name}. Swap it.`]];
@@ -1037,6 +1038,7 @@ function cardModel(item, session, isDeload) {
   const t = entry0MaxTest(session, item) ? { ...t0, aim: MAX_AIM, rir: null } : t0;
   const target = t.weight == null ? null : roundToGym(ex, t.weight, gym);
   const entry = session?.entries[item.uid];
+  if (entry) t.sets = entry.sets.length;
   const sets = entry ? entry.sets : t.setWeights ? t.setWeights.map((w, i) => newSet(roundToGym(ex, w, gym), t.setReps[i])) : Array.from({ length: t.sets }, () => newSet(target, t.reps));
   const notices = [];
   if (!isAvailable(db, ex)) notices.push(['warn', db.exPrefs[ex.id] === 'never' ? 'Marked "never suggest". Swap it.' : `Not available at ${gym.name}. Swap it.`]);
@@ -1923,6 +1925,8 @@ function screenSettings() {
       <div class="field"><span>Block length (deload in the last week)</span>
         <div class="row stepper-row"><button class="step" data-a="deload-weeks" data-v="-1" aria-label="Shorter block" ${s.deloadEvery <= 3 ? 'disabled' : ''}>−</button><b class="tnum">${s.deloadEvery} weeks</b><button class="step" data-a="deload-weeks" data-v="1" aria-label="Longer block" ${s.deloadEvery >= 8 ? 'disabled' : ''}>+</button></div></div>
       <label class="toggle"><input type="checkbox" data-a="deload-off" ${s.deloadOff ? 'checked' : ''}><span>No scheduled deloads (deload when you choose, from day options)</span></label>
+      <div class="field"><span>Deload week</span><div class="segmented small-seg" role="radiogroup" aria-label="Deload style">${Object.entries(DELOAD_STYLES).map(([k, v]) => `<button class="${deloadOf(db).style === k ? 'on' : ''}" data-a="deload-style" data-v="${k}" role="radio" aria-checked="${deloadOf(db).style === k}">${v.name}</button>`).join('')}</div><p class="muted small">${esc(deloadText(db))}. Percentage programs like 5/3/1 use their own deload.</p></div>
+      <div class="field"><span>Accessories in a deload</span><div class="segmented small-seg" role="radiogroup" aria-label="Accessories in a deload">${Object.entries(DELOAD_ACCESSORIES).map(([k, v]) => `<button class="${deloadOf(db).accessories === k ? 'on' : ''}" data-a="deload-acc" data-v="${k}" role="radio" aria-checked="${deloadOf(db).accessories === k}">${v}</button>`).join('')}</div></div>
       <div class="field"><span>Effort ramp · reps in reserve in week 1 → before deload</span>
         <div class="row"><div class="segmented small-seg grow" role="radiogroup" aria-label="Week 1 reps in reserve">${[2, 3, 4].map((n) => `<button class="${(s.rampStart ?? 3) === n ? 'on' : ''}" data-a="ramp-start" data-v="${n}" role="radio" aria-checked="${(s.rampStart ?? 3) === n}">${n}</button>`).join('')}</div>
         <span class="muted">→</span>
@@ -2152,10 +2156,11 @@ function animateIn(main, dir) {
   const x = dir === 'forward' ? 32 : dir === 'back' ? -32 : 0;
   const from = { opacity: 0, transform: x ? `translateX(${x}px)` : 'translateY(10px)' };
   const opts = { duration: x ? 440 : 360, delay: 60, easing: 'cubic-bezier(0.25, 0.8, 0.25, 1)', fill: 'backwards' };
-  for (const el of main.children) {
+  // The exercise screen animates its parts, so its pinned Next button keeps its place.
+  for (const el of [...main.children].flatMap((c) => (c.matches('.ex-screen') ? [...c.children] : [c]))) {
     // The live workout bar stays put; pinned buttons only fade (moving them would detach them).
-    if (el.matches('.workout-bar, .back-to-workout, .reach-back')) continue;
-    if (el.matches('.cta')) { el.animate([{ opacity: 0 }, { opacity: 1 }], opts); continue; }
+    if (el.matches('.workout-bar, .back-to-workout')) continue;
+    if (el.matches('.cta, .ex-nav')) { el.animate([{ opacity: 0 }, { opacity: 1 }], opts); continue; }
     el.animate([from, { opacity: 1, transform: 'none' }], opts);
   }
 }
@@ -2194,8 +2199,7 @@ function render() {
   if (Math.abs(window.scrollY - restoreY) > 1 && document.body.style.position !== 'fixed') window.scrollTo(0, restoreY);
   // Elsewhere in the app mid-workout: a pill to get back.
   if (db.activeSession && !['today', 'exercise', 'summary'].includes(ui.tab)) $('#main').insertAdjacentHTML('beforeend', '<button class="back-to-workout" data-a="back-to-workout">Back to workout</button>');
-  // A second Back within thumb reach on long sub-pages.
-  if ($('#main header.top .back') && ui.tab !== 'builder') $('#main').insertAdjacentHTML('beforeend', `<button class="reach-back" data-a="reach-back" aria-label="Back">${icon('left')}</button>`);
+  if (!document.activeElement?.matches?.('input, textarea')) document.body.classList.remove('typing');
   refreshRecovery();
   tour.maybe();
   if (ui.tab === 'summary' && ui.summaryFresh) countUp();
@@ -2336,9 +2340,12 @@ const actions = {
     food.afterStep(d.for);
   },
   'save-set': (d) => {
-    const weight = fromDisp(num('f-weight'));
+    const lx = db.exercises[sessionFor(ui.day)?.entries[d.uid]?.exerciseId];
+    const noWeight = lx?.noLoad || lx?.type === 'bodyweight';
+    const typed = fromDisp(num('f-weight'));
+    const weight = typed ?? (noWeight ? 0 : null);
     const reps = num('f-reps');
-    if (weight == null || !reps) return toast('Enter weight and reps.');
+    if (weight == null || !reps) return toast(noWeight ? 'Enter your reps.' : 'Enter weight and reps.');
     closeSheet();
     logSet(d.uid, +d.i, { weight, reps: Math.round(reps), rir: sheetState.rir });
   },
@@ -2438,7 +2445,6 @@ const actions = {
   'ask-no': () => answerAsk(false),
   'goto-plan-day': (d) => { closeSheet(); ui.tab = 'plan'; ui.planDay = d.day; ui.planView = 'day'; window.scrollTo(0, 0); render(); },
   'plan-open-day': (d) => { ui.planDay = d.day; ui.planView = 'day'; window.scrollTo(0, 0); render(); },
-  'reach-back': () => $('#main header.top .back')?.click(),
   'wk-ahead': (d) => { ui.weekAhead = Math.max(0, Math.min(8, (ui.weekAhead || 0) + +d.v)); render(); },
   'wk-peek': (d) => { openSheet(weekPeek(A, d.day, +d.off)); },
   'plan-back': () => { ui.planView = 'week'; window.scrollTo(0, 0); render(); },
@@ -2467,7 +2473,14 @@ const actions = {
     if (e.metric && e.metric !== 'reps' || db.exercises[e.exerciseId]?.category === 'conditioning') {
       const key = METRIC_FIELDS[e.metric || 'reps'][0][0];
       if (!(vals[key] > 0)) return toast(`Enter ${METRIC_FIELDS[e.metric || 'reps'][0][1].toLowerCase()} first.`);
-    } else if (!vals.reps || !Number.isFinite(vals.weight)) return toast('Enter reps and weight first.');
+    } else {
+      const lx = db.exercises[e.exerciseId];
+      const noWeight = lx?.noLoad || lx?.type === 'bodyweight';
+      if (noWeight && !Number.isFinite(vals.weight)) vals.weight = lx.noLoad ? 0 : Number(s.weight) || 0;
+      if (!vals.reps) return toast(noWeight ? 'Enter your reps first.' : 'Enter reps and weight first.');
+      if (!Number.isFinite(vals.weight)) return toast('Enter the weight first.');
+    }
+    document.activeElement?.blur?.(); // closes the keyboard, so the timer and Next show
     logSet(d.uid, +d.i, vals);
   },
   'today-add': () => openPicker({ mode: 'today-add' }),
@@ -2772,6 +2785,8 @@ const actions = {
     persist(); closeSheet(); render(); toast(`Block ${index} saved. Block ${index + 1} focus is set.`);
   },
   'deload-weeks': (d) => { db.settings.deloadEvery = Math.max(3, Math.min(8, db.settings.deloadEvery + +d.v)); persist(); render(); },
+  'deload-style': (d) => { db.settings.deload = { ...deloadOf(db), style: d.v }; persist(); render(); },
+  'deload-acc': (d) => { db.settings.deload = { ...deloadOf(db), accessories: d.v }; persist(); render(); },
   'deload-off': (d, el) => { db.settings.deloadOff = el.checked; persist(); render(); },
   'ramp-start': (d) => { db.settings.rampStart = +d.v; persist(); render(); },
   'ramp-end': (d) => { db.settings.rampEnd = +d.v; persist(); render(); },
@@ -3156,7 +3171,7 @@ const actions = {
     const wi = weekInfo(db);
     openSheet(`<h2>${db.settings.deloadOff ? `Week ${wi.week}` : `Week ${wi.cyclePos} of ${wi.cycleLen}`}</h2>
       <p class="small">Training runs in blocks of a few weeks. Each week asks a little more (you stop a rep or so closer to failure), and ${db.settings.deloadOff ? 'you take a lighter week when you choose' : 'the last week is a lighter deload'} so your body catches up and you come back stronger.</p>
-      ${wi.isDeload ? '<p class="small"><b>This is a deload week:</b> half the sets, same or slightly lighter weights.</p>' : ''}
+      ${wi.isDeload ? '<p class="small"><b>This is a deload week:</b> ' + esc(deloadText(db).toLowerCase()) + '.</p>' : ''}
       <p class="muted small">Block length and deloads: Settings → Training → Advanced. ${refChips(['bell2022'])}</p>
       <button class="btn block" data-a="close-sheet">Got it</button>`);
   },

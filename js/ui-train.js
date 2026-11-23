@@ -279,7 +279,9 @@ export function createTrain(ctx) {
       html += `<p class="muted small">Last time: ${esc(t.last.label)}${hist.length > 1 ? ` · best ${t.lower ? `${t.best.toFixed(1)} s` : `${Math.round(t.best)} ${t.unit}`}` : ''}</p>`;
       if (!item.paceSec) html += `<p class="cond-target"><b>Target:</b> ${esc(t.label)}${t.held ? ' (same as last time — it felt hard)' : ''}</p>`;
     }
-    if (entry && entry.sets.length && entry.sets.every((x) => x.done)) {
+    // Warm-ups, cool-downs and mobility aren't hard efforts, so they don't ask.
+    const prep = ['warmup', 'cooldown'].includes(item.phase || entry?.phase) || ['mobility', 'prehab'].includes(ex.pattern);
+    if (!prep && entry && entry.sets.length && entry.sets.every((x) => x.done)) {
       html += `<div class="checkin" role="group" aria-label="How hard was that"><span class="muted small">How hard was that, 1–10?</span>
         <div class="seg-mini">${[5, 6, 7, 8, 9, 10].map((v) => `<button class="${entry.rpe === v ? 'on' : ''}" data-a="cond-rpe" data-uid="${item.uid}" data-v="${v}" aria-pressed="${entry.rpe === v}">${v}</button>`).join('')}</div></div>`;
     }

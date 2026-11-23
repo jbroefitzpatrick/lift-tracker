@@ -645,11 +645,20 @@ const modesOf = (id, metric) => {
 };
 
 const SIDE_OF = Object.fromEntries(Object.entries(SIDED).flatMap(([k, ids]) => ids.split(' ').map((id) => [id, k])));
-// Short note under each set's numbers, e.g. 'per arm'.
+// Curls usually done one arm at a time: the reps count per side.
+const ALTERNATING = new Set(['db-curl', 'incline-db-curl', 'hammer-curl', 'cross-body-hammer-curl', 'incline-hammer-curl', 'zottman-curl']);
+// Added to the reps label for anything done one side at a time.
 export function sideNote(ex) {
-  const k = ex?.sided || SIDE_OF[ex?.id];
-  if (!k) return '';
-  return `per ${k}`;
+  return ex?.sided || SIDE_OF[ex?.id] || ALTERNATING.has(ex?.id) ? 'per side' : '';
+}
+
+// Plate-loaded machines with independent arms: the logged weight is what's on one side.
+export const PLATE_PER_SIDE = new Set(['iso-row', 'machine-pulldown', 'plate-chest-press', 'low-row-machine']);
+// The word after the weight: "lb each" for dumbbells, "lb per side" for independent plate-loaded arms.
+export function loadNote(ex) {
+  if (!ex) return '';
+  if (PLATE_PER_SIDE.has(ex.id)) return 'per side';
+  return ex.type === 'dumbbell' ? 'each' : '';
 }
 
 const split = (s) => (s ? s.split(' ') : []);

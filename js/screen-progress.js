@@ -11,7 +11,8 @@ import { blockInfo, focusFor } from './blocks.js';
 import { toDisp, wUnit, wt, wtEst } from './units.js';
 import { GROUPS, groupById } from './groups.js';
 import { muscleIcon } from './body.js';
-import { DAY_NAMES, dayKeyOf, e1rm } from './engine.js';
+import { DAY_NAMES, dayKeyOf, e1rm, weekInfo } from './engine.js';
+import { loadNote } from './bank.js';
 import { lineChart, trendChart } from './chart.js';
 import { CHART_METRICS, CHART_RANGES, chartStats, defaultMetric, inRange, liftSeries, metricsFor, trendLine } from './lift-metrics.js';
 import { strengthAreas, LEVELS } from './standards.js';
@@ -114,7 +115,8 @@ export function createProgressScreens(A) {
       while (cells.length < 7) cells.push('<span class="cal-cell empty"></span>');
       const wk = mondayOf(`${month}-${String(rowDay).padStart(2, '0')}`);
       const st = info.states[wk];
-      rows.push(`<div class="cal-grid cal-week ${st === 'hit' ? 'sk-hit' : st === 'frozen' ? 'sk-frozen' : ''}">${cells.join('')}</div>`);
+      const deload = A.db.sessions.some((s) => s.isDeload && mondayOf(s.date) === wk) || (wk >= thisWeek && weekInfo(A.db, wk).isDeload);
+      rows.push(`<div class="cal-grid cal-week ${st === 'hit' ? 'sk-hit' : st === 'frozen' ? 'sk-frozen' : ''} ${deload ? 'is-deload' : ''}">${cells.join('')}</div>`);
       cells = [];
     };
     for (let d = 1; d <= daysIn; d++) {
@@ -134,7 +136,7 @@ export function createProgressScreens(A) {
         <div class="row"><button class="icon-btn" data-a="cal-month" data-v="${prev}" aria-label="Previous month">${icon('left')}</button><button class="icon-btn" data-a="cal-month" data-v="${next}" aria-label="Next month" ${next > today.slice(0, 7) ? 'disabled' : ''}>${icon('right')}</button></div></div>
       <div class="cal-grid" aria-hidden="true">${letters.map((x) => `<span class="cal-wd">${x}</span>`).join('')}</div>
       <div class="cal-rows">${rows.join('')}</div>
-      <div class="cal-key" aria-hidden="true"><span><i class="k-lift"></i>Lift</span><span><i class="k-cardio"></i>Cardio</span><span><i class="k-plan"></i>Planned</span><span><i class="k-miss"></i>Missed</span><span><i class="k-freeze"></i>Frozen</span></div>
+      <div class="cal-key" aria-hidden="true"><span><i class="k-lift"></i>Lift</span><span><i class="k-cardio"></i>Cardio</span><span><i class="k-deload"></i>Deload week</span><span><i class="k-plan"></i>Planned</span><span><i class="k-miss"></i>Missed</span><span><i class="k-freeze"></i>Frozen</span></div>
       <div class="tile-row three"><div class="tile"><span>This month</span><b class="num">${count}</b></div><div class="tile"><span>Best</span><b class="num">${info.best} wk</b></div><div class="tile"><span>Freezes left</span><b class="num">${info.freezesLeft}</b></div></div>
     </section>`;
   }
@@ -421,7 +423,7 @@ export function createProgressScreens(A) {
       const w = roundToGym(ex, best.best1rm / (1 + (r === 1 ? 0 : r) / 30), gym);
       return `<div class="rm-cell"><span>${r} ${r === 1 ? 'rep' : 'reps'}</span><b class="num">${toDisp(w)}</b></div>`;
     }).join('');
-    return `<div class="card"><div class="row between"><h3>Rep maxes</h3><span class="muted small">${wUnit()}${ex.type === 'dumbbell' ? ' each' : ''}</span></div>
+    return `<div class="card"><div class="row between"><h3>Rep maxes</h3><span class="muted small">${wUnit()}${loadNote(ex) ? ` ${loadNote(ex)}` : ''}</span></div>
       <p class="muted small">Estimated from your best set in the last 8 weeks (${A.fmtDate(best.date)}).</p>
       <div class="rm-grid">${rows}</div></div>`;
   }

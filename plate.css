@@ -370,8 +370,8 @@ body.rest-mini #rest .grow { display: flex; }
 .fresh-row.vol, button.fresh-row.vol, .fresh-row.vol.sub, .fresh-row.vol.sub.vol-btn { font-size: 0.875rem; line-height: 1.25; min-height: 44px; }
 .fresh-row.vol .fr-pct { font-size: 0.8125rem; }
 /* The tab bar keeps one height and its own layer; the page always fills the screen, even on an empty day. */
-#main { min-height: 100vh; min-height: 100lvh; }
-#tabs { height: calc(var(--tabbar-h) + 2px + env(safe-area-inset-bottom)); bottom: 0; transform: translate3d(0, 0, 0); -webkit-transform: translate3d(0, 0, 0); }
+#main { min-height: 100vh; min-height: 100dvh; }
+#tabs { height: calc(var(--tabbar-h) + 2px + var(--sb)); bottom: 0; transform: translate3d(0, 0, 0); -webkit-transform: translate3d(0, 0, 0); }
 
 /* Week preview */
 .week-nav { display: flex; align-items: center; gap: 8px; margin: 6px 0 10px; text-align: center; }
@@ -379,11 +379,6 @@ body.rest-mini #rest .grow { display: flex; }
 .week-nav .small { display: block; }
 .week-nav .icon-btn:disabled { opacity: 0.3; }
 .week-tools { display: flex; justify-content: flex-end; gap: 14px; margin: -4px 0 8px; }
-/* Back within thumb reach */
-.reach-back { position: fixed; left: max(12px, env(safe-area-inset-left)); bottom: calc(var(--tabbar-h) + 14px + env(safe-area-inset-bottom)); z-index: 17; width: 46px; height: 46px; display: grid; place-items: center; padding: 0; border: 2px solid var(--text); border-radius: 50%; background: var(--bg); color: var(--text); }
-.reach-back .ic { width: 20px; height: 20px; }
-body.resting .reach-back, body.rest-mini .reach-back, body.in-workout .reach-back { display: none; }
-.station-back { position: sticky; top: env(safe-area-inset-top); z-index: 9; background: var(--bg); padding-right: 10px; }
 /* The family disc always sits on top of the exercise photo */
 .station-pic.ex-hero::after { display: none; }
 .station-pic .fam-disc, .thumb .fam-disc { z-index: 3; }
@@ -441,5 +436,39 @@ button.chart-card { display: block; width: 100%; text-align: left; color: inheri
 .hl-stats b { font-size: 1.375rem; font-weight: 800; }
 .hl-stats span { font-size: 0.75rem; color: var(--muted); }
 
-/* Room so the thumb-reach Back never covers the end of a page */
-#main:has(> .reach-back) { padding-bottom: calc(var(--tabbar-h) + 84px + env(safe-area-inset-bottom)); }
+
+/* ---------- Screen edges ---------- */
+/* Half the home-bar inset: labels clear the bar without a tall empty strip under the tabs. */
+:root { --sb: calc(env(safe-area-inset-bottom) * 0.5); }
+/* Nothing scrolls visibly behind the clock and notch. */
+body::before { content: ""; position: fixed; left: 0; right: 0; top: 0; height: env(safe-area-inset-top); background: var(--bg); z-index: 14; pointer-events: none; }
+/* The exercise screen starts below the header, not under it. */
+.ex-screen { margin-top: 0; padding-top: 0; }
+.workout-bar + .ex-screen { padding-top: 2px; }
+.ex-screen > .station-back { position: sticky; top: 0; z-index: 9; display: flex; width: calc(100% + 32px); margin: calc(-1 * (env(safe-area-inset-top) + 14px)) -16px 8px; padding: calc(env(safe-area-inset-top) + 8px) 16px 6px; background: var(--bg); }
+/* Next and the rest timer stack; neither covers the other. */
+.ex-screen .ex-nav { position: fixed; left: max(16px, calc(50% - 284px)); right: max(16px, calc(50% - 284px)); bottom: calc(var(--tabbar-h) + 8px + var(--sb)); z-index: 19; margin: 0; padding: 0; background: none; }
+body.resting .ex-screen .ex-nav { bottom: calc(var(--tabbar-h) + 80px + var(--sb)); }
+#main:has(.ex-nav) { padding-bottom: calc(var(--tabbar-h) + 84px + var(--sb)); }
+body.resting #main:has(.ex-nav) { padding-bottom: calc(var(--tabbar-h) + 156px + var(--sb)); }
+#rest { min-height: 64px; }
+/* ---------- Supersets and circuits: one panel, A1 / A2 on each exercise ---------- */
+.link-group { counter-reset: lk; margin: 8px -8px; padding: 2px 8px 4px; border: 0; border-radius: var(--radius-sm); background: var(--surface-2); }
+.link-group::before { display: none; }
+.ex-item + .link-group, .link-group + .ex-item { border-top: 0; }
+.link-label, .link-group .link-label { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 8px 2px 4px; font-size: 0.75rem; }
+.link-label b, .link-group .link-label b { color: var(--text); font-weight: 800; font-size: 0.8125rem; }
+.link-group .link-label span { color: var(--muted); }
+.link-group .ex-item + .ex-item { border-top: 1px solid var(--line); }
+.link-group .ex-item.is-next { margin: 0 -4px; padding-inline: 4px; background: var(--surface-3); }
+.link-group .thumb { position: relative; }
+.link-group .thumb::before { counter-increment: lk; content: var(--g) counter(lk); position: absolute; left: -4px; top: -4px; z-index: 4; display: grid; place-items: center; min-width: 22px; height: 18px; padding: 0 3px; border-radius: 4px; background: var(--action); color: var(--on-action); font-size: 0.625rem; font-weight: 800; }
+/* ---------- Calendar ---------- */
+.cal-cell.cardio { background: #138a7e; }
+.k-cardio { background: #138a7e; }
+.cal-week.is-deload { background: rgb(242 194 27 / 0.17) !important; }
+.k-deload { border-radius: 2px !important; background: rgb(242 194 27 / 0.55); }
+/* A clear gap between the post button and Share */
+[data-a="ppl-post-session"] { margin-bottom: 8px; }
+/* Longer column labels ("Reps per side") wrap instead of crowding. */
+.set-head > span { line-height: 1.15; text-wrap: balance; }
