@@ -13,6 +13,7 @@
 //   behind on weekly sets.
 // - A day at a different gym swaps exercises that gym can't do for the closest ones it can.
 import { DAY_KEYS, resolveDay, groupNum, groupOf } from './engine.js';
+import { autoPick, rankOf } from './exercise-rank.js';
 import { mondayOf, todayStr, addDays, weekPos, weekOrder } from './store.js';
 import { estimateMinutes } from './builder.js';
 import { similarExercises, MUSCLES } from './bank.js';
@@ -133,7 +134,7 @@ export function fitItems(db, items, minutes, { focus = [], extraFor = null } = {
     for (const m of extraFor.filter((x) => groups.has(groupOf(x)))) {
       if (est() + 9 > minutes || added.length >= 3) break;
       if (out.some((it) => db.exercises[it.exerciseId]?.primary.includes(m))) continue;
-      const pick = Object.values(db.exercises).find((e) => e.category === 'accessory' && e.primary[0] === m && isAvailable(db, e) && db.exPrefs?.[e.id] !== 'never' && db.exPrefs?.[e.id] !== 'avoid');
+      const pick = Object.values(db.exercises).filter((e) => e.category === 'accessory' && e.primary[0] === m && isAvailable(db, e) && autoPick(db, e) && db.exPrefs?.[e.id] !== 'never' && db.exPrefs?.[e.id] !== 'avoid').sort((a, b) => rankOf(db, a) - rankOf(db, b))[0];
       if (!pick) continue;
       out.push({ uid: `x-${Date.now().toString(36)}-${added.length}`, exerciseId: pick.id, group: String(out.length + 1), sets: 3, repMin: 10, repMax: 15, restSec: 75, note: 'Added for extra time' });
       added.push(pick.name);
@@ -442,8 +443,8 @@ export function catchUpDay(db, to, now = Date.now()) {
   const items = [];
   low.forEach((m, mi) => {
     const cands = Object.values(db.exercises).filter((e) => e?.primary?.[0] === m && e.category !== 'conditioning' && !e.noLoad
-      && !['mobility', 'prehab'].includes(e.pattern) && isAvailable(db, e) && !['never', 'avoid'].includes(db.exPrefs?.[e.id]) && !used.has(e.id))
-      .sort((a, b) => (known.has(b.id) - known.has(a.id)) || ((db.exPrefs?.[b.id] === 'prefer') - (db.exPrefs?.[a.id] === 'prefer')) || ((b.category === 'compound') - (a.category === 'compound')) || a.name.localeCompare(b.name));
+      && !['mobility', 'prehab'].includes(e.pattern) && isAvailable(db, e) && autoPick(db, e) && !['never', 'avoid'].includes(db.exPrefs?.[e.id]) && !used.has(e.id))
+      .sort((a, b) => (known.has(b.id) - known.has(a.id)) || (rankOf(db, a) - rankOf(db, b)) || ((db.exPrefs?.[b.id] === 'prefer') - (db.exPrefs?.[a.id] === 'prefer')) || ((b.category === 'compound') - (a.category === 'compound')) || a.name.localeCompare(b.name));
     for (const e of cands.slice(0, mi === 0 ? 2 : 1)) {
       used.add(e.id);
       const big = e.category === 'compound';

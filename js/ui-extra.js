@@ -52,8 +52,8 @@ export function createExtras(ctx) {
     </div>
     ${rec ? `<div class="card"><h3>Personal records</h3>
       ${rec.e1.v ? `<div class="rx-row"><span class="muted">Best est. max</span><b>${wtEst(rec.e1.v)} <span class="muted small">(${toDisp(rec.e1.w)}×${rec.e1.r}, ${ctx.fmtDate(rec.e1.date)})</span></b></div>` : ''}
-      <div class="rx-row"><span class="muted">Heaviest set</span><b>${wt(rec.heavy.v)} × ${rec.heavy.r}</b></div>
-      <div class="rx-row"><span class="muted">Most reps</span><b>${rec.reps.v}${rec.reps.w ? ` @ ${wt(rec.reps.w)}` : ''}</b></div>
+      ${rec.heavy.v ? `<div class="rx-row"><span class="muted">Heaviest set</span><b>${wt(rec.heavy.v)}${rec.heavy.r ? ` × ${rec.heavy.r}` : ''}</b></div>` : ''}
+      ${rec.reps.v ? `<div class="rx-row"><span class="muted">Most reps</span><b>${rec.reps.v}${rec.reps.w ? ` @ ${wt(rec.reps.w)}` : ''}</b></div>` : ''}
       ${rec.vol.v ? `<div class="rx-row"><span class="muted">Best workout volume</span><b>${Math.round(toDisp(rec.vol.v)).toLocaleString()} ${wUnit()}</b></div>` : ''}
     </div>` : ''}`;
   }

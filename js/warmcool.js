@@ -79,10 +79,10 @@ function build(db, day, rows, phase) {
 const DRILLS = {
   mobilize: ['leg-swing', 'arm-circle', 'hip-circle', 'ankle-rock', 'open-book', 'inchworm', 'knee-hug-walk', 'band-dislocate', 'wall-slide',
     'stretch-catcow', 'stretch-wgs', 'stretch-thread', 'stretch-9090', 'wrist-circle',
-    'arm-swing', 'shoulder-car', 'hip-car', 'reach-open', 'spiderman-lunge', 'lateral-lunge-stretch', 'leg-cradle', 'toy-soldier', 'butt-kick', 'a-skip', 'carioca', 'neck-circle', 'tspine-extension', 'wrist-rock', 'ankle-circle', 'adductor-rockback', 'hip-flexor-rock', 'goblet-hold'],
+    'arm-swing', 'shoulder-car', 'hip-car', 'reach-open', 'spiderman-lunge', 'lateral-lunge-stretch', 'leg-cradle', 'toy-soldier', 'butt-kick', 'a-skip', 'carioca', 'neck-circle', 'tspine-extension', 'wrist-rock', 'ankle-circle', 'adductor-rockback', 'hip-flexor-rock', 'goblet-hold', 'chest-expansion', 'squat-rotation', 'lunge-twist'],
   prime: ['scap-pushup', 'scap-pull', 'band-pull-apart', 'band-external-rotation', 'prone-ytw', 'glute-bridge', 'glute-bridge-march',
     'lateral-band-walk', 'clamshell', 'air-squat', 'bodyweight-lunge', 'step-up-bw', 'calf-raise-slow', 'plank', 'side-plank',
-    'hip-airplane', 'fire-hydrant', 'band-row-light', 'cuban-rotation', 'banded-squat'],
+    'hip-airplane', 'fire-hydrant', 'band-row-light', 'cuban-rotation', 'banded-squat', 'scap-squeeze', 'walkout-pushup', 'hip-hinge-drill'],
 };
 
 // A small seeded random generator, so a day's warm-up stays the same until it's shuffled.

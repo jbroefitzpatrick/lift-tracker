@@ -4,6 +4,7 @@
 // Protocols follow the cited studies; references are in science.js.
 
 import { isAvailable } from './gym.js';
+import { autoPick } from './exercise-rank.js';
 
 export const TEMPLATE_KINDS = { interval: 'Intervals', circuit: 'Circuits', plyo: 'Plyometrics', finisher: 'Finishers', recovery: 'Recovery' };
 
@@ -132,7 +133,7 @@ const FIN_POOL_EXTRA = ['pushup', 'dip', 'pullup', 'chinup', 'inverted-row'];
 export function buildFinisher(db, { minutes = 10, mode = 'burn', format = 'rounds', muscles = [], core = false, coreIds = [], shuffle = 0, alt = [] }) {
   const trained = new Set(muscles);
   const OUTDOOR = ['hill-sprint', 'run-sprint', 'run-interval'];
-  const ok = (e) => e && !OUTDOOR.includes(e.id) && e.pattern !== 'mobility' && e.pattern !== 'prehab' && e.pattern !== 'run' && e.metric !== 'distance' && isAvailable(db, e) && db.exPrefs?.[e.id] !== 'never';
+  const ok = (e) => e && !OUTDOOR.includes(e.id) && e.pattern !== 'mobility' && e.pattern !== 'prehab' && e.pattern !== 'run' && e.metric !== 'distance' && isAvailable(db, e) && autoPick(db, e) && db.exPrefs?.[e.id] !== 'never';
   const pool = Object.values(db.exercises).filter((e) => ok(e) && (e.category === 'conditioning' || FIN_POOL_EXTRA.includes(e.id)));
   const overlap = (e) => e.primary.filter((m) => trained.has(m)).length + 0.5 * e.secondary.filter((m) => trained.has(m)).length;
   const scored = pool.map((e) => {

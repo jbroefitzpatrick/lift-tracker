@@ -177,7 +177,7 @@ export function applyImport(db, plan, source) {
     db.sessions.push({
       id, date: w.date, day: dayKeyOf(w.date), freestyle: true, imported: source, importedFrom: w.name, name: w.name,
       startedAt: w.start, finishedAt: w.end, results: [], prs: [],
-      entries: w.entries.map((e, i) => ({ uid: `${id}-${i}`, exerciseId: plan.map[e.name], name: e.name, group: String(i + 1), ...(e.sets.every((s) => s.seconds > 0 && !s.reps) ? { metric: 'time' } : {}), ...(e.note ? { note: e.note } : {}), sets: e.sets.map((s) => ({ weight: s.weight, reps: s.reps, done: true, ...(s.seconds > 0 && !s.reps ? { time: s.seconds } : {}), ...(s.type ? { type: s.type } : {}), ...(s.rpe ? { rir: Math.max(0, Math.round(10 - s.rpe)) } : {}) })) })),
+      entries: w.entries.map((e, i) => ({ uid: `${id}-${i}`, exerciseId: plan.map[e.name], name: e.name, group: String(i + 1), ...(e.sets.every((s) => s.seconds > 0 && !s.reps) ? { metric: 'time' } : (db.exercises[plan.map[e.name]]?.metric || 'reps') !== 'reps' ? { metric: 'reps' } : {}), ...(e.note ? { note: e.note } : {}), sets: e.sets.map((s) => ({ weight: s.weight, reps: s.reps, done: true, ...(s.seconds > 0 && !s.reps ? { time: s.seconds } : {}), ...(s.type ? { type: s.type } : {}), ...(s.rpe ? { rir: Math.max(0, Math.round(10 - s.rpe)) } : {}) })) })),
     });
   }
   db.sessions.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : (a.finishedAt || 0) - (b.finishedAt || 0)));

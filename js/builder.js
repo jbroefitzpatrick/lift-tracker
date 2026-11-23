@@ -2,6 +2,7 @@
 // Every number traces back to a reference in science.js (ids in `refs`).
 import { MUSCLES } from './bank.js';
 import { hasGear } from './gym.js';
+import { autoPick, rankOf } from './exercise-rank.js';
 
 export const GOALS = {
   strength: { label: 'Strength', desc: 'Lift heavier on the big compound lifts.' },
@@ -313,10 +314,10 @@ function pickExercise(db, p, slotKey, variant, usedToday, role) {
   const prefs = db.exPrefs || {};
   const blocked = new Set([...(p.limits || []).flatMap((l) => JOINT_STRESS[l] || []), ...(gym?.unavailable || []), ...Object.keys(prefs).filter((k) => prefs[k] === 'never')]);
   const cands = Object.values(db.exercises).filter((e) => slot.patterns.includes(e.pattern)
-    && equip.includes(equipOf(e.type)) && hasGear(gym, e.needs) && !blocked.has(e.id) && !usedToday.has(e.id));
+    && equip.includes(equipOf(e.type)) && hasGear(gym, e.needs) && !blocked.has(e.id) && !usedToday.has(e.id) && autoPick(db, e));
   if (!cands.length) return null;
   const easier = p.experience === 'beginner' || (+p.age || 30) >= 65;
-  const rank = (e) => { const i = slot.prefer.indexOf(e.id); return (i < 0 ? 100 : i) + (easier && DEMANDING.includes(e.id) ? 50 : 0) - (prefs[e.id] === 'prefer' ? 30 : 0) + (prefs[e.id] === 'avoid' ? 60 : 0); };
+  const rank = (e) => { const i = slot.prefer.indexOf(e.id); return (i < 0 ? 100 + rankOf(db, e) * 15 : i) + (easier && DEMANDING.includes(e.id) ? 50 : 0) - (prefs[e.id] === 'prefer' ? 30 : 0) + (prefs[e.id] === 'avoid' ? 60 : 0); };
   cands.sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
   const pick = cands[Math.min(variant, cands.length - 1)];
   // A hard isolation move is not worth it for a beginner or older lifter; the slot is skipped.

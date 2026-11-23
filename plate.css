@@ -372,3 +372,22 @@ body.rest-mini #rest .grow { display: flex; }
 /* The tab bar keeps one height and its own layer; the page always fills the screen, even on an empty day. */
 #main { min-height: 100vh; min-height: 100lvh; }
 #tabs { height: calc(var(--tabbar-h) + 2px + env(safe-area-inset-bottom)); bottom: 0; transform: translate3d(0, 0, 0); -webkit-transform: translate3d(0, 0, 0); }
+
+/* Week preview */
+.week-nav { display: flex; align-items: center; gap: 8px; margin: 6px 0 10px; text-align: center; }
+.week-nav h2 { margin: 0; font-size: 1.125rem; }
+.week-nav .small { display: block; }
+.week-nav .icon-btn:disabled { opacity: 0.3; }
+.week-tools { display: flex; justify-content: flex-end; gap: 14px; margin: -4px 0 8px; }
+/* Back within thumb reach */
+.reach-back { position: fixed; left: max(12px, env(safe-area-inset-left)); bottom: calc(var(--tabbar-h) + 14px + env(safe-area-inset-bottom)); z-index: 17; width: 46px; height: 46px; display: grid; place-items: center; padding: 0; border: 2px solid var(--text); border-radius: 50%; background: var(--bg); color: var(--text); }
+.reach-back .ic { width: 20px; height: 20px; }
+body.resting .reach-back, body.rest-mini .reach-back, body.in-workout .reach-back { display: none; }
+.station-back { position: sticky; top: env(safe-area-inset-top); z-index: 9; background: var(--bg); padding-right: 10px; }
+/* The family disc always sits on top of the exercise photo */
+.station-pic.ex-hero::after { display: none; }
+.station-pic .fam-disc, .thumb .fam-disc { z-index: 3; }
+.station-pic > img { position: relative; z-index: 1; }
+
+/* Screens slide in from the side; that must never widen the page, which also shifts fixed bars on iPhone. */
+html, body { overflow-x: hidden; overflow-x: clip; }

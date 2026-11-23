@@ -13,6 +13,8 @@
 //   is refused. Replacing everything on purpose (import, restore, erase) calls allowReplace() first.
 import { defaultExercises, defaultPlan, seedState, DEFAULT_INCREMENTS } from './plan.js';
 import { syncBank } from './bank.js';
+import { relinkFitbod } from './import-fitbod.js';
+import { markFamiliar } from './exercise-rank.js';
 import { CARDIO } from './cardio-bank.js';
 
 const KEY = 'lift.db';
@@ -188,6 +190,8 @@ export function migrate(db) {
   db.gyms = db.gyms.map((g) => ({ ...defaultGym(g.id, g.name), ...g }));
   if (!db.gyms.some((g) => g.id === db.settings.activeGym)) db.settings.activeGym = db.gyms[0].id;
   syncBank(db.exercises, db.settings.defaultIncrements);
+  relinkFitbod(db);
+  markFamiliar(db);
   return db;
 }
 

@@ -7,6 +7,9 @@
 //    simplified to the muscle groups below.
 // Hip thrusts, pull-throughs and back extensions move one joint, so they're listed as accessories.
 
+import { EXTRA_RAW, EXTRA_NEEDS } from './bank-extra.js';
+import { baseRank } from './exercise-rank.js';
+
 export const MUSCLES = {
   chest: 'Chest',
   'front-delts': 'Front delts',
@@ -657,8 +660,8 @@ const split = (s) => (s ? s.split(' ') : []);
 // since vests, belts and plates are common there.)
 export const NO_LOAD = new Set(['ab-wheel', 'barbell-rollout', 'ball-rollout', 'body-saw', 'stir-the-pot', 'ball-pike', 'dead-bug', 'bird-dog', 'mcgill-curl-up', 'plank-shoulder-tap', 'side-plank-dip', 'superman', 'v-up', 'toes-to-bar', 'bicycle-crunch', 'reverse-crunch', 'leg-raise', 'hanging-knee-raise', 'hanging-oblique-raise', 'hanging-leg-raise', 'vertical-leg-raise', 'band-face-pull', 'band-assisted-pullup', 'band-lat-raise', 'band-lat-pulldown', 'band-row', 'band-good-morning', 'band-curl', 'band-pushdown', 'band-pull-through', 'band-hip-thrust', 'band-leg-curl', 'band-pallof', 'band-woodchop', 'band-seated-abduction', 'band-pull-apart', 'band-external-rotation', 'band-dislocate', 'band-row-light', 'banded-squat', 'lateral-band-walk', 'tke', 'suspension-pushup', 'suspension-row', 'hspu', 'pike-pushup', 'incline-pushup', 'decline-pushup', 'deficit-pushup', 'diamond-pushup', 'pushup-rotation', 'negative-pullup', 'scap-pushup', 'scap-pull', 'inverted-row', 'nordic-curl', 'reverse-nordic', 'ball-ham-curl', 'slider-leg-curl', 'air-squat', 'bodyweight-lunge', 'step-up-bw', 'bw-split-squat', 'bw-calf-raise', 'side-lying-abduction', 'side-lying-adduction', 'clamshell', 'fire-hydrant', 'glute-bridge-march', 'single-leg-glute-bridge', 'box-jump', 'broad-jump', 'squat-jump', 'lateral-bound', 'tuck-jump', 'skater-jump', 'pogo-hop', 'burpee', 'mountain-climber', 'jumping-jack', 'high-knees', 'jump-rope', 'leg-swing', 'arm-circle', 'chin-tuck', 'ankle-rock', 'wall-slide', 'prone-ytw', 'knee-hug-walk', 'hip-circle', 'open-book', 'inchworm', 'arm-swing', 'shoulder-car', 'hip-car', 'reach-open', 'spiderman-lunge', 'lateral-lunge-stretch', 'hip-airplane', 'leg-cradle', 'toy-soldier', 'tspine-extension', 'wrist-rock', 'hip-flexor-rock', 'adductor-rockback', 'calf-raise-slow', 'stretch-9090', 'stretch-thread', 'stretch-catcow', 'stretch-wgs', 'butt-kick', 'a-skip', 'carioca', 'neck-circle', 'ankle-circle']);
 
-export const BANK = Object.fromEntries(RAW.map(([id, name, cat, type, pattern, primary, secondary, metric]) => [id, {
-  id, name, type, pattern, metric: metric || 'reps', needs: split(NEEDS[id]), modes: modesOf(id, metric), noLoad: NO_LOAD.has(id) || undefined,
+export const BANK = Object.fromEntries([...RAW, ...EXTRA_RAW].map(([id, name, cat, type, pattern, primary, secondary, metric]) => [id, {
+  id, name, type, pattern, metric: metric || 'reps', needs: split(NEEDS[id] ?? EXTRA_NEEDS[id]), modes: modesOf(id, metric), noLoad: NO_LOAD.has(id) || undefined,
   category: cat === 'C' ? 'compound' : cat === 'X' ? 'conditioning' : 'accessory',
   primary: split(primary),
   secondary: split(secondary),
@@ -724,8 +727,9 @@ export function similarExercises(exercises, exId, limit = 8, exclude = []) {
   if (!a) return [];
   return Object.values(exercises)
     .filter((b) => b.id !== exId && !exclude.includes(b.id))
+    .filter((b) => baseRank(b.id) < 4 || b.custom || b.familiar || baseRank(exId) === 4) // on-request moves aren't suggested
     .filter((b) => (a.pattern && b.pattern === a.pattern) || b.primary.some((m) => a.primary.includes(m)))
     .map((b) => ({ ex: b, score: similarity(a, b), samePattern: !!a.pattern && a.pattern === b.pattern }))
-    .sort((x, y) => y.score - x.score || x.ex.name.localeCompare(y.ex.name))
+    .sort((x, y) => y.score - x.score || baseRank(x.ex.id) - baseRank(y.ex.id) || x.ex.name.localeCompare(y.ex.name))
     .slice(0, limit);
 }

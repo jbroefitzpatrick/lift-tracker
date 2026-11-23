@@ -5,6 +5,8 @@ import { EX_INFO } from './exercise-info.js';
 import { blockInfo, focusFor, liftProgress, checkinDue, planCompounds, adherence } from './blocks.js';
 import { TEMPLATES, TEMPLATE_KINDS, templateItems, fmtTarget, METRIC_FIELDS } from './conditioning.js';
 import { METRICS, sideNote } from './bank.js';
+import { rankOf } from './exercise-rank.js';
+import { weekPeek } from './screen-plan.js';
 import { TYPES, ROW_ROTATION, defaultPlan } from './plan.js';
 import {
   DAY_KEYS, DAY_NAMES, dayKeyOf, weekInfo, needsRotationPrompt, nextRowCompound, resolveDay,
@@ -902,6 +904,7 @@ function editableList() {
   const session = sessionFor(ui.day);
   if (session) return { list: session.order.map((u) => session.entries[u]), save: (list) => { session.order = list.map((e) => e.uid); } };
   const plan = db.plan[ui.day];
+  if (!plan) return { list: [], save: () => {} }; // a day with nothing planned
   return { list: plan.items, save: (list) => { plan.items = list; } };
 }
 
@@ -1708,7 +1711,7 @@ const picker = { mode: null, uid: null, currentId: null, scope: 'today', q: '', 
 const PICKER_TITLES = { 'es-add': 'Add exercise', swap: 'Swap exercise', 'plan-swap': 'Swap in plan', add: 'Add exercise', browse: 'Exercise library', 'session-add': 'Add to today', 'today-add': 'Add exercise' };
 
 function openPicker(opts) {
-  Object.assign(picker, { uid: null, currentId: null, scope: 'today', q: '', cat: 'all', muscle: 'all', showHidden: false }, opts);
+  Object.assign(picker, { uid: null, currentId: null, scope: 'today', q: '', cat: 'all', muscle: 'all', showHidden: false, showRare: false }, opts);
   const cur = picker.currentId ? db.exercises[picker.currentId] : null;
   openSheet(`
     <h2>${PICKER_TITLES[picker.mode]}</h2>
@@ -1784,8 +1787,11 @@ function renderPickerList() {
   }
   // Group the full list by main (first) primary muscle; compounds first within each group.
   const groups = {};
+  let rare = 0;
   for (const ex of Object.values(db.exercises)) {
     if (ex.id === picker.currentId || !match(ex)) continue;
+    // On-request exercises wait for a search or "Show more".
+    if (!q && !picker.showRare && rankOf(db, ex) === 4) { rare++; continue; }
     const key = picker.muscle !== 'all' ? (ex.primary.includes(picker.muscle) ? picker.muscle : '_secondary') : ex.primary[0] || '_other';
     (groups[key] ||= []).push(ex);
   }
@@ -1793,9 +1799,10 @@ function renderPickerList() {
   const keys = [...Object.keys(MUSCLES), '_secondary', '_other'].filter((k) => groups[k]);
   html += keys.map((k) => {
     const fav = (x) => prefRank(db, x.id);
-    const list = groups[k].sort((a, b) => fav(a) - fav(b) || (a.category === b.category ? a.name.localeCompare(b.name) : a.category === 'compound' ? -1 : 1));
+    const list = groups[k].sort((a, b) => fav(a) - fav(b) || rankOf(db, a) - rankOf(db, b) || (a.category === b.category ? a.name.localeCompare(b.name) : a.category === 'compound' ? -1 : 1));
     return `<h3 class="sect">${label(k)} <span class="muted small">${list.length}</span></h3>${list.map((ex) => pickRow(ex)).join('')}`;
   }).join('');
+  if (rare || picker.showRare) html += `<button class="btn ghost block" data-a="pk-rare">${picker.showRare ? 'Show fewer' : `Show ${rare} more exercises`}</button>`;
   if (hiddenCount && picker.mode !== 'browse') html += `<button class="btn ghost block" data-a="pk-hidden">${picker.showHidden ? 'Hide' : 'Show'} ${hiddenCount} hidden exercises (never / not at this gym)</button>`;
   el.innerHTML = html || `<div class="empty small-empty"><p class="muted">No matches${q ? ` for “${esc(picker.q.trim())}”` : ''}.</p>${q ? `<button class="btn primary" data-a="pk-custom" data-name="${esc(picker.q.trim())}">Create “${esc(picker.q.trim())}”</button>` : ''}</div>`;
 }
@@ -2146,7 +2153,7 @@ function animateIn(main, dir) {
   const opts = { duration: x ? 440 : 360, delay: 60, easing: 'cubic-bezier(0.25, 0.8, 0.25, 1)', fill: 'backwards' };
   for (const el of main.children) {
     // The live workout bar stays put; pinned buttons only fade (moving them would detach them).
-    if (el.matches('.workout-bar, .back-to-workout')) continue;
+    if (el.matches('.workout-bar, .back-to-workout, .reach-back')) continue;
     if (el.matches('.cta')) { el.animate([{ opacity: 0 }, { opacity: 1 }], opts); continue; }
     el.animate([from, { opacity: 1, transform: 'none' }], opts);
   }
@@ -2186,6 +2193,8 @@ function render() {
   if (Math.abs(window.scrollY - restoreY) > 1 && document.body.style.position !== 'fixed') window.scrollTo(0, restoreY);
   // Elsewhere in the app mid-workout: a pill to get back.
   if (db.activeSession && !['today', 'exercise', 'summary'].includes(ui.tab)) $('#main').insertAdjacentHTML('beforeend', '<button class="back-to-workout" data-a="back-to-workout">Back to workout</button>');
+  // A second Back within thumb reach on long sub-pages.
+  if ($('#main header.top .back') && ui.tab !== 'builder') $('#main').insertAdjacentHTML('beforeend', `<button class="reach-back" data-a="reach-back" aria-label="Back">${icon('left')}</button>`);
   refreshRecovery();
   tour.maybe();
   if (ui.tab === 'summary' && ui.summaryFresh) countUp();
@@ -2428,6 +2437,9 @@ const actions = {
   'ask-no': () => answerAsk(false),
   'goto-plan-day': (d) => { closeSheet(); ui.tab = 'plan'; ui.planDay = d.day; ui.planView = 'day'; window.scrollTo(0, 0); render(); },
   'plan-open-day': (d) => { ui.planDay = d.day; ui.planView = 'day'; window.scrollTo(0, 0); render(); },
+  'reach-back': () => $('#main header.top .back')?.click(),
+  'wk-ahead': (d) => { ui.weekAhead = Math.max(0, Math.min(8, (ui.weekAhead || 0) + +d.v)); render(); },
+  'wk-peek': (d) => { openSheet(weekPeek(A, d.day, +d.off)); },
   'plan-back': () => { ui.planView = 'week'; window.scrollTo(0, 0); render(); },
   'progress-view': (d) => { ui.tab = d.v; ui.historyEx = null; window.scrollTo(0, 0); render(); },
   'start-empty': () => { if (db.activeSession) return toast('Finish or discard the current workout first.'); db.settings.welcomed = true; startSession(ui.day, true); render(); openPicker({ mode: 'session-add' }); },
@@ -2717,7 +2729,8 @@ const actions = {
     const grp = groupsOf(items).find((g) => g.items.some((x) => x.uid === d.uid));
     const target = grp?.linked ? grp.items[grp.items.length - 1].uid : d.uid;
     const it = list.find((x) => x.uid === target);
-    if (it) it.restSec = +d.v;
+    if (!it) { closeSheet(); return toast("This exercise isn't part of a saved plan."); }
+    it.restSec = +d.v;
     persist(); closeSheet(); render(); toast(+d.v ? `Rest set to ${fmtRest(+d.v)}.` : 'Rest timer off.');
   },
   'block-focus': (d) => openFocusPicker(+d.i),
@@ -3250,6 +3263,7 @@ const actions = {
   'pk-custom': (d) => exEditor.open({ name: d.name || picker.q.trim(), then: (id) => { renderPickerList(); actions.pick({ id }); } }),
   'ex-edit': (d) => exEditor.open({ id: d.id }),
   'ex-new': () => exEditor.open({}),
+  'pk-rare': () => { picker.showRare = !picker.showRare; renderPickerList(); },
   'pk-hidden': () => { picker.showHidden = !picker.showHidden; renderPickerList(); },
   pick: async (d) => {
     const ex = db.exercises[d.id];

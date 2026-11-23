@@ -12,6 +12,7 @@
 // Anything else becomes your own exercise, with its muscles worked out from the name.
 
 import { KG } from './units.js';
+import { EXTRA_FITBOD } from './bank-extra.js';
 
 export const FITBOD_NAMES = {
   'Barbell Bench Press': 'bench-press', 'Barbell Incline Bench Press': 'incline-bench', 'Barbell Decline Bench Press': 'decline-bench', 'Close-Grip Bench Press': 'close-grip-bench',
@@ -44,6 +45,7 @@ export const FITBOD_NAMES = {
   'Tricep Stretch': 'stretch-triceps', 'Chest Doorway Stretch': 'corner-pec-stretch', 'Wall Pectoral Stretch': 'stretch-chest', 'Cross-body Arm Stretch': 'stretch-crossbody', 'Couch Stretch': 'stretch-couch', 'Pigeon Pose': 'stretch-pigeon', 'Cat Cow': 'stretch-catcow', 'Downward Dog': 'stretch-down-dog', "Child's Pose": 'stretch-child', 'Lying Figure Four': 'stretch-figure4', 'Seated Figure Four': 'stretch-figure4',
   'Butterfly Stretch': 'stretch-butterfly', 'Frog Stretch': 'stretch-frog', 'Kneeling Hip Flexor Stretch': 'kneeling-hip-flexor', 'Knee to Chest Stretch': 'knee-to-chest', 'Seated Forward Bend': 'seated-forward-fold', 'Side Bend Stretch': 'side-stretch', 'Lateral Lunge Stretch': 'lateral-lunge-stretch', 'Seated Neck Release Stretch': 'neck-stretch', 'Open Book Stretch': 'open-book',
   'Foam Roll Lats': 'roll-lats', 'Foam Roll Upper Back': 'roll-upper-back', 'Foam Roll Quadriceps': 'roll-quads', 'Foam Roll Hamstrings': 'roll-hamstrings', 'Foam Roll Glutes': 'roll-glutes', 'Foam Roll Hip Adductors': 'roll-adductors',
+  ...EXTRA_FITBOD,
 };
 
 const CARDIO_NAMES = { running: 'run', swimming: 'swim' };
@@ -105,4 +107,24 @@ export function customExercise(id, name, sets) {
     id, name, type, category: mobile ? 'conditioning' : big ? 'compound' : 'accessory', primary: rule ? rule[1] : ['abs'], secondary: rule ? rule[2] : [],
     pattern: mobile ? 'mobility' : '', increment: type === 'dumbbell' ? 5 : 5, ...(timed || mobile ? { metric: timed ? 'time' : 'reps' } : {}), ...(type === 'bodyweight' && !weighted ? { noLoad: true } : {}), custom: true, imported: true,
   };
+}
+
+// An earlier import filed some exercises as custom. Now that the library has them, move that
+// history onto the library exercise and remove the leftover custom one. Safe to run every start.
+export function relinkFitbod(db) {
+  const moved = {};
+  for (const ex of Object.values(db.exercises)) {
+    const to = ex.imported && String(ex.id).startsWith('imp-') ? FITBOD_NAMES[ex.name] : null;
+    if (to && db.exercises[to]) moved[ex.id] = to;
+  }
+  if (!Object.keys(moved).length) return 0;
+  for (const s of db.sessions || []) for (const e of s.entries || []) {
+    const to = moved[e.exerciseId];
+    if (!to) continue;
+    e.exerciseId = to;
+    if (!e.metric && (db.exercises[to].metric || 'reps') !== 'reps') e.metric = 'reps';
+  }
+  const inUse = JSON.stringify([db.plan, db.week, db.activeSession, db.routines]);
+  for (const id of Object.keys(moved)) if (!inUse.includes(`"${id}"`)) delete db.exercises[id];
+  return Object.keys(moved).length;
 }

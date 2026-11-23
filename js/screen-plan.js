@@ -3,7 +3,7 @@
 // setters for variables), so db and the rest stay shared with app.js.
 import { icon } from './icons.js';
 import { DAY_NAMES, PROGRESSIONS, dayKeyOf, dayPlan, getState, groupNum, resolveDay, weekOverride } from './engine.js';
-import { mondayOf, todayStr, weekOrder } from './store.js';
+import { addDays, mondayOf, todayStr, weekOrder } from './store.js';
 import { dayMode } from './fatigue.js';
 import { estimateMinutes } from './builder.js';
 import { blockInfo } from './blocks.js';
@@ -45,7 +45,31 @@ export function createPlanScreens(A) {
     return planDay();
   }
 
+  // A future week, read only: the plan as it stands, with that week's block and deload.
+  function futureWeek(off) {
+    const start = addDays(mondayOf(todayStr()), off * 7);
+    const b = blockInfo(A.db, start);
+    const rows = weekOrder().map((d) => {
+      const mode = A.db.settings.dayModes?.[d] || (A.db.plan[d] ? 'lift' : 'rest');
+      const p = A.db.plan[d];
+      const lift = p?.items?.length && (mode === 'lift' || mode === 'both');
+      const name = lift ? A.esc(p.name) : mode === 'cardio' ? 'Cardio' : 'Rest';
+      const sub = lift ? `${p.items.length} exercises · ~${estimateMinutes(p.items)} min${mode === 'both' ? ' + cardio' : ''}` : '';
+      return lift
+        ? `<button class="list-row week-row" data-a="wk-peek" data-day="${d}" data-off="${off}"><span class="wd">${DAY_NAMES[d]}</span><span class="grow"><b>${name}</b><span class="pick-sub">${sub}</span></span>${icon('right', 'chev')}</button>`
+        : `<div class="list-row week-row"><span class="wd">${DAY_NAMES[d]}</span><span class="grow"><b>${name}</b></span></div>`;
+    }).join('');
+    return `<p class="muted small week-note">Block ${b.index} · week ${b.weekInBlock} of ${b.n}${b.isDeload ? ' · <b>Deload week</b>' : ''}</p><div class="list-group">${rows}</div>`;
+  }
+  const weekLabel = (off) => (off === 0 ? 'This week' : off === 1 ? 'Next week' : `In ${off} weeks`);
+  const shortDate = (d) => new Date(`${d}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  const weekNav = (off) => {
+    const start = addDays(mondayOf(todayStr()), off * 7);
+    return `<div class="week-nav"><button class="icon-btn" data-a="wk-ahead" data-v="-1" aria-label="Earlier week" ${off ? '' : 'disabled'}>${icon('left')}</button><div class="grow"><h2>${weekLabel(off)}</h2><span class="muted small">${shortDate(start)} to ${shortDate(addDays(start, 6))}</span></div><button class="icon-btn" data-a="wk-ahead" data-v="1" aria-label="Later week" ${off >= 8 ? 'disabled' : ''}>${icon('right')}</button></div>`;
+  };
+
   function planWeek() {
+    const ahead = A.ui.weekAhead || 0;
     const today = dayKeyOf(todayStr());
     const adjusted = A.db.week?.start === mondayOf(todayStr());
     const rows = weekOrder().map((d) => {
@@ -62,10 +86,11 @@ export function createPlanScreens(A) {
     const rv = weekReview(A.db);
     const nSug = rv.items.filter((x) => x.action).length;
     return `<header class="top"><h1 class="grow">Plan</h1></header>
-      <div class="section-title"><h2>This week</h2><div class="row">${adjusted ? '<button class="link-btn" data-a="wk-reset">Reset</button>' : ''}<button class="link-btn" data-a="wk-open">Adjust</button></div></div>
-      ${adjusted ? '<p class="muted small week-note">Adjusted for this week only.</p>' : ''}
+      ${weekNav(ahead)}
+      ${ahead ? '' : `<div class="week-tools">${adjusted ? '<button class="link-btn" data-a="wk-reset">Reset</button>' : ''}<button class="link-btn" data-a="wk-open">Adjust</button></div>`}
+      ${!ahead && adjusted ? '<p class="muted small week-note">Adjusted for this week only.</p>' : ''}
       ${Object.keys(A.db.plan || {}).length ? '' : '<div class="notice-card"><b>No plan yet</b><p class="small">Answer three questions and Lift builds your week, or tap a day below to set it up yourself.</p><div class="row"><button class="btn primary" data-a="quick-build">Build my plan</button></div></div>'}
-      <div class="list-group">${rows}</div>
+      ${ahead ? futureWeek(ahead) : `<div class="list-group">${rows}</div>`}
       <h2 class="group-title">Program</h2>
       <div class="list-group">
         <button class="list-row" data-a="plan-view" data-v="program"><span class="grow"><b>Block ${b.index} · week ${b.weekInBlock} of ${b.n}</b><span class="pick-sub">Focus lifts, deloads, progression</span></span>${icon('right', 'chev')}</button>
@@ -289,4 +314,23 @@ export function createPlanScreens(A) {
   }
 
   return { builderEntry, planViewTabs, subHeader, screenPlan, planWeek, planProgram, planDay, openPlanEdit, muscleChips, chosenMuscles, fillMeta, savePlanEdit };
+}
+
+// One day of a future week, read only.
+export function weekPeek(A, day, off) {
+  const start = addDays(mondayOf(todayStr()), off * 7);
+  const date = addDays(start, weekOrder().indexOf(day));
+  const p = A.db.plan[day];
+  const b = blockInfo(A.db, start);
+  const items = resolveDay(A.db, day, { template: true });
+  const rows = items.map((it) => {
+    const metric = it.metric || it.ex.metric || 'reps';
+    const dose = metric === 'reps' ? `${it.sets} × ${it.repMin === it.repMax ? it.repMin : `${it.repMin}–${it.repMax}`}` : `${it.sets} × ${fmtTarget(metric, it.target)}`;
+    return `<div class="kv"><span>${A.esc(it.ex.name)}</span><b>${dose}</b></div>`;
+  }).join('');
+  return `<h2>${A.esc(p?.name || 'Workout')}</h2>
+    <p class="muted small">${new Date(`${date}T12:00:00`).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })}${b.isDeload ? ' · Deload week, lighter weights' : ''}</p>
+    <div class="kv-list">${rows}</div>
+    <p class="muted small">Weights are set from your latest workouts when the day arrives. Changes to your plan show here too.</p>
+    <button class="btn block" data-a="close-sheet">Close</button>`;
 }
