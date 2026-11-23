@@ -433,14 +433,14 @@ const MAX_IMPORT_BYTES = 60 * 1024 * 1024;
 export function parseBackup(text) {
   if (text.length > MAX_IMPORT_BYTES) throw new Error('That file is too large to be a backup.');
   const data = JSON.parse(text);
-  if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('This file is not a Lift Tracker backup.');
+  if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('This file is not a ProFitz (working title) backup.');
   return data;
 }
 
 // Validates and upgrades a parsed backup. Returns { db, photos } where photos is [{ id, dataUrl }].
 export function importData(data) {
   if (!data.schemaVersion || typeof data.plan !== 'object' || typeof data.exercises !== 'object') {
-    throw new Error('This file is not a Lift Tracker backup.');
+    throw new Error('This file is not a ProFitz (working title) backup.');
   }
   if (data.schemaVersion > SCHEMA_VERSION) throw new Error('This backup is from a newer version of the app.');
   for (const k of ['sessions', 'bodyweight', 'cardio']) {

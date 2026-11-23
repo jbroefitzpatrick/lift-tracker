@@ -30,7 +30,7 @@ export function createHealth(ctx) {
     </ol>
     <p class="muted small">Why the last step: when two sources (say your iPhone and Shortcuts) both record calories for the same minutes, Health counts only the one highest in that list. Your iPhone keeps logging calories from your steps, so without this the workout's calories can show up at first and then drop out of your total once the iPhone's own numbers sync. They're never deleted: Active Energy → <b>Show All Data</b> still lists them.</p>
     <p class="muted small">Wearing an Apple Watch that tracked the workout? Skip sending: the Watch already counted it, and sending adds it twice.</p>
-    <p class="muted small">After that, tapping "Send to Apple Health" opens Shortcuts for a second, saves the calories, and you can swipe back to Lift. If nothing is saved, check the shortcut's name matches exactly.</p>`;
+    <p class="muted small">After that, tapping "Send to Apple Health" opens Shortcuts for a second, saves the calories, and you can swipe back to ProFitz (working title). If nothing is saved, check the shortcut's name matches exactly.</p>`;
   }
 
   // The first time: setup steps, with the option to send now and to stop showing them.

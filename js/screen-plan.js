@@ -89,7 +89,7 @@ export function createPlanScreens(A) {
       ${weekNav(ahead)}
       ${ahead ? '' : `<div class="week-tools">${adjusted ? '<button class="link-btn" data-a="wk-reset">Reset</button>' : ''}<button class="link-btn" data-a="wk-open">Adjust</button></div>`}
       ${!ahead && adjusted ? '<p class="muted small week-note">Adjusted for this week only.</p>' : ''}
-      ${Object.keys(A.db.plan || {}).length ? '' : '<div class="notice-card"><b>No plan yet</b><p class="small">Answer three questions and Lift builds your week, or tap a day below to set it up yourself.</p><div class="row"><button class="btn primary" data-a="quick-build">Build my plan</button></div></div>'}
+      ${Object.keys(A.db.plan || {}).length ? '' : '<div class="notice-card"><b>No plan yet</b><p class="small">Answer three questions and ProFitz (working title) builds your week, or tap a day below to set it up yourself.</p><div class="row"><button class="btn primary" data-a="quick-build">Build my plan</button></div></div>'}
       ${ahead ? futureWeek(ahead) : `<div class="list-group">${rows}</div>`}
       <h2 class="group-title">Program</h2>
       <div class="list-group">

@@ -1,7 +1,7 @@
 {
-  "name": "Lift Tracker",
-  "short_name": "Lift",
-  "description": "Personal lifting tracker with built-in progression.",
+  "name": "ProFitz (working title)",
+  "short_name": "ProFitz",
+  "description": "Lifting, cardio and progress, with friends.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

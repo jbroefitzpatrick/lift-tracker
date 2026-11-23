@@ -129,14 +129,14 @@ export function createWorkoutScreens(A) {
   // No plan yet (a new install): two ways to start, nothing else.
   function startScreen() {
     const first = !A.db.settings.welcomed;
-    return `<header class="top"><div class="grow"><h1>${first ? 'Welcome to Lift' : 'Train'}</h1><p class="subtitle">${first ? 'Plan your training and log every set' : 'No plan yet'}</p></div>
+    return `<header class="top"><div class="grow"><h1>${first ? 'Welcome to ProFitz (working title)' : 'Train'}</h1><p class="subtitle">${first ? 'Plan your training and log every set' : 'No plan yet'}</p></div>
         <button class="icon-btn" data-a="open-settings" aria-label="Settings">${icon('gear')}</button></header>
       <section class="start-card">
         <h2>${first ? 'How would you like to start?' : 'Ready when you are'}</h2>
         <button class="start-opt primary" data-a="quick-build"><b>Build my plan</b><span>Four quick questions: goal, experience, days a week and equipment. Change anything later.</span></button>
-        <button class="start-opt" data-a="start-empty"><b>Start a workout</b><span>Add exercises as you go. Lift learns your weights from what you log.</span></button>
+        <button class="start-opt" data-a="start-empty"><b>Start a workout</b><span>Add exercises as you go. ProFitz (working title) learns your weights from what you log.</span></button>
       </section>
-      ${first ? '<p class="muted small center pad">Use Lift on another phone? <button class="text-link" data-a="open-settings" data-page="account">Sign in to sync</button></p>' : ''}`;
+      ${first ? '<p class="muted small center pad">Use ProFitz (working title) on another phone? <button class="text-link" data-a="open-settings" data-page="account">Sign in to sync</button></p>' : ''}`;
   }
 
   function screenToday() {

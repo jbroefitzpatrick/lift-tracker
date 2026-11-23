@@ -86,10 +86,10 @@ export function createPeople(ctx) {
       <p class="small">Your invite code:</p>
       <p class="code-big">${esc(code)}</p>
       <button class="btn primary block big" data-a="ppl-copy-code" data-v="${esc(code)}">Copy code</button>
-      <h3 class="sheet-h">Have Lift on your Home Screen?</h3>
+      <h3 class="sheet-h">Have ProFitz (working title) on your Home Screen?</h3>
       <p class="small">Open it there, go to People and tap <b>Enter an invite code</b>, then <b>Paste</b>. iPhone always opens links in Safari, so the code is how the invite gets to the app.</p>
-      <h3 class="sheet-h">New to Lift?</h3>
-      <p class="small">Tap <b>Share</b> at the bottom of Safari, then <b>Add to Home Screen</b>. Open Lift from there, create an account in Settings → Account and sync, then paste the code in People.</p>
+      <h3 class="sheet-h">New to ProFitz (working title)?</h3>
+      <p class="small">Tap <b>Share</b> at the bottom of Safari, then <b>Add to Home Screen</b>. Open ProFitz (working title) from there, create an account in Settings → Account and sync, then paste the code in People.</p>
       <button class="btn plain block" data-a="ppl-invite-here">Continue in Safari instead</button>`);
   }
 
@@ -127,7 +127,7 @@ export function createPeople(ctx) {
     return (data?.messages || []).filter((m) => m.link === link.id && m.from !== me() && m.created > seen).length;
   };
   const markSeen = (linkId) => { const s = ls.get(SEEN, {}); s[linkId] = Date.now(); ls.set(SEEN, s); };
-  const shareText = (code) => `Join me on Lift Tracker: ${APP_URL}?invite=${code}\nOr open People → Enter a code: ${code}`;
+  const shareText = (code) => `Join me on ProFitz (working title): ${APP_URL}?invite=${code}\nOr open People → Enter a code: ${code}`;
 
   // ---------- Main screen ----------
   function screen() {
@@ -951,8 +951,8 @@ export function createPeople(ctx) {
     },
     'ppl-share-profile': async () => {
       const h = myHandle(); if (!h) return;
-      const text = `Add me on Lift Tracker: @${h}\n${APP_URL}`;
-      try { if (navigator.share) await navigator.share({ title: 'Lift Tracker', text }); else { await navigator.clipboard.writeText(text); ctx.toast('Copied.'); } } catch {}
+      const text = `Add me on ProFitz (working title): @${h}\n${APP_URL}`;
+      try { if (navigator.share) await navigator.share({ title: 'ProFitz (working title)', text }); else { await navigator.clipboard.writeText(text); ctx.toast('Copied.'); } } catch {}
     },
     'ppl-my-profile': () => { ctx.ui.prevTab = ctx.ui.tab; ctx.ui.tab = 'people'; pv().profile = me(); window.scrollTo(0, 0); ctx.render(); },
     'ppl-new': (d) => {
@@ -966,7 +966,7 @@ export function createPeople(ctx) {
     },
     'ppl-new-coach': () => createInvite('coach', readPerms()),
     'ppl-share': async (d) => {
-      try { if (navigator.share) await navigator.share({ title: 'Lift Tracker invite', text: shareText(d.v) }); else { await navigator.clipboard.writeText(shareText(d.v)); ctx.toast('Invite copied.'); } } catch {}
+      try { if (navigator.share) await navigator.share({ title: 'ProFitz (working title) invite', text: shareText(d.v) }); else { await navigator.clipboard.writeText(shareText(d.v)); ctx.toast('Invite copied.'); } } catch {}
     },
     'ppl-invite-cancel': async (d) => { try { await api('/v2/social/invite/cancel', { code: d.v }, { auth: true }); await refresh(); } catch (e) { ctx.toast(e.message); } },
     'ppl-code': () => ctx.openSheet(`<h2>Enter an invite code</h2><div class="field"><div class="row"><input id="ppl-code" class="grow" type="text" autocapitalize="characters" autocomplete="off" placeholder="ABCD-EFGH">${navigator.clipboard?.readText ? '<button class="btn" data-a="ppl-paste">Paste</button>' : ''}</div></div><button class="btn primary block" data-a="ppl-code-go">Continue</button>`),
@@ -979,7 +979,7 @@ export function createPeople(ctx) {
         if (m && el) { el.value = `${m[1]}-${m[2]}`.toUpperCase(); peekInvite(el.value); } else ctx.toast('No invite code on the clipboard.');
       } catch { ctx.toast('Paste it into the box instead (touch and hold, then Paste).'); }
     },
-    'ppl-copy-code': async (d) => { try { await navigator.clipboard.writeText(d.v); ctx.toast('Copied. Now open Lift from your Home Screen.'); } catch { ctx.toast('Touch and hold the code to copy it.'); } },
+    'ppl-copy-code': async (d) => { try { await navigator.clipboard.writeText(d.v); ctx.toast('Copied. Now open ProFitz (working title) from your Home Screen.'); } catch { ctx.toast('Touch and hold the code to copy it.'); } },
     'ppl-invite-here': () => { ctx.closeSheet(); setTimeout(async () => { await refresh(); maybeInvite(); }, 300); },
     'ppl-code-go': () => { const c = document.getElementById('ppl-code')?.value || ''; if (c.replace(/[^A-Za-z0-9]/g, '').length !== 8) return ctx.toast('Invite codes are 8 letters and numbers.'); peekInvite(c); },
     'ppl-accept': async (d) => {

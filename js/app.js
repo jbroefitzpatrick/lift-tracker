@@ -1972,7 +1972,7 @@ function screenSettings() {
       <button class="list-row" data-a="reset-plan"><span class="grow">Load the sample plan</span></button>
       <button class="list-row danger-row" data-a="reset-all"><span class="grow">Erase all data</span></button>
     </div>
-    <p class="muted small center pad">Lift Tracker · ${db.sessions.length} workouts logged</p>` },
+    <p class="muted small center pad">ProFitz (working title) · ${db.sessions.length} workouts logged</p>` },
   };
   const pg = pages[ui.setPage];
   if (pg) return `<header class="top"><button class="back" data-a="settings-back" aria-label="Back">${icon('left')}</button><h1 class="grow">${pg.title}</h1></header>${pg.html}`;
@@ -1999,7 +1999,7 @@ function screenSettings() {
       ${row('tour-replay', '', 'Show the tour again', '')}
       <a class="list-row" href="privacy.html" target="_blank" rel="noopener"><span class="grow"><b>Privacy policy</b></span>${icon('right', 'chev')}</a>
     </div>
-    <p class="muted small center pad">Lift Tracker · ${db.sessions.length} workouts logged</p>`;
+    <p class="muted small center pad">ProFitz (working title) · ${db.sessions.length} workouts logged</p>`;
 }
 
 // ---------- Feature modules ----------

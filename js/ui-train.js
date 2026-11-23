@@ -499,7 +499,7 @@ export function createTrain(ctx) {
     'rg-remove': async () => { if (!(await ctx.ask('Remove the running goal? Logged runs stay in your history.', 'Remove', true))) return; ctx.db.runGoal = null; ctx.persist(); ctx.closeSheet(); ctx.render(); },
     'open-share': () => openShare(),
     'share-app': async () => {
-      try { if (navigator.share) await navigator.share({ title: 'Lift Tracker', text: 'Workout, cardio and nutrition tracker', url: APP_URL }); else { await navigator.clipboard.writeText(APP_URL); ctx.toast('Link copied.'); } } catch {}
+      try { if (navigator.share) await navigator.share({ title: 'ProFitz (working title)', text: 'Workout, cardio and nutrition tracker', url: APP_URL }); else { await navigator.clipboard.writeText(APP_URL); ctx.toast('Link copied.'); } } catch {}
     },
     'install-dismiss': () => { ctx.db.settings.installHintDismissed = true; ctx.persist(); ctx.render(); },
   };

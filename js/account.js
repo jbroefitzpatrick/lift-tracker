@@ -29,7 +29,7 @@ export async function api(path, body, { auth = false, accessKey = false } = {}) 
     // keepalive lets a sync started as the app closes finish, but browsers cap it at 64 KB.
     res = await fetch(`${c.url.replace(/\/+$/, '')}${path}`, { method: text === undefined ? 'GET' : 'POST', headers, body: text, keepalive: !!text && text.length < 60000 });
   } catch {
-    throw new Error('Could not reach the Lift server. Check your connection.');
+    throw new Error('Could not reach the ProFitz (working title) server. Check your connection.');
   }
   const out = await res.json().catch(() => ({}));
   if (res.status === 401 && auth) { saveAccount(null); throw new Error('Signed out. Sign in again to keep syncing.'); }
@@ -43,7 +43,7 @@ async function createPasskey(start) {
   const cred = await navigator.credentials.create({
     publicKey: {
       challenge: b64u.decode(start.challenge),
-      rp: { id: start.rpId, name: 'Lift' },
+      rp: { id: start.rpId, name: 'ProFitz' },
       user: { id: b64u.decode(start.userId), name: start.name, displayName: start.name },
       pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
       authenticatorSelection: { residentKey: 'required', requireResidentKey: true, userVerification: 'preferred' },

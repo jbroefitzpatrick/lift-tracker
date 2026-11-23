@@ -23,7 +23,7 @@ export function pushStatus() {
 export async function enablePush() {
   if (!account()?.token) throw new Error('Sign in first.');
   const perm = await Notification.requestPermission();
-  if (perm !== 'granted') throw new Error(perm === 'denied' ? 'Notifications are blocked. Turn them on in Settings → Notifications → Lift.' : 'Notifications were not allowed.');
+  if (perm !== 'granted') throw new Error(perm === 'denied' ? 'Notifications are blocked. Turn them on in Settings → Notifications → ProFitz.' : 'Notifications were not allowed.');
   const reg = await navigator.serviceWorker.ready;
   const { key } = await api('/v2/push/key', {}, { auth: true });
   if (!key) throw new Error('Notifications are not set up on the server yet.');

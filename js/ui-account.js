@@ -99,7 +99,7 @@ export function createAccountUi(ctx) {
   const typed = { name: '', code: '' };
   function explain(e) {
     if (e.name === 'NotAllowedError') return "The passkey wasn't saved. If you didn't cancel it, check that iCloud Keychain is on: Settings → your name → iCloud → Passwords and Keychain.";
-    if (e.name === 'InvalidStateError') return 'This phone already has a passkey for Lift. Use Sign in with a passkey instead.';
+    if (e.name === 'InvalidStateError') return 'This phone already has a passkey for ProFitz (working title). Use Sign in with a passkey instead.';
     if (e.name === 'SecurityError') return 'Passkeys only work in the app opened from its own address (jbroefitzpatrick.github.io).';
     return e.message || 'Something went wrong. Try again.';
   }
@@ -119,7 +119,7 @@ export function createAccountUi(ctx) {
       try { invited = !!localStorage.getItem('lift.invite'); } catch {}
       return `${invited ? '<div class="notice-card"><b>You have an invite</b><p class="small">Create an account (or sign in) and it opens right after.</p></div>' : ''}<div class="card">
         <p class="small">An account keeps your plan, workouts, food and body data in sync across your phones, and is the first step toward sharing with a trainer or friends. You sign in with a passkey (Face ID); no password.</p>
-        <p class="muted small">Your synced data is stored on the Lift server so it can reach your other devices. Progress photos stay on this phone.</p>
+        <p class="muted small">Your synced data is stored on the ProFitz (working title) server so it can reach your other devices. Progress photos stay on this phone.</p>
       </div>
       <h2 class="group-title">New here</h2>
       <div class="card">
@@ -167,8 +167,8 @@ export function createAccountUi(ctx) {
   function notifRow() {
     const st = pushStatus();
     if (st === 'unsupported') return '';
-    if (st === 'install') return '<div class="card"><b>Notifications</b><p class="small muted">Add Lift to your Home Screen first (Share → Add to Home Screen), then open it from there to turn on rest-timer alerts and coach notes.</p></div>';
-    if (st === 'denied') return '<div class="card"><b>Notifications are blocked</b><p class="small muted">Allow them in the iPhone Settings app → Notifications → Lift.</p></div>';
+    if (st === 'install') return '<div class="card"><b>Notifications</b><p class="small muted">Add ProFitz (working title) to your Home Screen first (Share → Add to Home Screen), then open it from there to turn on rest-timer alerts and coach notes.</p></div>';
+    if (st === 'denied') return '<div class="card"><b>Notifications are blocked</b><p class="small muted">Allow them in the iPhone Settings app → Notifications → ProFitz.</p></div>';
     return `<div class="list-group"><label class="list-row toggle"><span class="grow"><b>Notifications</b><span class="pick-sub">Rest timer when the phone is locked, coach notes, challenges</span></span><input type="checkbox" data-a="acct-push" ${st === 'on' ? 'checked' : ''}></label>
       ${st === 'on' ? '<button class="list-row" data-a="acct-push-test"><span class="grow">Send a test notification</span></button>' : ''}</div>`;
   }
