@@ -1,6 +1,8 @@
 // Minimal SVG line chart: one y-axis, up to 2 series, crosshair + tooltip on touch/hover.
 // points: [{ x: 'YYYY-MM-DD', values: [v1, v2] }]; series: [{ name, cls }]
 
+import { trendLine, dayNum } from './lift-metrics.js';
+
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 function niceTicks(min, max, count = 4) {
@@ -88,4 +90,46 @@ export function lineChart(el, { points, series, unit = 'lb', height = 200 }) {
   svg.addEventListener('pointerdown', show);
   svg.addEventListener('pointermove', show);
   svg.addEventListener('pointerleave', hide);
+}
+
+// Workouts as points, with the average trend as the line. The x-axis is real time, so gaps show.
+// points: [{ x: 'YYYY-MM-DD', v, ... }]. compact: no scrubbing. onPick(point): the selected point.
+export function trendChart(el, { points, name = '', fmt = (v) => String(Math.round(v)), height = 200, compact = false, onPick = null }) {
+  const pts = points.filter((p) => Number.isFinite(p.v) && p.v > 0).map((p) => ({ ...p, t: dayNum(p.x) }));
+  if (!pts.length) { el.innerHTML = '<p class="muted small">No data in this range.</p>'; return; }
+  const W = 360; const H = height;
+  const pad = { l: 44, r: 12, t: 12, b: 24 };
+  const ticks = niceTicks(Math.min(...pts.map((p) => p.v)), Math.max(...pts.map((p) => p.v)));
+  const yMin = ticks[0]; const yMax = ticks[ticks.length - 1];
+  const t0 = pts[0].t; const t1 = pts[pts.length - 1].t; const span = t1 - t0;
+  const X = (t) => (span ? pad.l + ((t - t0) / span) * (W - pad.l - pad.r) : (pad.l + W - pad.r) / 2);
+  const Y = (v) => pad.t + (1 - (v - yMin) / (yMax - yMin || 1)) * (H - pad.t - pad.b);
+  const grid = ticks.map((t) => `<line class="grid" x1="${pad.l}" x2="${W - pad.r}" y1="${Y(t)}" y2="${Y(t)}"/><text class="axis" x="${pad.l - 6}" y="${Y(t) + 4}" text-anchor="end">${esc(fmt(t))}</text>`).join('');
+  const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const dateLabel = (t) => { const [yy, m, d] = new Date(t * 864e5).toISOString().slice(0, 10).split('-'); return span > 300 ? `${MON[m - 1]} '${yy.slice(2)}` : `${MON[m - 1]} ${Number(d)}`; };
+  const marks = span ? [t0, t0 + span / 2, t1] : [t0]; // evenly spaced in time
+  const xLabels = marks.map((t, i) => `<text class="axis" x="${X(t)}" y="${H - 6}" text-anchor="${marks.length > 1 && i === 0 ? 'start' : marks.length > 1 && i === 2 ? 'end' : 'middle'}">${dateLabel(t)}</text>`).join('');
+  let d = ''; let pen = false;
+  for (const p of trendLine(pts)) { if (p.v == null) { pen = false; continue; } d += `${pen ? 'L' : 'M'}${X(p.t).toFixed(1)},${Y(p.v).toFixed(1)}`; pen = true; }
+  const r = pts.length > 150 ? 1.7 : pts.length > 60 ? 2.3 : 3.2;
+  const dots = pts.map((p) => `<circle class="pt" cx="${X(p.t).toFixed(1)}" cy="${Y(p.v).toFixed(1)}" r="${r}"/>`).join('');
+  el.innerHTML = `${compact ? '' : '<div class="legend trend-legend"><span><i class="lg-pt"></i>Workouts</span><span><i class="lg-line"></i>Average trend</span></div>'}
+    <div class="chart-wrap"><svg viewBox="0 0 ${W} ${H}" class="chart trend-chart" role="img" aria-label="${esc(name)}: ${pts.length} workouts with an average trend line">
+      ${grid}${xLabels}${dots}${d ? `<path class="trend" d="${d}"/>` : ''}
+      ${compact ? '' : `<line class="crosshair" y1="${pad.t}" y2="${H - pad.b}" x1="0" x2="0" style="display:none"/><circle class="pt-on" r="5.5" style="display:none"/><rect class="hit" x="${pad.l}" y="0" width="${W - pad.l - pad.r}" height="${H}" fill="transparent"/>`}
+    </svg></div>`;
+  if (compact) return;
+  const svg = el.querySelector('svg'); const cross = el.querySelector('.crosshair'); const on = el.querySelector('.pt-on');
+  const select = (p) => {
+    for (const [k, v] of [['x1', X(p.t)], ['x2', X(p.t)]]) cross.setAttribute(k, v);
+    cross.style.display = ''; on.setAttribute('cx', X(p.t)); on.setAttribute('cy', Y(p.v)); on.style.display = '';
+    onPick?.(p);
+  };
+  const pick = (evt) => {
+    const b = svg.getBoundingClientRect(); const sx = ((evt.clientX - b.left) / b.width) * W;
+    select(pts.reduce((a, p) => (Math.abs(X(p.t) - sx) < Math.abs(X(a.t) - sx) ? p : a)));
+  };
+  svg.addEventListener('pointerdown', pick);
+  svg.addEventListener('pointermove', (e) => { if (e.pointerType !== 'mouse' || e.buttons) pick(e); });
+  select(pts[pts.length - 1]);
 }

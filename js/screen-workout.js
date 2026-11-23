@@ -714,6 +714,7 @@ export function createWorkoutScreens(A) {
       ${A.ui.summaryFresh ? A.extras.summaryBackupCard() : ''}
       <details class="card note-card" ${s.note ? 'open' : ''}><summary>${s.note ? 'Note' : 'Add a note'}</summary><textarea id="session-note" data-sid="${s.id}" rows="3" placeholder="How did it go?">${A.esc(s.note || '')}</textarea></details>
       ${A.health.button(s)}
+      ${A.peopleOn() ? `<button class="btn block" data-a="ppl-post-session" data-id="${s.id}">Post a lift or run</button>` : ''}
       <div class="row"><button class="btn grow" data-a="share-session" data-id="${s.id}">Share</button><button class="btn grow" data-a="session-more" data-id="${s.id}">More</button></div>
       <button class="btn primary block" data-a="tab" data-tab="${A.ui.summaryFresh ? 'today' : 'history'}">Done</button>
       ${A.canReopen(s.id) ? '<button class="text-link center-link" data-a="resume-finished">Resume workout</button>' : ''}`;

@@ -12,6 +12,7 @@ import { APP_URL } from './ui-train.js';
 import { CONTEST_KINDS, SCORED_KINDS, metricValue } from './big-goal.js';
 import { loadArt } from './equipment.js';
 import { activeGym } from './gym.js';
+import { activities, activityItems, buildHighlight, highlightHtml, highlightPayload, modesFor, runFields } from './post-highlight.js';
 
 const CACHE = 'lift.social';
 const isIos = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -289,12 +290,14 @@ export function createPeople(ctx) {
     }
     return items.sort((x, y) => y.sort - x.sort);
   }
+  const hlHtml = (hl) => highlightHtml(hl, { esc, wt, wtEst, toDisp, fmtDate: ctx.fmtDate, art: (id, w) => (ctx.db.exercises?.[id] ? loadArt(ctx.db.exercises[id], w, activeGym(ctx.db)) : '') });
   function postBody(p) {
     const d = p.data || {};
     let metric = '';
     const art = p.kind === 'record' && d.weight && ctx.db.exercises?.[d.exId] ? loadArt(ctx.db.exercises[d.exId], d.weight, activeGym(ctx.db)) : '';
     if (p.kind === 'record') metric = `<div class="post-metric ${art ? 'has-art' : ''}">${art}<span class="pm-label">New best · ${esc(d.name || '')}</span><b class="num">${d.weight ? `${wt(d.weight)} × ${d.reps}` : d.pct ? `+${d.pct}%` : ''}</b>${d.weight && d.e1rm ? `<span class="pm-sub">Est. max ${wtEst(d.e1rm)}${d.pct ? ` · up ${d.pct}%` : ''}</span>` : ''}</div>`;
     else if (p.kind === 'progress') metric = `<div class="post-metric"><span class="pm-label">${esc(d.name || '')} · ${d.weeks || 8} weeks</span><b class="num">${d.pct > 0 ? '+' : ''}${d.pct}%</b>${d.now ? `<span class="pm-sub">Est. max now ${wtEst(d.now)}</span>` : ''}</div>`;
+    else if (p.kind === 'workout' && d.hl) metric = hlHtml(d.hl);
     else if (p.kind === 'workout') metric = `<div class="post-metric"><span class="pm-label">Workout · ${esc(d.date ? ctx.fmtDate(d.date) : '')}</span><b>${esc(d.name || 'Workout')}</b><span class="pm-sub">${d.sets || 0} sets${d.minutes ? ` · ${d.minutes} min` : ''}${d.prs ? ` · ${d.prs} ${d.prs === 1 ? 'record' : 'records'}` : ''}</span></div>`;
     const media = (p.media || []).map((m) => (m.kind === 'video'
       ? `<video class="post-media" src="${mediaUrl(p.user.id, m)}" controls playsinline preload="metadata"></video>`
@@ -388,6 +391,36 @@ export function createPeople(ctx) {
     const prog = progressOf(card).lifts.slice(0, 8).map((l) => ({ ...l, now: Math.max(...(card.lifts[l.id]?.pts || [[0, 0]]).slice(-2).map((p) => p[1])) }));
     return { records, workouts, prog };
   }
+  // Choose a workout or run, the lift in it, and what to show.
+  const hlItems = (c) => activityItems(ctx.db, c.hlSrc);
+  const hlBuilt = (c) => buildHighlight(hlItems(c)[c.hlItem || 0], { mode: c.hlMode, set: c.hlSet || 0, show: c.hlShow || {} });
+  function highlightPicker(c) {
+    const acts = activities(ctx.db);
+    if (!acts.length) return '<p class="muted small">Finish a workout or log a run to post it.</p>';
+    if (!c.hlSrc || !acts.some((a) => a.id === c.hlSrc) && !hlItems(c).length) c.hlSrc = acts[0].id;
+    const full = acts.some((a) => a.id === c.hlSrc) ? acts : [...acts, { id: c.hlSrc, name: 'This workout', date: hlItems(c)[0]?.date }];
+    // The latest few, with the chosen one always showing.
+    const list = c.hlAll ? full : [...full.slice(0, 3), ...full.slice(3).filter((a, i) => a.id === c.hlSrc || (i === 0 && !full.slice(3).some((b) => b.id === c.hlSrc)))];
+    const items = hlItems(c);
+    const item = items[Math.min(c.hlItem || 0, items.length - 1)];
+    const chip = (a, v, l, on) => `<button class="chip ${on ? 'on' : ''}" data-a="${a}" data-v="${esc(v)}" aria-pressed="${!!on}">${l}</button>`;
+    const group = (t, html) => `<div class="field"><span>${t}</span><div class="chips wrap">${html}</div></div>`;
+    let how = '';
+    if (item?.kind === 'lift') {
+      const modes = modesFor(item);
+      const mode = modes.some(([k]) => k === c.hlMode) ? c.hlMode : item.isNew ? 'max' : 'sets';
+      how = group('What to show', modes.map(([k, l]) => chip('ppl-hl-mode', k, l, k === mode)).join(''));
+      if (mode === 'set') how += group('Which set', item.sets.map((s, i) => chip('ppl-hl-set', i, s[2] ? `${s[2]} sec` : s[0] ? `${toDisp(s[0])} × ${s[1]}` : `${s[1]} reps`, i === Math.min(c.hlSet || 0, item.sets.length - 1))).join(''));
+    } else if (item) {
+      const f = runFields(item);
+      how = f.length ? group('What to show', f.map(([k, l]) => chip('ppl-hl-show', k, l, (c.hlShow || {})[k] !== false)).join('')) : '<p class="muted small">Add a distance or time to this run to post it.</p>';
+    }
+    const built = hlBuilt(c);
+    return `${group('Workout or run', list.map((a) => chip('ppl-hl-src', a.id, `${esc(ctx.fmtDate(a.date))} · ${esc(a.name)}`, a.id === c.hlSrc)).join('') + (full.length > 4 ? `<button class="chip" data-a="ppl-hl-more">${c.hlAll ? 'Fewer' : 'More'}</button>` : ''))}
+      ${items.length > 1 ? group('Lift or run', items.map((x, i) => chip('ppl-hl-item', i, esc(x.name), i === (c.hlItem || 0))).join('')) : ''}
+      ${how}
+      ${built ? `<div class="hl-preview"><span class="pick-sub">Preview</span>${hlHtml(built)}</div>` : ''}`;
+  }
   function composeSheet() {
     const c = pv().compose;
     const ch = shareChoices();
@@ -397,13 +430,14 @@ export function createPeople(ctx) {
     if (c.kind === 'record') body = ch.records.length ? pick(ch.records, (r) => `<b>${esc(r.name)}</b><span class="pick-sub">${wt(r.weight)} × ${r.reps} · ${ctx.fmtDate(r.date)}${r.pct ? ` · up ${r.pct}%` : ''}</span>`) : '<p class="muted small">No new bests in the last few weeks yet.</p>';
     if (c.kind === 'workout') body = pick(ch.workouts, (w) => `<b>${esc(w.name)}</b><span class="pick-sub">${ctx.fmtDate(w.date)} · ${w.sets} sets${w.prs ? ` · ${w.prs} records` : ''}</span>`);
     if (c.kind === 'progress') body = ch.prog.length ? pick(ch.prog, (l) => `<b>${esc(l.name)}</b><span class="pick-sub">${l.pct > 0 ? '+' : ''}${l.pct.toFixed(1)}% over about 8 weeks</span>`) : '<p class="muted small">Log a few weeks of a lift to share its progress.</p>';
+    if (c.kind === 'highlight') body = highlightPicker(c);
     const picked = c.kind === 'record' ? ch.records[c.ref] : null;
     const pickedArt = picked && c.showWeight && ctx.db.exercises?.[picked.exId] ? loadArt(ctx.db.exercises[picked.exId], picked.weight, activeGym(ctx.db)) : '';
     if (pickedArt) body += `<div class="post-metric has-art">${pickedArt}<span class="pm-label">New best · ${esc(picked.name)}</span><b class="num">${wt(picked.weight)} × ${picked.reps}</b>${picked.pct ? `<span class="pm-sub">Up ${picked.pct}%</span>` : ''}</div>`;
     const weightToggle = c.kind === 'record' || c.kind === 'progress' ? `<label class="list-row toggle"><span class="grow">Show the weight<span class="pick-sub">Off shows only the percentage</span></span><input type="checkbox" data-a="ppl-c-weight" ${c.showWeight ? 'checked' : ''}></label>` : '';
     const files = (c.files || []).map((f, i) => `<div class="cf-thumb">${f.kind === 'video' ? `<video src="${f.url}" muted playsinline></video>` : `<img src="${f.url}" alt="">`}<button class="cf-x" data-a="ppl-c-file-del" data-v="${i}" aria-label="Remove">${icon('x')}</button></div>`).join('');
     ctx.openSheet(`<h2>Share</h2>
-      <div class="chips wrap">${chip('record', 'New best', ch.records.length)}${chip('workout', 'Workout', ch.workouts.length)}${chip('progress', 'Progress', ch.prog.length)}${chip('note', 'Photo or note')}</div>
+      <div class="chips wrap">${chip('record', 'New best', ch.records.length)}${chip('highlight', 'Lift or run', activities(ctx.db).length)}${chip('workout', 'Workout', ch.workouts.length)}${chip('progress', 'Progress', ch.prog.length)}${chip('note', 'Photo or note')}</div>
       ${body}
       ${weightToggle ? `<div class="list-group">${weightToggle}</div>` : ''}
       <div class="field"><textarea id="ppl-c-text" rows="2" maxlength="1000" placeholder="Say something (optional)">${esc(c.text || '')}</textarea></div>
@@ -902,6 +936,19 @@ export function createPeople(ctx) {
       const i = recentRecords(ctx.db).findIndex((r) => r.sessionId === d.sid);
       openCompose({ kind: 'record', ref: Math.max(0, i) });
     },
+    'ppl-post-session': (d) => openCompose({ kind: 'highlight', hlSrc: `s:${d.id}` }),
+    'ppl-hl-src': (d) => { const c = pv().compose; c.text = document.getElementById('ppl-c-text')?.value || c.text; Object.assign(c, { hlSrc: d.v, hlItem: 0, hlMode: null, hlSet: 0, hlShow: {} }); composeSheet(); },
+    'ppl-hl-more': () => { const c = pv().compose; c.text = document.getElementById('ppl-c-text')?.value || c.text; c.hlAll = !c.hlAll; composeSheet(); },
+    'ppl-hl-item': (d) => { const c = pv().compose; c.text = document.getElementById('ppl-c-text')?.value || c.text; Object.assign(c, { hlItem: +d.v, hlMode: null, hlSet: 0, hlShow: {} }); composeSheet(); },
+    'ppl-hl-mode': (d) => { const c = pv().compose; c.text = document.getElementById('ppl-c-text')?.value || c.text; c.hlMode = d.v; composeSheet(); },
+    'ppl-hl-set': (d) => { const c = pv().compose; c.text = document.getElementById('ppl-c-text')?.value || c.text; c.hlSet = +d.v; composeSheet(); },
+    'ppl-hl-show': (d) => {
+      const c = pv().compose; c.text = document.getElementById('ppl-c-text')?.value || c.text;
+      const show = { ...(c.hlShow || {}) }; show[d.v] = show[d.v] === false;
+      const item = hlItems(c)[c.hlItem || 0];
+      if (!runFields(item).some(([k]) => show[k] !== false)) return ctx.toast('Keep at least one.');
+      c.hlShow = show; composeSheet();
+    },
     'ppl-c-kind': (d) => { const c = pv().compose; c.text = document.getElementById('ppl-c-text')?.value || c.text; c.kind = d.v; c.ref = 0; composeSheet(); },
     'ppl-c-ref': (d) => { const c = pv().compose; c.text = document.getElementById('ppl-c-text')?.value || c.text; c.ref = +d.v; composeSheet(); },
     'ppl-c-weight': (d, el) => { pv().compose.showWeight = el.checked; },
@@ -915,12 +962,13 @@ export function createPeople(ctx) {
       if (c.kind === 'record') { const r = ch.records[c.ref]; if (!r) return ctx.toast('Pick a record.'); payload = { exId: r.exId, name: r.name, date: r.date, pct: r.pct, ...(c.showWeight ? { weight: r.weight, reps: r.reps, e1rm: r.e1rm } : {}) }; }
       if (c.kind === 'workout') { const w = ch.workouts[c.ref]; if (!w) return ctx.toast('Pick a workout.'); payload = { name: w.name, date: w.date, sets: w.sets, minutes: w.minutes, prs: w.prs }; }
       if (c.kind === 'progress') { const p = ch.prog[c.ref]; if (!p) return ctx.toast('Pick a lift.'); payload = { exId: p.id, name: p.name, pct: Math.round(p.pct * 10) / 10, weeks: 8, ...(c.showWeight ? { now: Math.round(p.now) } : {}) }; }
+      if (c.kind === 'highlight') { const hl = hlBuilt(c); if (!hl) return ctx.toast('Pick something to post.'); payload = highlightPayload(hl); }
       if (c.kind === 'note' && !c.text.trim() && !c.files.length) return ctx.toast('Add a photo or a few words.');
       el.disabled = true; el.textContent = c.files.length ? 'Uploading…' : 'Posting…';
       try {
         const media = [];
         for (const f of c.files) media.push(await upload(f));
-        await api('/v2/social/post', { kind: c.kind, data: payload, text: c.text, media, to: c.to || undefined }, { auth: true });
+        await api('/v2/social/post', { kind: c.kind === 'highlight' ? 'workout' : c.kind, data: payload, text: c.text, media, to: c.to || undefined }, { auth: true });
         for (const f of c.files) URL.revokeObjectURL(f.url);
         pv().compose = null; ctx.closeSheet(); await refresh(); ctx.toast(c.to ? `Shared with ${nameOf(c.to)}.` : 'Shared with your friends.');
       } catch (e) { el.disabled = false; el.textContent = 'Post'; ctx.toast(e.message); }

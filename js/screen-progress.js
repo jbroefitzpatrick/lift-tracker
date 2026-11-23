@@ -12,7 +12,8 @@ import { toDisp, wUnit, wt, wtEst } from './units.js';
 import { GROUPS, groupById } from './groups.js';
 import { muscleIcon } from './body.js';
 import { DAY_NAMES, dayKeyOf, e1rm } from './engine.js';
-import { lineChart } from './chart.js';
+import { lineChart, trendChart } from './chart.js';
+import { CHART_METRICS, CHART_RANGES, chartStats, defaultMetric, inRange, liftSeries, metricsFor, trendLine } from './lift-metrics.js';
 import { strengthAreas, LEVELS } from './standards.js';
 
 const LV_COLORS = ['#f4f4f1', '#1d8a4e', '#f2c21b', '#1f5fbf', '#d3232e'];
@@ -180,12 +181,20 @@ export function createProgressScreens(A) {
   }
 
   function sparkSvg(h, cls = 'spark') {
-    const pts = h.slice(-12).map((x) => x.best1rm);
-    if (pts.length < 2) return '';
-    const lo = Math.min(...pts); const hi = Math.max(...pts); const span = hi - lo || 1;
-    const d = pts.map((v, i) => `${((i / (pts.length - 1)) * 96 + 2).toFixed(1)},${(26 - ((v - lo) / span) * 22).toFixed(1)}`).join(' ');
-    return `<svg class="${cls}" viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true"><polyline points="${d}"/></svg>`;
+    const rows = h.slice(-12);
+    if (rows.length < 2) return '';
+    const vals = rows.map((x) => x.best1rm);
+    const lo = Math.min(...vals); const hi = Math.max(...vals); const span = hi - lo || 1;
+    const px = (i) => (i / (rows.length - 1)) * 96 + 2;
+    const py = (v) => 26 - ((v - lo) / span) * 22;
+    // Points for each workout, the line for the average (evenly spaced, so it reads at this size).
+    const curve = trendLine(rows.map((r, i) => ({ t: i * 7, v: r.best1rm })), 24).filter((p) => p.v != null);
+    const line = curve.map((p) => `${px(p.t / 7).toFixed(1)},${py(p.v).toFixed(1)}`).join(' ');
+    const dots = rows.map((r, i) => `M${px(i).toFixed(1)} ${py(r.best1rm).toFixed(1)}h0`).join('');
+    return `<svg class="${cls}" viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true"><path class="sp-pts" d="${dots}"/><polyline points="${line}"/></svg>`;
   }
+  // A small chart inside a row or tile: tapping it opens the full chart.
+  const chartSpark = (s, cls) => { const svg = sparkSvg(s.h, cls); return svg ? `<span class="spark-tap" data-a="chart-open" data-id="${s.id}">${svg}</span>` : ''; };
 
   const pctText = (p) => (p == null ? '' : `<span class="${p >= 0 ? 'up' : 'down'}">${p >= 0 ? '+' : ''}${p}%</span>`);
 
@@ -214,7 +223,7 @@ export function createProgressScreens(A) {
       <b class="key-name">${A.esc(s.ex.name)}</b>
       <span class="key-val num">${Math.round(toDisp(s.now))}<small> ${wUnit()}</small></span>
       <span class="key-sub">${s.pct != null ? `${pctText(s.pct)} in 8 wk` : 'New'}${ratio ? ` · ${ratio.toFixed(2)}× body weight` : ''}</span>
-      ${sparkSvg(s.h, 'spark key-spark')}
+      ${chartSpark(s, 'spark key-spark')}
     </button>`;
   }
 
@@ -293,7 +302,7 @@ export function createProgressScreens(A) {
     if (!keys.length && !groups.length) return `${A.subHeader('Strength', 'progress-back')}<p class="muted small pad">Log a few workouts with weights and your lifts show up here.</p>`;
     const tab = A.ui.strTab || 'levels';
     const tabs = `<div class="segmented str-tabs" role="tablist" aria-label="Strength">${[['levels', 'Levels'], ['muscles', 'Muscles'], ['lifts', 'Lifts']].map(([k, l]) => `<button class="${tab === k ? 'on' : ''}" data-a="str-tab" data-v="${k}" role="tab" aria-selected="${tab === k}">${l}</button>`).join('')}</div>`;
-    const liftRow = (s) => { const img = EX_INFO[s.id]?.images?.[0]; return `<button class="list-row strength-row" data-a="ex-info" data-id="${s.id}"><span class="thumb sm">${img ? `<img src="${img}" alt="" loading="lazy" referrerpolicy="no-referrer">` : muscleIcon(s.ex.primary?.[0] || 'chest')}${familyDisc(s.ex, 18)}</span><span class="grow"><b>${A.esc(s.ex.name)}</b><span class="pick-sub">${s.pct != null ? `${pctText(s.pct)} in 8 weeks` : 'New'}</span></span>${sparkSvg(s.h, 'spark row-spark')}<span class="row-val">${Math.round(toDisp(s.now))}<small>${s.ex.type === 'dumbbell' ? `${wUnit()} each` : wUnit()}</small></span></button>`; };
+    const liftRow = (s) => { const img = EX_INFO[s.id]?.images?.[0]; return `<button class="list-row strength-row" data-a="ex-info" data-id="${s.id}"><span class="thumb sm">${img ? `<img src="${img}" alt="" loading="lazy" referrerpolicy="no-referrer">` : muscleIcon(s.ex.primary?.[0] || 'chest')}${familyDisc(s.ex, 18)}</span><span class="grow"><b>${A.esc(s.ex.name)}</b><span class="pick-sub">${s.pct != null ? `${pctText(s.pct)} in 8 weeks` : 'New'}</span></span>${chartSpark(s, 'spark row-spark')}<span class="row-val">${Math.round(toDisp(s.now))}<small>${s.ex.type === 'dumbbell' ? `${wUnit()} each` : wUnit()}</small></span></button>`; };
     const body = tab === 'levels' ? standardsPanel()
       : tab === 'muscles' ? `<div class="list-group">${groups.map(({ g, lifts }) => {
         const top = lifts[0]; const p2 = median(lifts.filter((x) => x.recent).map((x) => x.pct));
@@ -348,6 +357,7 @@ export function createProgressScreens(A) {
   }
 
   function screenHistory() {
+    if (A.ui.chartEx && A.db.exercises[A.ui.chartEx]) return chartPage(A.ui.chartEx);
     if (A.ui.historyEx) return screenExerciseHistory(A.ui.historyEx);
     if (A.ui.progSub) return progressPage(A.ui.progSub);
     const lastWorkout = A.db.sessions[A.db.sessions.length - 1];
@@ -429,6 +439,7 @@ export function createProgressScreens(A) {
     const ex = A.db.exercises[exId];
     const hist = exerciseHistory(exId);
     const bw = ex.type === 'bodyweight' && hist.every((h) => h.top.weight === 0);
+    const series = liftSeries(A.db, exId);
     const histRow = (h) => `
       <div class="hist-row">
         <div class="row between"><b>${A.fmtDate(h.date)}</b><span class="muted small">${h.logged ? 'logged max' : h.isDeload ? 'deload' : h.excluded ? 'not counted' : bw ? `${h.totalReps} reps` : `est. max ${Math.round(toDisp(h.best1rm))}`}</span></div>
@@ -440,16 +451,63 @@ export function createProgressScreens(A) {
     setTimeout(() => {
       const el = A.$('#hist-chart');
       if (!el) return;
-      const pts = hist.filter((h) => !h.isDeload && !h.excluded);
-      if (bw) lineChart(el, { points: pts.map((h) => ({ x: h.date, values: [h.totalReps] })), series: [{ name: 'Total reps', cls: 's1' }], unit: 'reps' });
-      else lineChart(el, { points: pts.map((h) => ({ x: h.date, values: [Math.round(toDisp(h.best1rm)), toDisp(h.top.weight)] })), series: [{ name: 'Estimated max', cls: 's1' }, { name: 'Heaviest set', cls: 's2' }], unit: wUnit() });
+      const key = defaultMetric(series);
+      trendChart(el, { compact: true, height: 170, name: CHART_METRICS[key].name, fmt: chartAxis(key), points: series.map((r) => ({ x: r.date, v: chartValue(key, r[key]) })) });
     });
     return `<header class="top"><button class="back" data-a="history-back" aria-label="Back">${icon('left')}</button><div><h1>${A.esc(ex.name)}</h1><p class="muted small">${CATEGORIES[ex.category]} · ${A.esc(A.muscleLine(ex))}</p></div></header>
       ${A.extras.exerciseInfo(ex)}
-      ${hist.length ? `<div class="card"><p class="muted small">${bw ? 'Total reps per workout' : 'Estimated max and heaviest set'}</p><div id="hist-chart"></div></div>` : ''}
+      ${series.length ? `<button class="card chart-card" data-a="chart-open" data-id="${exId}" aria-label="Open the ${A.esc(ex.name)} chart"><span class="row between"><span class="chart-card-t">${CHART_METRICS[defaultMetric(series)].name}</span><span class="muted small chart-more">Details ${icon('right', 'chev')}</span></span><div id="hist-chart"></div></button>` : ''}
       ${bw ? '' : repMaxCard(ex, hist)}
       ${bw || ex.category === 'conditioning' || ex.noLoad ? '' : maxesCard(ex)}
       <div class="card"><h3>Workouts</h3>${rows || '<p class="muted small">No workouts yet.</p>'}</div>`;
+  }
+
+  // ---------- One chart in detail ----------
+  const chartValue = (key, v) => (CHART_METRICS[key].kind === 'weight' ? toDisp(v) : v);
+  const clock = (s) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
+  const chartAxis = (key) => (CHART_METRICS[key].kind === 'time' ? clock : (v) => (v >= 10000 ? `${Math.round(v / 1000)}k` : String(Math.round(v))));
+  const chartText = (key, v) => {
+    const k = CHART_METRICS[key].kind;
+    if (k === 'time') return v >= 60 ? clock(v) : `${Math.round(v)} sec`;
+    if (k === 'reps') return `${Math.round(v)} reps`;
+    return `${Math.round(toDisp(v)).toLocaleString()} ${wUnit()}`;
+  };
+  function chartPage(exId) {
+    const ex = A.db.exercises[exId];
+    const all = liftSeries(A.db, exId);
+    const avail = metricsFor(all);
+    const key = avail.includes(A.ui.chartMetric) ? A.ui.chartMetric : defaultMetric(all);
+    const withKey = all.filter((r) => r[key] > 0);
+    const range = A.ui.chartRange || '6m';
+    const rows = inRange(withKey, range, todayStr());
+    const st = chartStats(rows, key);
+    const ch = st ? st.change : 0;
+    const flat = CHART_METRICS[key].kind === 'weight' ? Math.abs(toDisp(ch)) < 0.5 : Math.abs(ch) < 0.5;
+    const changeText = !st || st.count < 2 ? '—' : flat ? 'Steady' : `${ch > 0 ? '+' : '−'}${chartText(key, Math.abs(ch))}`;
+    const stat = (v, l, cls = '') => `<div class="${cls}"><b class="num">${v}</b><span>${l}</span></div>`;
+    setTimeout(() => {
+      const el = A.$('#cd-chart');
+      if (!el || !rows.length) return;
+      trendChart(el, {
+        name: `${ex.name} ${CHART_METRICS[key].name}`, height: 250, fmt: chartAxis(key),
+        points: rows.map((r) => ({ x: r.date, v: chartValue(key, r[key]), row: r })),
+        onPick: (p) => {
+          const out = A.$('#cd-read'); if (!out) return;
+          const t = p.row.top;
+          out.innerHTML = `<b>${A.fmtDate(p.row.date)}</b><span>${chartText(key, p.row[key])}${t && key !== 'heavy' ? ` · top set ${wt(t.w)} × ${t.r}` : ''}${p.row.logged ? ' · logged max' : ''}</span>`;
+        },
+      });
+    });
+    return `<header class="top"><button class="back" data-a="chart-back" aria-label="Back">${icon('left')}</button><div class="grow"><h1>${A.esc(ex.name)}</h1><p class="muted small">${CHART_METRICS[key].name}</p></div></header>
+      ${avail.length > 1 ? `<div class="chips chart-metrics" role="radiogroup" aria-label="Metric">${avail.map((k) => `<button class="chip ${k === key ? 'on' : ''}" data-a="chart-metric" data-v="${k}" role="radio" aria-checked="${k === key}">${CHART_METRICS[k].short}</button>`).join('')}</div>` : ''}
+      <div class="card chart-detail">
+        <div id="cd-chart">${rows.length ? '' : `<div class="empty small-empty"><p class="muted">No workouts in this range.</p>${withKey.length ? '<button class="btn" data-a="chart-range" data-v="all">Show all time</button>' : ''}</div>`}</div>
+        ${rows.length ? '<div class="cd-read" id="cd-read" aria-live="polite"></div>' : ''}
+        <div class="segmented small-seg" role="radiogroup" aria-label="Range">${CHART_RANGES.map(([k, l]) => `<button class="${k === range ? 'on' : ''}" data-a="chart-range" data-v="${k}" role="radio" aria-checked="${k === range}">${l}</button>`).join('')}</div>
+      </div>
+      ${st ? `<div class="cd-stats">${stat(chartText(key, st.latest), 'Latest')}${stat(chartText(key, st.best), 'Best in range')}${stat(changeText, 'Trend change', !flat && st.count > 1 ? (ch > 0 ? 'up' : 'down') : '')}${stat(String(st.count), st.count === 1 ? 'Workout' : 'Workouts')}</div>
+      ${st.perMonth != null && !flat ? `<p class="muted small pad">The average is moving about ${st.perMonth > 0 ? 'up' : 'down'} ${chartText(key, Math.abs(st.perMonth))} a month in this range.</p>` : ''}` : ''}
+      <p class="muted small pad">Each point is a workout. The line is the average trend, so one great or rough day doesn't swing it. Warm-ups and deloads aren't counted.</p>`;
   }
 
   // ---------- Bodyweight ----------

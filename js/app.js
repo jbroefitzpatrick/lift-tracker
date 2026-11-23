@@ -2123,6 +2123,7 @@ const PUSHED = ['exercise', 'summary', 'builder', 'edit-session', 'settings'];
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
 function screenKey() {
   if (ui.tab === 'exercise') return `exercise:${ui.exUid}`;
+  if (ui.tab === 'history' && ui.chartEx) return `chart:${ui.chartEx}`;
   if (ui.tab === 'history' && ui.historyEx) return `history:${ui.historyEx}`;
   if (ui.tab === 'history' && ui.progSub) return `history:${ui.progSub}`;
   if (ui.tab === 'body') return 'history:body';
@@ -2200,7 +2201,7 @@ function render() {
   if (ui.tab === 'summary' && ui.summaryFresh) countUp();
   // Settings is reached from a gear in the header of each main screen.
   const header = $('#main header.top');
-  const subPage = (ui.tab === 'plan' && ui.planView && ui.planView !== 'week') || (ui.tab === 'history' && (ui.historyEx || ui.progSub)) || ui.tab === 'body';
+  const subPage = (ui.tab === 'plan' && ui.planView && ui.planView !== 'week') || (ui.tab === 'history' && (ui.chartEx || ui.historyEx || ui.progSub)) || ui.tab === 'body';
   if (header && MAIN_SCREENS.includes(ui.tab) && !['today', 'food', 'people'].includes(ui.tab) && !subPage) {
     header.insertAdjacentHTML('beforeend', `<button class="icon-btn" data-a="open-settings" aria-label="Settings">${GEAR}</button>`);
   }
@@ -2215,7 +2216,7 @@ function render() {
 // ---------- Events ----------
 
 const actions = {
-  tab: (d) => { ui.infoFrom = null; if (d.tab === 'today') ui.peek = false; if (!$('#sheet').hidden) closeSheet(); ui.summaryFresh = false; ui.selecting = false; ui.tab = d.tab === 'progress' ? 'history' : d.tab; if (d.tab === 'progress') { ui.progSub = null; ui.historyEx = null; } if (d.tab === 'plan') ui.planView = 'week'; if (d.tab === 'today') ui.summaryId = null; if (d.tab === 'history') ui.historyEx = null; if (d.tab === 'people') { if (ui.people) { ui.people.client = null; ui.people.edit = null; ui.people.profile = null; } people.refresh(); } window.scrollTo(0, 0); render(); },
+  tab: (d) => { ui.chartEx = null; ui.chartFrom = null; ui.infoFrom = null; if (d.tab === 'today') ui.peek = false; if (!$('#sheet').hidden) closeSheet(); ui.summaryFresh = false; ui.selecting = false; ui.tab = d.tab === 'progress' ? 'history' : d.tab; if (d.tab === 'progress') { ui.progSub = null; ui.historyEx = null; } if (d.tab === 'plan') ui.planView = 'week'; if (d.tab === 'today') ui.summaryId = null; if (d.tab === 'history') ui.historyEx = null; if (d.tab === 'people') { if (ui.people) { ui.people.client = null; ui.people.edit = null; ui.people.profile = null; } people.refresh(); } window.scrollTo(0, 0); render(); },
   day: (d) => { ui.day = d.day; ui.tab = 'today'; ui.showCardio = false; ui.selecting = false; render(); },
   'open-set': (d) => openSetSheet(d.uid, +d.i),
   'leave-workout-view': () => { closeSheet(); ui.peek = true; render(); toast('Your workout keeps running. Tap "Back to workout" to return.'); },
@@ -2868,7 +2869,7 @@ const actions = {
     toast(`Removed ${db.exercises[e.exerciseId]?.name || 'exercise'}.`, { label: 'Undo', a: 'list-undo' });
   },
   'ex-info': (d) => {
-    closeSheet();
+    closeSheet(); ui.chartEx = null;
     if (ui.tab !== 'history') ui.infoFrom = { tab: ui.tab, exUid: ui.exUid, y: window.scrollY };
     ui.historyEx = d.id; ui.tab = 'history'; window.scrollTo(0, 0); render();
   },
@@ -3057,7 +3058,7 @@ const actions = {
     toast(`Max test: opener ${wt(attempts[0])}.`);
   },
   'maxday-open': (d) => { closeSheet(); setTimeout(() => openMaxDay(d.day || ui.day), 0); },
-  'maxday-pick': (d) => { const st = ui.maxDay; st.sel = st.sel.includes(d.id) ? st.sel.filter((x) => x !== d.id) : [...st.sel, d.id].slice(-4); openMaxDay(st.day); },
+  'maxday-pick': (d) => { const st = ui.maxDay; if (!st) return; st.sel = st.sel.includes(d.id) ? st.sel.filter((x) => x !== d.id) : [...st.sel, d.id].slice(-4); openMaxDay(st.day); },
   'maxday-go': () => {
     const st = ui.maxDay;
     if (!st?.sel.length) return;
@@ -3065,8 +3066,8 @@ const actions = {
     toast('Max-out day is ready.');
   },
   'peak-open': () => openPeak(),
-  'peak-weeks': (d) => { ui.peak.weeks = +d.v; openPeak(); },
-  'peak-pick': (d) => { const st = ui.peak; st.sel = st.sel.includes(d.id) ? st.sel.filter((x) => x !== d.id) : [...st.sel, d.id].slice(-4); openPeak(); },
+  'peak-weeks': (d) => { if (!ui.peak) return; ui.peak.weeks = +d.v; openPeak(); },
+  'peak-pick': (d) => { const st = ui.peak; if (!st) return; st.sel = st.sel.includes(d.id) ? st.sel.filter((x) => x !== d.id) : [...st.sel, d.id].slice(-4); openPeak(); },
   'peak-go': () => {
     const st = ui.peak; if (!st?.sel.length) return;
     startPeak(db, st.sel, st.weeks); persist(); closeSheet(); ui.peak = null; render();
@@ -3193,6 +3194,18 @@ const actions = {
     persist(); render();
   },
   summary: (d) => { ui.summaryId = d.id; ui.summaryFresh = false; ui.tab = 'summary'; window.scrollTo(0, 0); render(); },
+  'chart-open': (d) => {
+    closeSheet();
+    if (!ui.chartEx) ui.chartFrom = { tab: ui.tab, y: window.scrollY };
+    ui.chartEx = d.id; ui.chartMetric = null; ui.chartRange = '6m'; ui.tab = 'history'; window.scrollTo(0, 0); render();
+  },
+  'chart-back': () => {
+    const from = ui.chartFrom; ui.chartEx = null; ui.chartFrom = null;
+    if (from) ui.tab = from.tab;
+    render(); window.scrollTo(0, from?.y || 0);
+  },
+  'chart-range': (d) => { ui.chartRange = d.v; render(); },
+  'chart-metric': (d) => { ui.chartMetric = d.v; render(); },
   'history-ex': (d) => { ui.historyEx = d.id; window.scrollTo(0, 0); render(); },
   'history-back': () => {
     ui.historyEx = null;
