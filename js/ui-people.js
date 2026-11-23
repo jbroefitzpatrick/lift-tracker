@@ -10,6 +10,8 @@ import { todayStr, addDays, mondayOf, weekOrder, safetySnapshot } from './store.
 import { wt, wtEst, toDisp, wUnit } from './units.js';
 import { APP_URL } from './ui-train.js';
 import { CONTEST_KINDS, SCORED_KINDS, metricValue } from './big-goal.js';
+import { loadArt } from './equipment.js';
+import { activeGym } from './gym.js';
 
 const CACHE = 'lift.social';
 const isIos = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -287,7 +289,8 @@ export function createPeople(ctx) {
   function postBody(p) {
     const d = p.data || {};
     let metric = '';
-    if (p.kind === 'record') metric = `<div class="post-metric"><span class="pm-label">New best · ${esc(d.name || '')}</span><b class="num">${d.weight ? `${wt(d.weight)} × ${d.reps}` : d.pct ? `+${d.pct}%` : ''}</b>${d.weight && d.e1rm ? `<span class="pm-sub">Est. max ${wtEst(d.e1rm)}${d.pct ? ` · up ${d.pct}%` : ''}</span>` : ''}</div>`;
+    const art = p.kind === 'record' && d.weight && ctx.db.exercises?.[d.exId] ? loadArt(ctx.db.exercises[d.exId], d.weight, activeGym(ctx.db)) : '';
+    if (p.kind === 'record') metric = `<div class="post-metric ${art ? 'has-art' : ''}">${art}<span class="pm-label">New best · ${esc(d.name || '')}</span><b class="num">${d.weight ? `${wt(d.weight)} × ${d.reps}` : d.pct ? `+${d.pct}%` : ''}</b>${d.weight && d.e1rm ? `<span class="pm-sub">Est. max ${wtEst(d.e1rm)}${d.pct ? ` · up ${d.pct}%` : ''}</span>` : ''}</div>`;
     else if (p.kind === 'progress') metric = `<div class="post-metric"><span class="pm-label">${esc(d.name || '')} · ${d.weeks || 8} weeks</span><b class="num">${d.pct > 0 ? '+' : ''}${d.pct}%</b>${d.now ? `<span class="pm-sub">Est. max now ${wtEst(d.now)}</span>` : ''}</div>`;
     else if (p.kind === 'workout') metric = `<div class="post-metric"><span class="pm-label">Workout · ${esc(d.date ? ctx.fmtDate(d.date) : '')}</span><b>${esc(d.name || 'Workout')}</b><span class="pm-sub">${d.sets || 0} sets${d.minutes ? ` · ${d.minutes} min` : ''}${d.prs ? ` · ${d.prs} ${d.prs === 1 ? 'record' : 'records'}` : ''}</span></div>`;
     const media = (p.media || []).map((m) => (m.kind === 'video'

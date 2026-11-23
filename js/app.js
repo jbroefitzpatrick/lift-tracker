@@ -31,7 +31,10 @@ import { createYear } from './ui-year.js';
 import { createExtras } from './ui-extra.js';
 import { createCloud } from './ui-cloud.js';
 import { createAccountUi } from './ui-account.js';
+import { weightStep } from './gym.js';
 import { createGoals } from './ui-goals.js';
+import { createStreak } from './ui-streak.js';
+import { syncStreak } from './streak.js';
 import { goalProgress, goalHit, getGoal } from './big-goal.js';
 import { createPeople } from './ui-people.js';
 import { moveDay, copyDayTo, catchUpDay, laggingMuscles, maxDayTo } from './week.js';
@@ -110,6 +113,7 @@ const A = {
   get fmtRest() { return fmtRest; },
   get health() { return health; },
   get goals() { return goals; },
+  get streak() { return streak; },
   get helpBtn() { return helpBtn; },
   get isDeloadFor() { return isDeloadFor; },
   get metricOf() { return metricOf; },
@@ -235,7 +239,7 @@ function applyTheme() {
   if (t === 'system') root.removeAttribute('data-theme');
   else root.setAttribute('data-theme', t);
   const dark = t === 'dark' || (t === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
-  $('meta[name="theme-color"]').setAttribute('content', dark ? '#0c0e12' : '#f5f6f8');
+  $('meta[name="theme-color"]').setAttribute('content', dark ? '#1a1b1e' : '#d8d9d6');
   // Color accents: ember for achievements and a glow on each screen's main card (default),
   // or settings.colorStyle with any of ember, wash, region, flow ('' for none).
   const style = String(db.settings.colorStyle ?? 'ember wash').split(/\s+/).filter(Boolean);
@@ -348,6 +352,10 @@ function renderRest() {
   $('#rest-time').textContent = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`;
   $('#rest-label').textContent = rest.label || 'Rest';
   $('#rest-bar').style.width = `${Math.max(0, Math.min(100, (left / rest.total) * 100))}%`;
+  // The plate's ring drains: blue, then yellow, green, and red for the last ten seconds.
+  const ring = $('#rest-ring');
+  ring.setAttribute('stroke-dashoffset', String(144.51 * (1 - Math.max(0, Math.min(1, left / rest.total)))));
+  ring.setAttribute('stroke', left > 60 ? '#1f5fbf' : left > 30 ? '#f2c21b' : left > 10 ? '#1d8a4e' : '#d3232e');
 }
 
 // ---------- Screen wake lock ----------
@@ -702,6 +710,7 @@ function finishWorkout() {
     const cardioId = pats.every((p) => p === 'mobility') ? 'mobility' : ids.every((id) => id === 'run-easy' || id === 'run-long') ? 'zone2-run' : 'conditioning';
     db.cardio.push({ id: `c${finishedAt}`, date: s.date, ts: finishedAt, cardioId, minutes, note: 'From workout', fromWorkout: true });
   }
+  syncStreak(db);
   const goalBefore = getGoal(db).on ? goalProgress(db) : null;
   db.sessions.push(saved);
   if (goalBefore) { const hit = goalHit(goalBefore, goalProgress(db)); if (hit) saved.goalHit = hit; }
@@ -1940,7 +1949,7 @@ function screenSettings() {
     <div class="card"><div class="segmented small-seg" role="radiogroup" aria-label="Weight units">${[['lb', 'Pounds (lb)'], ['kg', 'Kilograms (kg)']].map(([v, l]) => `<button class="${wUnit() === v ? 'on' : ''}" data-a="set-units" data-v="${v}" role="radio" aria-checked="${wUnit() === v}">${l}</button>`).join('')}</div>
       <p class="muted small">Everything is saved the same way, so you can switch back at any time.</p></div>
     <h2 class="group-title">Theme</h2>    <div class="card">
-      <div class="segmented small-seg" role="radiogroup" aria-label="Theme">${['dark', 'light', 'system'].map((t) => `<button class="${s.theme === t ? 'on' : ''}" data-a="theme" data-v="${t}" role="radio" aria-checked="${s.theme === t}">${t[0].toUpperCase() + t.slice(1)}</button>`).join('')}</div>
+      <div class="segmented small-seg" role="radiogroup" aria-label="Theme">${['dark', 'light', 'system'].map((t) => `<button class="${s.theme === t ? 'on' : ''}" data-a="theme" data-v="${t}" role="radio" aria-checked="${s.theme === t}">${{ dark: 'Rubber', light: 'Chalk', system: 'Auto' }[t]}</button>`).join('')}</div>
       <p class="muted small">Text follows your iPhone's text size (Settings → Display & Brightness → Text Size).</p>
     </div>` },
     account: { title: 'Account and sync', html: acctUi.page() },
@@ -1973,7 +1982,7 @@ function screenSettings() {
       ${row('settings-page', 'backup', 'Backup and data', lastBk ? `Last backup ${lastBk}` : 'No backup yet')}
       ${row('health-setup', '', 'Apple Health', 'Send workout calories to Health')}
       <label class="list-row toggle-row"><span class="grow"><b>Food tracking</b><span class="pick-sub">${foodOn() ? 'Food tab, calorie and protein targets' : 'Off. Turn on to show the Food tab'}</span></span><input type="checkbox" switch data-a="set-food" ${foodOn() ? 'checked' : ''} aria-label="Food tracking"></label>
-      ${row('settings-page', 'appearance', 'Appearance and units', `${{ dark: 'Dark', light: 'Light', system: 'Match iPhone' }[s.theme] || ''} · ${wUnit()}`)}
+      ${row('settings-page', 'appearance', 'Appearance and units', `${{ dark: 'Rubber', light: 'Chalk', system: 'Match iPhone' }[s.theme] || ''} · ${wUnit()}`)}
       ${row('open-share', '', 'Share the app', '')}
       ${row('tour-replay', '', 'Show the tour again', '')}
       <a class="list-row" href="privacy.html" target="_blank" rel="noopener"><span class="grow"><b>Privacy policy</b></span>${icon('right', 'chev')}</a>
@@ -2069,6 +2078,7 @@ const exEditor = createExerciseEditor(ctx);
 const planTools = createPlanTools(ctx);
 const health = createHealth(ctx);
 const goals = createGoals(ctx);
+const streak = createStreak(ctx);
 const tour = createTour(ctx);
 
 // ---------- Render ----------
@@ -2986,6 +2996,30 @@ const actions = {
   'cardio-log': (d) => openCardioSheet(d.id),
   'cardio-all': (d) => openCardioAll(d.day || ui.day),
   'std-area': (d) => openStrengthArea(d.v),
+  'std-open': (d) => { ui.stdOpen = ui.stdOpen === d.v ? null : d.v; render(); },
+  'str-tab': (d) => { ui.strTab = d.v; render(); },
+  'warm-list': () => { ui.warmList = !(ui.warmList ?? !!sessionFor(ui.day)); render(); },
+  // The big number: changes this set and the ones after it that aren't done yet.
+  dial: (d) => {
+    const session = sessionFor(ui.day); const e = session?.entries[d.uid];
+    if (!e) return;
+    const ex = db.exercises[e.exerciseId];
+    const i = e.sets.findIndex((x) => !x.done); const from = i < 0 ? e.sets.length - 1 : i;
+    const step = d.k === 'weight' ? weightStep(ex, activeGym(db)) : d.k === 'time' ? 5 : d.k === 'dist' ? 10 : 1;
+    const base = Number(e.sets[from][d.k]) || 0;
+    const next = Math.max(d.k === 'weight' ? 0 : 1, base + Number(d.v) * step);
+    const value = d.k === 'weight' ? roundToGym(ex, next, activeGym(db)) : next;
+    for (let j = from; j < e.sets.length; j++) if (j === from || !e.sets[j].done) e.sets[j][d.k] = value;
+    if (d.k === 'weight' && e.warm && !e.warm.some((w) => w.done)) delete e.warm;
+    persist(); render();
+  },
+  'bw-weight': (d) => {
+    const e = sessionFor(ui.day)?.entries[d.uid];
+    if (!e) return;
+    const value = d.v === 'on' ? weightStep(db.exercises[e.exerciseId], activeGym(db)) * 2 : 0;
+    for (const x of e.sets) if (!x.done) x.weight = value;
+    persist(); render();
+  },
   'muscles-toggle': () => { ui.showMuscles = !ui.showMuscles; render(); },
   'quick-log': (d) => {
     const row = (attrs, t) => `<button class="list-row" ${attrs}><span class="grow"><b>${t}</b></span>${icon('right', 'chev')}</button>`;
@@ -3270,7 +3304,7 @@ const actions = {
   },
 };
 
-Object.assign(actions, food.actions, year.actions, extras.actions, cloud.actions, acctUi.actions, people.actions, goals.actions, pain.actions, train.actions, focusUi.actions, exEditor.actions, planTools.actions, health.actions);
+Object.assign(actions, food.actions, year.actions, extras.actions, cloud.actions, acctUi.actions, people.actions, goals.actions, streak.actions, pain.actions, train.actions, focusUi.actions, exEditor.actions, planTools.actions, health.actions);
 
 onReorder('session', (uid, to, opt = {}) => {
   const shown = todayItems(ui.day);
@@ -3471,6 +3505,7 @@ actions['recovery-download'] = () => recoveryRaw && download(`lift-recovery-${to
     recoveryScreen(e);
     return;
   }
+  syncStreak(db); // saved with the next real change, so opening the app alone never triggers a sync
   applyTheme();
   render();
   if (rest) runRest();

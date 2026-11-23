@@ -1,7 +1,7 @@
 // Progress tab: this week's rings, calendar, strength, exercise history and body weight.
 // Split out of app.js. App state and the helpers this needs come from A: live getters (and
 // setters for variables), so db and the rest stay shared with app.js.
-import { addDays, daysBetween, mondayOf, parseDate, todayStr } from './store.js';
+import { addDays, daysBetween, mondayOf, parseDate, todayStr, weekOrder, weekPos } from './store.js';
 import { doneTemplates, liftTemplates } from './week.js';
 import { cardioTargetFor } from './year.js';
 import { dayTotals, goalFor, targets as foodTargets } from './nutrition.js';
@@ -11,13 +11,20 @@ import { blockInfo, focusFor } from './blocks.js';
 import { toDisp, wUnit, wt, wtEst } from './units.js';
 import { GROUPS, groupById } from './groups.js';
 import { muscleIcon } from './body.js';
-import { DAY_NAMES, e1rm } from './engine.js';
+import { DAY_NAMES, dayKeyOf, e1rm } from './engine.js';
 import { lineChart } from './chart.js';
 import { strengthAreas, LEVELS } from './standards.js';
+
+const LV_COLORS = ['#f4f4f1', '#1d8a4e', '#f2c21b', '#1f5fbf', '#d3232e'];
+const levelBar = (lv) => `<svg class="lv-bar" viewBox="0 0 92 30" role="img" aria-label="${lv >= 0 ? LEVELS[lv] : 'Starting out'}"><rect y="14" width="92" height="2.5" fill="var(--bar)"/>${[10, 15, 20, 25, 30].map((h, i) => `<rect x="${6 + i * 17}" y="${15 - h / 2}" width="12" height="${h}" rx="1.5" fill="${i <= lv ? LV_COLORS[i] : 'var(--surface-3)'}" stroke="var(--edge)"/>`).join('')}</svg>`;
 import { roundToGym, activeGym } from './gym.js';
 import { CATEGORIES } from './bank.js';
 import { maxesFor } from './maxes.js';
 import { getGoal } from './big-goal.js';
+import { familyDisc } from './equipment.js';
+import { EX_INFO } from './exercise-info.js';
+import { streakInfo, strengthTier } from './streak.js';
+import { dayMode } from './fatigue.js';
 
 export function createProgressScreens(A) {
   // ---------- This week at a glance ----------
@@ -56,56 +63,78 @@ export function createProgressScreens(A) {
     </button>`;
   }
 
-  // Weeks in a row (ending this week or last) with at least one workout.
-  function weekStreak() {
-    const weeks = new Set(A.db.sessions.map((x) => mondayOf(x.date)));
-    let w = mondayOf(todayStr());
-    if (!weeks.has(w)) w = addDays(w, -7);
-    let n = 0;
-    while (weeks.has(w)) { n += 1; w = addDays(w, -7); }
-    return n;
+  // Streaks follow the rules in streak.js: your own weekly target, cardio counts, freezes.
+  const weekStreak = () => streakInfo(A.db).current;
+  const bestStreak = () => streakInfo(A.db).best;
+
+  // Is this date a planned training day? This week uses its adjustments; other weeks the plan.
+  function plannedOn(date, thisWeek) {
+    if (date < (A.db.settings.planSince || '')) return false;
+    const key = dayKeyOf(date);
+    const mode = thisWeek ? dayMode(A.db, key) : A.db.settings.dayModes?.[key] || (A.db.plan?.[key] ? 'lift' : 'rest');
+    return ['lift', 'both', 'cardio'].includes(mode);
   }
 
-  // Longest run of consecutive weeks with at least one workout.
-  function bestStreak() {
-    const weeks = [...new Set(A.db.sessions.map((x) => mondayOf(x.date)))].sort();
-    let best = 0; let run = 0; let prev = null;
-    for (const w of weeks) { run = prev && addDays(prev, 7) === w ? run + 1 : 1; best = Math.max(best, run); prev = w; }
-    return best;
-  }
-
-  // Month calendar: lifting days filled, cardio-only days dotted, minutes under each workout.
+  // Month calendar, one row per week in your week order. Weeks that count share a band, so a
+  // streak reads as one unbroken block. Planned days are ringed; missed ones only show in a week
+  // that fell short, since moving a workout inside a good week isn't a miss.
   function calendarCard() {
     const today = todayStr();
     const month = A.ui.calMonth || today.slice(0, 7);
     const [y, m] = month.split('-').map(Number);
     const first = `${month}-01`;
     const daysIn = new Date(y, m, 0).getDate();
-    const lead = (new Date(y, m - 1, 1).getDay() + 6) % 7; // Monday first
+    const lead = weekPos(dayKeyOf(first));
     const byDate = {};
     for (const s of A.db.sessions) if (s.date.startsWith(month)) (byDate[s.date] ||= { lift: [], cardio: 0 }).lift.push(s);
     for (const c of A.db.cardio) if (c.date.startsWith(month) && !c.fromWorkout) (byDate[c.date] ||= { lift: [], cardio: 0 }).cardio += c.minutes;
-    const cells = [];
-    for (let i = 0; i < lead; i++) cells.push('<span class="cal-cell empty"></span>');
-    for (let d = 1; d <= daysIn; d++) {
+    const panel = A.streak.panel();
+    const info = streakInfo(A.db, today);
+    const thisWeek = mondayOf(today);
+    const cellFor = (d) => {
       const date = `${month}-${String(d).padStart(2, '0')}`;
       const x = byDate[date];
+      const wk = mondayOf(date); const st = info.states[wk];
       const mins = x ? Math.round(x.lift.reduce((a, s) => a + workoutBurn(A.db, s).minutes, 0) + x.cardio) : 0;
-      const cls = [x?.lift.length ? 'lift' : x?.cardio ? 'cardio' : '', date === today ? 'today' : '', date > today ? 'future' : ''].join(' ');
-      const label = `${parseDate(date).toLocaleDateString(undefined, { month: 'long', day: 'numeric' })}${x ? `: ${x.lift.length ? `${x.lift.length} workout${x.lift.length > 1 ? 's' : ''}` : 'cardio'}, ${mins} minutes` : ''}`;
-      cells.push(date > today
+      const plan = !x && plannedOn(date, wk === thisWeek);
+      const future = date > today;
+      const missed = plan && !future && date !== today && st === 'missed';
+      const cls = [x?.lift.length ? 'lift' : x?.cardio ? 'cardio' : '', date === today ? 'today' : '', future ? 'future' : '', plan && (future || date === today) ? 'planned' : '', missed ? 'missed' : ''].join(' ');
+      const what = x ? `: ${x.lift.length ? `${x.lift.length} workout${x.lift.length > 1 ? 's' : ''}` : 'cardio'}, ${mins} minutes` : missed ? ': missed' : plan ? ': planned' : '';
+      const label = `${parseDate(date).toLocaleDateString(undefined, { month: 'long', day: 'numeric' })}${what}`;
+      return future
         ? `<span class="cal-cell ${cls}" aria-label="${label}"><span class="cal-n">${d}</span><span class="cal-m"></span></span>`
-        : `<button class="cal-cell ${cls}" data-a="cal-day" data-date="${date}" aria-label="${label}${x?.lift.length ? '' : '. Tap to log a workout'}"><span class="cal-n">${d}</span>${x?.lift.length ? `<span class="cal-m">${mins}m</span>` : x?.cardio ? '<span class="cal-dot"></span>' : '<span class="cal-m"></span>'}</button>`);
+        : `<button class="cal-cell ${cls}" data-a="cal-day" data-date="${date}" aria-label="${label}${x?.lift.length ? '' : '. Tap to log a workout'}"><span class="cal-n">${d}</span>${x?.lift.length ? `<span class="cal-m">${mins}m</span>` : x?.cardio ? '<span class="cal-dot"></span>' : '<span class="cal-m"></span>'}</button>`;
+    };
+    const rows = [];
+    let cells = Array.from({ length: lead }, () => '<span class="cal-cell empty"></span>');
+    let rowDay = 1;
+    const flush = () => {
+      while (cells.length < 7) cells.push('<span class="cal-cell empty"></span>');
+      const wk = mondayOf(`${month}-${String(rowDay).padStart(2, '0')}`);
+      const st = info.states[wk];
+      rows.push(`<div class="cal-grid cal-week ${st === 'hit' ? 'sk-hit' : st === 'frozen' ? 'sk-frozen' : ''}">${cells.join('')}</div>`);
+      cells = [];
+    };
+    for (let d = 1; d <= daysIn; d++) {
+      if (!cells.length) rowDay = d;
+      cells.push(cellFor(d));
+      if (cells.length === 7) flush();
     }
-    const count = Object.values(byDate).filter((x) => x.lift.length).length;
+    if (cells.length) flush();
+    const count = Object.values(byDate).filter((x) => x.lift.length || x.cardio).length;
     const prev = addDays(first, -1).slice(0, 7);
     const next = addDays(`${month}-${String(daysIn).padStart(2, '0')}`, 1).slice(0, 7);
+    const letters = weekOrder().map((k) => k[0].toUpperCase());
     return `<section class="card cal-card" aria-label="Workout calendar">
+      ${panel}
+      ${A.streak.prompt()}
       <div class="cal-head"><h3>${parseDate(first).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</h3>
         <div class="row"><button class="icon-btn" data-a="cal-month" data-v="${prev}" aria-label="Previous month">${icon('left')}</button><button class="icon-btn" data-a="cal-month" data-v="${next}" aria-label="Next month" ${next > today.slice(0, 7) ? 'disabled' : ''}>${icon('right')}</button></div></div>
-      <div class="cal-grid" aria-hidden="true">${['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((x) => `<span class="cal-wd">${x}</span>`).join('')}</div>
-      <div class="cal-grid">${cells.join('')}</div>
-      <div class="tile-row three"><div class="tile"><span>This month</span><b class="num">${count}</b></div><div class="tile"><span>Streak</span><b class="num">${weekStreak()} wk</b></div><div class="tile"><span>Best</span><b class="num">${bestStreak()} wk</b></div></div>
+      <div class="cal-grid" aria-hidden="true">${letters.map((x) => `<span class="cal-wd">${x}</span>`).join('')}</div>
+      <div class="cal-rows">${rows.join('')}</div>
+      <div class="cal-key" aria-hidden="true"><span><i class="k-lift"></i>Lift</span><span><i class="k-cardio"></i>Cardio</span><span><i class="k-plan"></i>Planned</span><span><i class="k-miss"></i>Missed</span><span><i class="k-freeze"></i>Frozen</span></div>
+      <div class="tile-row three"><div class="tile"><span>This month</span><b class="num">${count}</b></div><div class="tile"><span>Best</span><b class="num">${info.best} wk</b></div><div class="tile"><span>Freezes left</span><b class="num">${info.freezesLeft}</b></div></div>
     </section>`;
   }
 
@@ -208,22 +237,30 @@ export function createProgressScreens(A) {
   function standardsPanel() {
     const me = person();
     const list = areas();
-    const pcts = list.filter((a) => a.pct != null).map((a) => a.pct).sort((x, y) => x - y);
-    const overall = pcts.length ? pcts[Math.floor((pcts.length - 1) / 2)] : null;
+    const tier = strengthTier(A.db, list);
     const missing = [!me.bw && 'body weight', !me.age && 'age', !me.sex && 'sex'].filter(Boolean);
-    const tile = (a) => {
-      if (a.pct == null) return `<button class="std-tile empty" data-a="std-area" data-v="${a.id}"><span class="std-name">${a.name}</span><span class="std-sub">${me.bw ? `Log a ${partNames(a)}` : 'Add your body weight'}</span></button>`;
-      return `<button class="std-tile" data-a="std-area" data-v="${a.id}">
-        <span class="std-name">${a.name}</span>
-        <span class="std-val">${a.level >= 0 ? LEVELS[a.level] : 'Starting out'}</span>
-        <span class="std-bar" aria-hidden="true"><i class="std-avg"></i><i class="std-you" style="left:${Math.min(98, Math.max(2, a.pct))}%"></i></span>
-        <span class="std-sub">Stronger than ${a.pct}%</span>
-      </button>`;
+    const lvl = (n) => (n >= 0 ? LEVELS[n] : 'Starting out');
+    const ladder = (part) => {
+      const now = part.basis ? part.equiv : null; const cells = [];
+      for (let i = 4; i >= 0; i--) {
+        const here = now != null && now >= part.levels[i] * me.bw && (i === 4 || now < part.levels[i + 1] * me.bw);
+        if (here) cells.push(`<div class="lad you"><i></i><span>You</span><b>${wtEst(now)}</b></div>`);
+        cells.push(`<div class="lad"><i style="background:${LV_COLORS[i]}"></i><span>${LEVELS[i]}</span><b>${wtEst(part.levels[i] * me.bw)}</b></div>`);
+      }
+      if (now != null && now < part.levels[0] * me.bw) cells.push(`<div class="lad you"><i></i><span>You</span><b>${wtEst(now)}</b></div>`);
+      return `<div class="ladder">${cells.join('')}</div>`;
     };
-    return `<section class="card strength-hero std-panel">
-      <div class="row between"><h3>How you compare</h3>${overall != null ? `<span class="small">Overall: <b>stronger than ${overall}%</b></span>` : ''}</div>
-      <div class="std-grid">${list.map(tile).join('')}</div>
-      ${missing.length ? `<p class="muted small">Add your ${missing.join(', ').replace(/, ([^,]*)$/, ' and $1')} in <button class="text-link small-link" data-a="open-builder">Profile</button> for a closer comparison.</p>` : ''}
+    const rowFor = (a) => {
+      const on = A.ui.stdOpen === a.id;
+      const head = `<button class="lv-head" data-a="${a.pct == null ? 'std-area' : 'std-open'}" data-v="${a.id}" ${a.pct == null ? '' : `aria-expanded="${on}"`}><span><b>${a.name}</b><small>${a.pct == null ? (me.bw ? `Log a ${partNames(a)}` : 'Add your body weight') : lvl(a.level)}</small></span>${levelBar(a.pct == null ? -1 : a.level)}<span class="lv-pct">${a.pct == null ? '' : `${a.pct}<small>%</small>`}</span></button>`;
+      const more = on && a.pct != null ? `<div class="lv-more">${a.parts.filter((x) => x.basis).map((x) => { const next = x.level < 4 ? x.levels[x.level + 1] * me.bw : null; return `<div class="lv-lift"><div class="lv-lh"><b>${A.esc(x.name)}</b>${next ? `<small>${wtEst(Math.max(0, next - x.equiv))} to ${LEVELS[x.level + 1]}</small>` : '<small>Top level</small>'}</div>${ladder(x)}</div>`; }).join('')}<button class="text-btn" data-a="std-area" data-v="${a.id}">Details and sources</button></div>` : '';
+      return `<div class="lv-row ${on ? 'on' : ''}">${head}${more}</div>`;
+    };
+    return `<section class="std-panel">
+      <div class="row between"><h3>How you compare</h3>${tier ? `<span class="small"><b>${tier.name}</b> · stronger than ${tier.avg}%</span>` : ''}</div>
+      <div class="lv-rows">${list.map(rowFor).join('')}</div>
+      <p class="str-note">Percent of lifters your sex, size and age you out-lift.</p>
+      ${missing.length ? `<p class="muted small">Add your ${missing.join(', ').replace(/, ([^,]*)$/, ' and $1')} in <button class="text-link small-link" data-a="open-builder">Training goals</button> for a closer comparison.</p>` : ''}
     </section>`;
   }
   function openStrengthArea(id) {
@@ -250,24 +287,23 @@ export function createProgressScreens(A) {
 
   function strengthPage() {
     const keys = keyLifts();
-    const bw = latestBodyweight();
     const overall = median(keys.map((k) => k.pct));
     const prs8 = A.db.sessions.filter((s) => s.date >= addDays(todayStr(), -56)).reduce((a, s) => a + (s.prs || []).filter((p) => p.type === 'e1rm').length, 0);
     const groups = GROUPS.map((g) => ({ g, lifts: groupLifts(g) })).filter((x) => x.lifts.length);
     if (!keys.length && !groups.length) return `${A.subHeader('Strength', 'progress-back')}<p class="muted small pad">Log a few workouts with weights and your lifts show up here.</p>`;
-    return `${A.subHeader('Strength', 'progress-back', 'Estimated one-rep max from your best set each workout')}
-      ${getGoal(A.db).type === 'club' ? A.goals.card() : ''}
-      ${standardsPanel()}
-      <h2 class="group-title">By muscle group</h2>
-      <div class="list-group">${groups.map(({ g, lifts }) => {
-        const top = lifts[0]; const p = median(lifts.filter((x) => x.recent).map((x) => x.pct));
-        return `<button class="list-row" data-a="prog-sub" data-v="strength-${g.id}"><span class="grp-art">${muscleIcon(g.muscles[0])}</span><span class="grow"><b>${g.name}</b><span class="pick-sub">${A.esc(top.ex.name)} ${wtEst(top.now)}</span></span>${p != null ? `<span class="small">${pctText(p)}</span>` : ''}${icon('right', 'chev')}</button>`;
-      }).join('')}</div>
-      ${keys.length ? `<section class="card">
-        <div class="row between"><h3>Key lifts</h3>${overall != null ? `<span class="small">Overall ${pctText(overall)} in 8 weeks</span>` : ''}</div>
-        <div class="key-grid">${keys.map((k) => keyTile(k, bw)).join('')}</div>
-        ${prs8 ? `<p class="muted small">${prs8} new ${prs8 === 1 ? 'best' : 'bests'} in the last 8 weeks.</p>` : ''}
-      </section>` : ''}
+    const tab = A.ui.strTab || 'levels';
+    const tabs = `<div class="segmented str-tabs" role="tablist" aria-label="Strength">${[['levels', 'Levels'], ['muscles', 'Muscles'], ['lifts', 'Lifts']].map(([k, l]) => `<button class="${tab === k ? 'on' : ''}" data-a="str-tab" data-v="${k}" role="tab" aria-selected="${tab === k}">${l}</button>`).join('')}</div>`;
+    const liftRow = (s) => { const img = EX_INFO[s.id]?.images?.[0]; return `<button class="list-row strength-row" data-a="ex-info" data-id="${s.id}"><span class="thumb sm">${img ? `<img src="${img}" alt="" loading="lazy" referrerpolicy="no-referrer">` : muscleIcon(s.ex.primary?.[0] || 'chest')}${familyDisc(s.ex, 18)}</span><span class="grow"><b>${A.esc(s.ex.name)}</b><span class="pick-sub">${s.pct != null ? `${pctText(s.pct)} in 8 weeks` : 'New'}</span></span>${sparkSvg(s.h, 'spark row-spark')}<span class="row-val">${Math.round(toDisp(s.now))}<small>${s.ex.type === 'dumbbell' ? `${wUnit()} each` : wUnit()}</small></span></button>`; };
+    const body = tab === 'levels' ? standardsPanel()
+      : tab === 'muscles' ? `<div class="list-group">${groups.map(({ g, lifts }) => {
+        const top = lifts[0]; const p2 = median(lifts.filter((x) => x.recent).map((x) => x.pct));
+        return `<button class="list-row" data-a="prog-sub" data-v="strength-${g.id}"><span class="grp-art">${muscleIcon(g.muscles[0])}</span><span class="grow"><b>${g.name}</b><span class="pick-sub">${A.esc(top.ex.name)} ${wtEst(top.now)}</span></span>${p2 != null ? `<span class="small">${pctText(p2)}</span>` : ''}${icon('right', 'chev')}</button>`;
+      }).join('')}</div>`
+        : `${keys.length ? `<div class="list-group">${keys.map(liftRow).join('')}</div>` : '<p class="muted small pad">Log a main lift to see it here.</p>'}${prs8 ? `<p class="str-note">${prs8} new ${prs8 === 1 ? 'best' : 'bests'} in the last 8 weeks.${overall != null ? ` Overall ${overall > 0 ? '+' : ''}${overall}%.` : ''}</p>` : ''}`;
+    return `${A.subHeader('Strength', 'progress-back')}
+      ${getGoal(A.db).on && getGoal(A.db).type === 'club' ? A.goals.card() : ''}
+      ${tabs}
+      ${body}
 `;
   }
 

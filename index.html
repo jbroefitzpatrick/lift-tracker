@@ -7,7 +7,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Lift Tracker</title>
   <meta name="description" content="Personal lifting tracker with built-in progression.">
-  <meta name="theme-color" content="#0c0e12">
+  <meta name="theme-color" content="#1a1b1e">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -15,14 +15,17 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <link rel="icon" type="image/png" href="icons/icon-192.png">
+  <link rel="preload" href="fonts/archivo-var.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="plate.css">
 </head>
 <body>
   <main id="main"></main>
 
   <div id="rest" hidden role="timer" aria-label="Rest timer">
     <div class="row">
-      <div class="grow"><div id="rest-label">Rest</div><div id="rest-time" class="tnum">0:00</div></div>
+      <svg id="rest-plate" viewBox="0 0 56 56" aria-hidden="true"><circle cx="28" cy="28" r="27" fill="#141518"/><circle cx="28" cy="28" r="23" fill="none" stroke="#3a3c41" stroke-width="7"/><circle id="rest-ring" cx="28" cy="28" r="23" fill="none" stroke="#1f5fbf" stroke-width="7" stroke-dasharray="144.51" stroke-dashoffset="0" transform="rotate(-90 28 28)"/><circle cx="28" cy="28" r="12" fill="#2b2d31" stroke="#55585e"/><circle cx="28" cy="28" r="4" fill="#d8d9d6"/></svg>
+      <div class="grow"><div id="rest-time" class="tnum">0:00</div><div id="rest-label">Rest</div></div>
       <button id="rest-minus" class="mini" aria-label="15 seconds less">−15</button>
       <button id="rest-plus" class="mini" aria-label="15 seconds more">+15</button>
       <button id="rest-skip" class="mini">Skip</button>

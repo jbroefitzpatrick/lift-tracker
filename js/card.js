@@ -9,6 +9,7 @@
 import { todayStr, addDays, mondayOf } from './store.js';
 import { e1rm } from './engine.js';
 import { liftTemplates, doneTemplates } from './week.js';
+import { streakInfo } from './streak.js';
 
 const goodSets = (e) => (e.sets || []).filter((x) => x.done !== false && !x.pain && x.type !== 'w' && x.reps > 0);
 
@@ -23,10 +24,7 @@ export function buildCard(db, name) {
   const sets = inWeek.reduce((a, s) => a + s.entries.reduce((b, e) => b + goodSets(e).length, 0), 0);
   const cardioMin = (db.cardio || []).filter((c) => c.date >= start && c.date <= end && c.cardioId !== 'mobility').reduce((a, c) => a + (c.minutes || 0), 0);
 
-  // Weeks in a row with a workout.
-  const weeks = new Set(sessions.map((s) => mondayOf(s.date)));
-  let w = start; if (!weeks.has(w)) w = addDays(w, -7);
-  let streak = 0; while (weeks.has(w)) { streak += 1; w = addDays(w, -7); }
+  const streak = streakInfo(db, today).current;
 
   // Best estimated max per lift per week (12 weeks), and records with the size of the jump.
   const since = addDays(start, -7 * 12);

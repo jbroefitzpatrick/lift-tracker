@@ -1708,3 +1708,34 @@ button.vol-btn { min-height: 44px; }
 .goal-track { display: block; height: 8px; border-radius: 4px; overflow: hidden; background: var(--surface-3); }
 .goal-track i { display: block; height: 100%; border-radius: 4px; background: var(--accent-strong); }
 .goal-sub { font-size: 0.8125rem; color: var(--muted); }
+
+/* Streak: a band across every week that counts */
+.streak-hero { display: grid; gap: 10px; margin-bottom: 14px; padding: 14px; border-radius: var(--radius-sm); background: var(--surface-2); }
+.streak-hero.on { background: var(--accent-strong); color: var(--on-accent); }
+.sh-top { display: flex; align-items: center; gap: 12px; }
+.sh-num { font-size: 2.75rem; font-weight: 800; line-height: 1; }
+.sh-txt { flex: 1; min-width: 0; } .sh-txt b { display: block; font-size: 1.0625rem; } .sh-txt span { font-size: 0.8125rem; opacity: 0.85; }
+.sh-tier { flex: none; padding: 4px 9px; border-radius: 999px; background: rgb(255 255 255 / 0.18); font-size: 0.75rem; font-weight: 700; }
+.streak-hero:not(.on) .sh-tier { background: var(--surface-3); }
+.sw-row { display: grid; grid-template-columns: repeat(12, 1fr); gap: 4px; }
+.sw-dot { display: block; height: 8px; border-radius: 4px; background: rgb(127 127 127 / 0.28); }
+.sw-dot.hit { background: var(--accent); } .streak-hero.on .sw-dot.hit { background: #fff; }
+.sw-dot.frozen { background: repeating-linear-gradient(135deg, #9ad7f5 0 3px, #dff3fc 3px 6px); }
+.sw-dot.current { background: transparent; box-shadow: inset 0 0 0 1.5px currentColor; }
+.sw-dot.missed { background: rgb(127 127 127 / 0.28); }
+.streak-ask { margin-bottom: 14px; }
+.cal-rows { display: grid; }
+.cal-week { padding: 2px 3px; }
+.cal-week.sk-hit { background: var(--accent-soft); }
+.cal-week.sk-frozen { background: repeating-linear-gradient(135deg, rgb(154 215 245 / 0.2) 0 5px, rgb(154 215 245 / 0.07) 5px 10px); }
+.cal-week.sk-hit:not(.sk-hit + .sk-hit), .cal-week.sk-frozen:not(.sk-frozen + .sk-frozen) { border-top-left-radius: 12px; border-top-right-radius: 12px; }
+.cal-week.sk-hit:not(:has(+ .sk-hit)), .cal-week.sk-frozen:not(:has(+ .sk-frozen)) { border-bottom-left-radius: 12px; border-bottom-right-radius: 12px; }
+.cal-week .cal-cell.lift { background: var(--accent-strong); }
+.cal-week .cal-cell.lift .cal-n, .cal-week .cal-cell.lift .cal-m { color: var(--on-accent); }
+.cal-cell.planned .cal-n { width: 26px; height: 26px; display: grid; place-items: center; border: 1.5px dashed var(--muted); border-radius: 50%; color: var(--text); }
+.cal-cell.missed .cal-m { display: block; width: 6px; height: 6px; min-height: 0; margin-top: 3px; border-radius: 50%; background: var(--bad); }
+.cal-key { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 10px; color: var(--muted); font-size: 0.75rem; }
+.cal-key span { display: inline-flex; align-items: center; gap: 5px; }
+.cal-key i { display: block; width: 11px; height: 11px; border-radius: 50%; }
+.k-lift { background: var(--accent-strong); } .k-cardio { background: var(--cardio); } .k-plan { border: 1.5px dashed var(--muted); } .k-miss { background: var(--bad); }
+.k-freeze { border-radius: 2px !important; background: repeating-linear-gradient(135deg, #9ad7f5 0 2px, #dff3fc 2px 4px); }

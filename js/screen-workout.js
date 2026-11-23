@@ -20,6 +20,7 @@ import { addOptions, muscleWork } from './review.js';
 import { workoutBurn, workoutMinutes } from './energy.js';
 import { detectPRs } from './records.js';
 import { peakWeek } from './maxes.js';
+import { familyDisc, loadSetup } from './equipment.js';
 
 export function createWorkoutScreens(A) {
   // ---------- Screens: Today ----------
@@ -170,7 +171,7 @@ export function createWorkoutScreens(A) {
     if (!session && day === dayKeyOf(todayStr())) html += A.doneTodayCard(day);
     // The day a plan is made: nothing but the plan (no check-ins, reviews or reminders yet).
     const planDay0 = A.db.settings.planSince === todayStr() && day === dayKeyOf(todayStr());
-    const banner = !session && !planDay0 ? [A.train.recoveryCheck(), A.reviewCard(), A.skippedPrompt(day), A.train.weekPrompt(), A.extras.backupBanner(), A.db.settings.welcomed ? A.train.installHint() : ''].filter(Boolean)[0] || '' : '';
+    const banner = !session && !planDay0 ? [A.streak.prompt(), A.train.recoveryCheck(), A.reviewCard(), A.skippedPrompt(day), A.train.weekPrompt(), A.extras.backupBanner(), A.db.settings.welcomed ? A.train.installHint() : ''].filter(Boolean)[0] || '' : '';
     html += banner;
     html += A.blockCheckinBanner();
     if (needsRotationPrompt(A.db)) {
@@ -239,12 +240,15 @@ export function createWorkoutScreens(A) {
     A.ui.nextUid = session ? ((A.ui.exUid && items.find((i) => i.uid === A.ui.exUid && setsLeft(session, i))) || items.find((i) => setsLeft(session, i)))?.uid : null;
     html += '<div class="ex-list">';
     let lastPhase = null;
+    const warmOpen = A.ui.warmList ?? !!session;
+    const warmItems = items.filter((x) => x.phase === 'warmup');
     for (const grp of groupsOf(items)) {
       const full = A.db.settings.listView === 'full' && !selecting;
       const rows = grp.items.map((i) => (full ? exerciseFull(i, session, isDeload) : exerciseRow(i, session, isDeload, selecting, sel))).join('');
       const phase = grp.items[0].phase || 'main';
-      if (phase !== lastPhase && (phase !== 'main' || lastPhase)) html += `<h3 class="phase-h">${phase === 'warmup' ? `Warm-up · about ${warmupMinutes(items.filter((x) => x.phase === 'warmup'))} min${!session ? ' <button class="text-btn phase-act" data-a="warm-shuffle">Shuffle</button>' : ''}` : phase === 'cooldown' ? 'Cool-down' : 'Workout'}</h3>`;
+      if (phase !== lastPhase && (phase !== 'main' || lastPhase)) html += `<h3 class="phase-h">${phase === 'warmup' ? `<button class="phase-toggle" data-a="warm-list" aria-expanded="${warmOpen}"><span>Warm-up</span><small>${warmItems.length} moves · about ${warmupMinutes(warmItems)} min ${warmOpen ? '▴' : '▾'}</small></button>${!session && warmOpen ? ' <button class="text-btn phase-act" data-a="warm-shuffle">Shuffle</button>' : ''}` : phase === 'cooldown' ? 'Cool-down' : 'Workout'}</h3>`;
       lastPhase = phase;
+      if (phase === 'warmup' && !warmOpen) continue;
       if (grp.linked) {
         const restSec = Math.max(...grp.items.map((i) => i.restSec || 0));
         html += `<section class="link-group" aria-label="${linkLabel(grp.items.length)}">
@@ -308,7 +312,9 @@ export function createWorkoutScreens(A) {
     const doneN = sets.filter((s) => s.done).length;
     const allDone = entry && sets.length && doneN === sets.length;
     const reps = item.repMin === item.repMax ? item.repMin : `${item.repMin}–${item.repMax}`;
-    const weight = target != null ? ` · ${A.fmtW(target, ex)}` : '';
+    const weight = '';
+    const showLoad = !conditioning && target != null && !ex.noLoad && ex.type !== 'bodyweight';
+    const rowVal = conditioning ? [fmtTarget(metric, item.target), ''] : showLoad ? [toDisp(target), ex.type === 'dumbbell' ? `${wUnit()} each` : wUnit()] : [item.repMin === item.repMax ? item.repMin : `${item.repMin}–${item.repMax}`, 'reps'];
     const meta = conditioning
       ? `${entry && doneN ? `${doneN} of ${sets.length} rounds` : `${t.sets} ${t.sets === 1 ? 'round' : 'rounds'}`} · ${fmtTarget(metric, item.target)}${item.restSec ? ` · rest ${A.fmtRest(item.restSec)}` : ''}`
       : entry && doneN ? `${doneN} of ${sets.length} sets${weight}`
@@ -319,9 +325,10 @@ export function createWorkoutScreens(A) {
     return `<div class="ex-item ${allDone ? 'is-done' : ''} ${checked ? 'is-selected' : ''} ${isNext ? 'is-next' : ''}" data-drag-item data-drag-press ${session || (item.phase || 'main') === 'main' ? 'data-drag-join' : ''} data-drag-list="session" data-drag-id="${item.uid}" ${session && !selecting ? `data-swipe="ex-remove" data-swipe-label="Remove" data-uid="${item.uid}"` : ''}>
       ${selecting ? `<label class="sel"><input type="checkbox" data-a="sel-toggle" data-uid="${item.uid}" ${checked ? 'checked' : ''} aria-label="Select ${A.esc(ex.name)}"></label>` : ''}
       <button class="ex-item-main" data-a="ex-open" data-uid="${item.uid}" ${selecting ? 'tabindex="-1"' : ''}>
-        <span class="thumb">${thumb(ex)}</span>
+        <span class="thumb">${thumb(ex)}${familyDisc(ex)}</span>
         <span class="grow">${isNext ? '<span class="eyebrow next">Up next</span>' : ''}<span class="ex-name2">${A.esc(ex.name)}</span><span class="ex-meta">${meta}</span>
           ${notices.length ? `<span class="row-notice ${notices[0][0]}">${A.esc(notices[0][1])}</span>` : ''}</span>
+        ${allDone || selecting ? '' : `<span class="row-val">${rowVal[0]}${rowVal[1] ? `<small>${rowVal[1]}</small>` : ''}</span>`}
       </button>
       ${allDone ? `<span class="status-done" aria-label="Done">${icon('check')}</span>` : ''}
       ${selecting
@@ -444,19 +451,16 @@ export function createWorkoutScreens(A) {
 
     const img = info.images?.[0];
     return `${session ? workoutBar(session) : ''}<div class="ex-screen">
-      <div class="ex-hero ${A.ui.heroBig ? 'big' : ''}" data-a="hero-toggle">${img ? `<img src="${img}" alt="${A.esc(ex.name)}" referrerpolicy="no-referrer">` : `<div class="hero-body">${bodyPair(Object.fromEntries(ex.primary.map((m) => [m, 1])))}</div>`}
-        ${session ? '' : `<button class="icon-btn hero-btn" data-a="ex-close" aria-label="Back to the day">${icon('left')}</button>`}
-        <button class="icon-btn hero-btn right" data-a="ex-sheet" data-uid="${item.uid}" aria-label="More options">${icon('more')}</button>
+      ${session ? '' : `<button class="text-btn station-back" data-a="ex-close">${icon('left')} Back</button>`}
+      ${A.ui.heroBig && img ? `<button class="station-big ex-hero big" data-a="hero-toggle" aria-label="Make photo smaller"><img src="${img}" alt="${A.esc(ex.name)}" referrerpolicy="no-referrer"></button>` : ''}
+      <div class="station-head">
+        ${A.ui.heroBig && img ? '<span></span>' : `<button class="station-pic ex-hero" data-a="hero-toggle" aria-label="Enlarge photo">${thumb(ex)}${familyDisc(ex, 26)}</button>`}
+        <div><h1>${A.esc(ex.name)}</h1>${muscleRow(ex)}</div>
+        <button class="station-more" data-a="ex-sheet" data-uid="${item.uid}" aria-label="More options">${icon('more')}</button>
       </div>
-      <div class="ex-title-row"><h1>${A.esc(ex.name)}</h1><button class="btn sm" data-a="ex-info" data-id="${ex.id}">${icon('play')}How-to</button></div>
-      <p class="subtitle">${CATEGORIES[ex.category]} · ${A.esc(A.muscleLine(ex))}</p>
-      ${session ? '' : (() => { const f = freshness(currentFatigue(A.db)); const gs = [...new Set(ex.primary.map((m) => groupOfMuscle(m)).filter(Boolean))]; return gs.length ? `<button class="rec-line" data-a="open-recovery" data-g="${gs[0].id}">${gs.map((g) => `${g.name} <b class="num">${Math.round(groupFreshness(g, f) * 100)}%</b>`).join(' · ')} recovered ${icon('right', 'chev')}</button>` : ''; })()}
       ${A.db.exNotes?.[ex.id] ? `<button class="ex-note" data-a="ex-note" data-id="${ex.id}">${icon('note')}<span>${A.esc(A.db.exNotes[ex.id])}</span></button>` : ''}
-      <div class="chips quick-row">
-        ${A.db.exNotes?.[ex.id] ? '' : `<button class="chip" data-a="ex-note" data-id="${ex.id}">${icon('note')} Note</button>`}
-        <button class="chip" data-a="ex-rest" data-uid="${item.uid}">Rest ${A.fmtRest(item.restSec || grp.items.reduce((a, i) => Math.max(a, i.restSec || 0), 0)) || 'off'}</button>
-      </div>
       ${grp.linked ? `<div class="group-note"><b>${linkLabel(grp.items.length)}</b>${entry ? (() => { const n = Math.max(...grp.items.map((i) => session.entries[i.uid]?.sets.length || i.sets)); const r = entry.sets.findIndex((x) => !x.done); return ` · round ${r < 0 ? entry.sets.length : r + 1} of ${n}`; })() : ''} · ${grp.items.map((i) => (i === item ? `<span class="cur">${A.esc(i.ex.name)}</span>` : A.esc(i.ex.name))).join(' → ')}</div>` : ''}
+      ${dialBlock(item, session, ex, sets, conditioning, fields, gym, info, ended)}
       <p class="aim-line">${aim}${conditioning || t.aim ? '' : t.rir || rir ? ` · ${A.effort(t.rir || rir, 'aim')}` : ''}</p>
       ${(() => {
         // A lift never logged before: the weight shown is a starting guess.
@@ -475,11 +479,14 @@ export function createWorkoutScreens(A) {
         ${setHead(conditioning, fields, ex)}
         ${rows}
       </div>
-      ${barbell && target ? `<p class="muted small plates">Plates: ${plateText(target, gym)}</p>` : ''}
-      ${!ended ? `<button class="text-btn" data-a="add-set" data-uid="${item.uid}">${icon('plus')} ${conditioning ? 'Add round' : 'Add set'}</button>${conditioning || entry?.maxTest ? '' : `<button class="text-btn" data-a="add-drop" data-uid="${item.uid}">${icon('arrowDown')} Drop set</button>`}` : ''}
+      ${!ended ? `<button class="text-btn" data-a="add-set" data-uid="${item.uid}">${icon('plus')} ${conditioning ? 'Add round' : 'Add set'}</button>${conditioning || entry?.maxTest ? '' : `<button class="text-btn" data-a="add-drop" data-uid="${item.uid}">${icon('plus')} Add drop set</button>`}` : ''}
       ${ex.rules?.rehab && !ended && !entry?.maxTest ? `<label class="toggle"><input type="checkbox" data-a="painfree" data-uid="${item.uid}" ${entry?.painFree ? 'checked' : ''}><span>Pain-free today (needed to increase weight)</span></label>` : ''}
       ${checkin}
-      ${comingUp(items, idx, session)}
+      <div class="chips quick-row">
+        <button class="chip" data-a="ex-info" data-id="${ex.id}">${icon('play')} How-to</button>
+        ${A.db.exNotes?.[ex.id] ? '' : `<button class="chip" data-a="ex-note" data-id="${ex.id}">${icon('note')} Note</button>`}
+        <button class="chip" data-a="ex-rest" data-uid="${item.uid}">Rest ${A.fmtRest(item.restSec || grp.items.reduce((a, i) => Math.max(a, i.restSec || 0), 0)) || 'off'}</button>
+      </div>
       <div class="ex-nav">
         ${back ? `<button class="btn prev-ex" data-a="ex-go" data-uid="${back.uid}" aria-label="Previous exercise: ${A.esc(back.ex.name)}">${icon('left')}<span>Prev</span></button>` : ''}
         ${!session ? '<button class="btn primary grow" data-a="start-workout">Start workout</button>'
@@ -487,6 +494,34 @@ export function createWorkoutScreens(A) {
             : '<button class="btn primary grow" data-a="finish">Finish workout</button>'}
       </div>
     </div>`;
+  }
+
+  // Main muscles bold, helpers grayer, each with its small body icon.
+  function muscleRow(ex) {
+    const list = [...(ex.primary || []).map((m) => [m, 'main']), ...(ex.secondary || []).map((m) => [m, ''])].slice(0, 4);
+    return `<div class="mus-row">${list.map(([m, c]) => `<span class="mus-i ${c}">${muscleIcon(m)}${A.esc(MUSCLES[m] || m)}</span>`).join('')}</div>`;
+  }
+
+  // The number that matters for this exercise, always in the same spot, then how to set it up.
+  function dialBlock(item, session, ex, sets, conditioning, fields, gym, info, ended) {
+    const cur = sets.find((s) => !s.done) || sets[sets.length - 1] || {};
+    const repsFirst = !conditioning && (ex.noLoad || ex.type === 'bodyweight');
+    const k = conditioning ? fields[0][0] : repsFirst ? 'reps' : 'weight';
+    const raw = cur[k];
+    const unit = conditioning ? ({ time: 'seconds', dist: 'meters', cal: 'calories', reps: 'reps' }[k]) : repsFirst ? 'reps' : ex.type === 'dumbbell' ? `${wUnit()} each` : wUnit();
+    const shown = raw == null || raw === '' ? '—' : k === 'weight' ? toDisp(raw) : raw;
+    const live = !!session && !ended;
+    const dial = `<div class="dial ${live ? '' : 'solo'}">${live ? `<button class="dial-btn" data-a="dial" data-uid="${item.uid}" data-k="${k}" data-v="-1" aria-label="Less">−</button>` : ''}<div><span class="dial-val">${shown}</span><span class="dial-unit">${unit}</span></div>${live ? `<button class="dial-btn" data-a="dial" data-uid="${item.uid}" data-k="${k}" data-v="1" aria-label="More">+</button>` : ''}</div>`;
+    if (conditioning) { const cue = String(info.cues || '').split(' · ')[0]; return dial + (cue ? `<div class="setup text"><b>${A.esc(cue)}</b></div>` : ''); }
+    if (ex.noLoad) return dial;
+    if (ex.type === 'bodyweight') {
+      const added = Number(cur.weight) || 0;
+      if (added > 0) { const su = loadSetup(ex, added, gym); return `${dial}<div class="setup">${su.art}<div><b>${A.esc(su.line)}</b>${live ? `<button class="text-btn" data-a="bw-weight" data-uid="${item.uid}" data-v="off">Remove weight</button>` : ''}</div></div>`; }
+      return `${dial}<div class="setup text"><div><b>Body weight</b><span>Add weight when reps feel easy</span></div>${live ? `<button class="text-btn" data-a="bw-weight" data-uid="${item.uid}" data-v="on">+ Add weight</button>` : ''}</div>`;
+    }
+    const su = raw > 0 ? loadSetup(ex, raw, gym) : null;
+    if (!su) return dial;
+    return dial + (su.line ? `<div class="setup">${su.art}<div><b>${A.esc(su.line)}</b>${su.sub ? `<span>${su.sub}</span>` : ''}</div></div>` : `<div class="setup solo">${su.art}</div>`);
   }
 
   // Warm-up sets: collapsed by default, editable, checked off like work sets (they don't count
