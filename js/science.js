@@ -279,6 +279,21 @@ export const REFS = {
     finding: '67 studies: growth and strength both rise with weekly volume, with diminishing returns (stronger for strength). Frequency adds strength gains; for growth, total volume matters more than frequency. Counting a set as ½ for secondary muscles fit the data best.',
     url: 'https://sportrxiv.org/index.php/server/preprint/view/460',
   },
+  schoenfeld2019freq: {
+    cite: 'Schoenfeld BJ, Grgic J, Krieger J (2019). How many times per week should a muscle be trained to maximize muscle hypertrophy? J Sports Sci 37(11):1286–1295.',
+    finding: 'Across 25 studies, when weekly volume was matched, training a muscle more or less often made no significant difference to growth.',
+    url: 'https://pubmed.ncbi.nlm.nih.gov/30558493/',
+  },
+  spiering2021: {
+    cite: 'Spiering BA, et al. (2021). Maintaining physical performance: the minimal dose of exercise needed to preserve endurance and strength over time. J Strength Cond Res 35(5):1449–1458.',
+    finding: 'Strength and size can be held for months on far less training, as long as the load stays heavy.',
+    url: 'https://pubmed.ncbi.nlm.nih.gov/33629972/',
+  },
+  rpLandmarks: {
+    cite: 'Israetel M, Renaissance Periodization. Training volume landmarks for muscle growth.',
+    finding: 'Coaching guideline: about 6 working sets per muscle a week maintains muscle when each muscle is trained at least twice.',
+    url: 'https://renaissanceperiodization.com/expert-advice/training-volume-landmarks-muscle-growth',
+  },
   schoenfeld2016freq: {
     cite: 'Schoenfeld BJ, Ogborn D, Krieger JW (2016). Effects of resistance training frequency on measures of muscle hypertrophy: a systematic review and meta-analysis. Sports Med 46(11):1689–1697.',
     finding: 'Training each muscle at least twice a week produced more growth than once a week.',

@@ -4,10 +4,8 @@
 //   db.week = { start, avail: { day: { on, minutes, gymId } }, days: { day: { name, mode, items,
 //               base, minutes, gymId, from: [templateDay], later?: [...] } } }
 // Rules:
-// - Each template session (a lift day in the plan) is done once a week; fewer days than
-//   sessions means the main lifts of the leftover sessions move into the days you have, and
-//   their accessories are dropped. Weekly volume matters more than how it's spread across days
-//   (schoenfeld2016freq), so redistributing keeps most of the benefit.
+// - Each template session (a lift day in the plan) is done once a week. Fewer days than sessions
+//   rebuilds the week as a balanced split (see week-shape.js).
 // - Each day is fitted to its minutes: supersets first, then fewer accessory sets, then
 //   fewer accessories, then fewer compound sets. Extra time adds work for muscles that are
 //   behind on weekly sets.
@@ -21,6 +19,7 @@ import { weeklySets } from './groups.js';
 import { isAvailable } from './gym.js';
 import { focusFor, blockInfo } from './blocks.js';
 import { liftLoads } from './fatigue.js';
+import { weekShapes as buildShapes } from './week-shape.js';
 
 // Position in the week (0 = the first day, which follows the week-start setting).
 export const dayIndex = (d) => weekPos(d);
@@ -154,22 +153,43 @@ function lagging(db, days) {
 
 // Build this week's overrides from availability. avail: { day: { on, minutes, gymId } }.
 // Days before `fromDay` keep whatever they had. Returns { week, summary: [lines] }.
-export function composeWeek(db, avail, fromDay = todayKey(), { keepCardio = false } = {}) {
+// What's left to place this week. A week already reshaped keeps its full pool, minus what's been done.
+function shapeInput(db, avail, fromDay) {
+  const start = mondayOf(todayStr());
+  const prev = db.week?.start === start ? db.week : null;
+  const done = doneTemplates(db, start);
+  const off = offDays(db);
+  const open = weekOrder().filter((d) => dayIndex(d) >= dayIndex(fromDay) && avail[d]?.on);
+  const again = prev?.shape && prev.shape.templates.length > open.length;
+  const todo = liftTemplates(db).filter((t) => !off.includes(t.day) && (again ? prev.shape.templates.includes(t.day) : !done.has(t.day)));
+  const skip = new Set(again ? db.sessions.filter((s) => s.date >= start && s.date <= addDays(start, 6)).flatMap((s) => s.entries.filter((e) => e.sets?.some((x) => x.done !== false)).map((e) => e.exerciseId)) : []);
+  const sessions = todo.map((t) => ({ day: t.day, name: t.name, items: resolveDay(db, t.day, { template: true }).filter((it) => isLiftItem(db, it)).map(({ ex, ...r }) => r) }));
+  return { todo, open, sessions, skip, active: open.length > 0 && todo.length > open.length };
+}
+
+// The ways to arrange this week when there are fewer days than workouts, recommended first.
+export function weekShapes(db, avail, fromDay = todayKey()) {
+  const s = shapeInput(db, avail, fromDay);
+  return s.active ? buildShapes(db, s.sessions, s.open, avail, focusFor(db, blockInfo(db).index) || [], weekOrder(), s.skip) : [];
+}
+
+export function composeWeek(db, avail, fromDay = todayKey(), { keepCardio = false, shape = null, keepSessions = false } = {}) {
   const start = mondayOf(todayStr());
   const prev = db.week?.start === start ? db.week : null;
   const days = {};
   for (const d of weekOrder()) if (dayIndex(d) < dayIndex(fromDay) && prev?.days?.[d]) days[d] = prev.days[d];
-  const done = doneTemplates(db, start);
   const off = offDays(db);
-  const todo = liftTemplates(db).filter((t) => !done.has(t.day) && !off.includes(t.day));
-  const open = weekOrder().filter((d) => dayIndex(d) >= dayIndex(fromDay) && avail[d]?.on);
+  const input = shapeInput(db, avail, fromDay);
+  const { todo, open } = input;
   const focus = focusFor(db, blockInfo(db).index) || [];
   const summary = [];
+  const shapes = input.active && !keepSessions ? buildShapes(db, input.sessions, open, avail, focus, weekOrder(), input.skip) : [];
+  const chosen = shapes.find((o) => o.key === shape) || shapes[0] || null;
   const gymOf = (d) => db.gyms.find((g) => g.id === avail[d]?.gymId) || null;
 
   // Spread sessions across the open days as evenly as possible.
   const slots = [];
-  if (todo.length && open.length) {
+  if (!chosen && todo.length && open.length) {
     const T = Math.min(todo.length, open.length);
     for (let i = 0; i < T; i++) slots.push(open[T === 1 ? 0 : Math.round((i * (open.length - 1)) / (T - 1))]);
   }
@@ -177,9 +197,10 @@ export function composeWeek(db, avail, fromDay = todayKey(), { keepCardio = fals
   todo.slice(0, slots.length).forEach((t, i) => {
     assigned[slots[i]] = { name: t.name, from: [t.day], base: clone(resolveDay(db, t.day, { template: true }).filter((it) => isLiftItem(db, it))) };
   });
-  // More sessions than days: move each leftover session's main lifts into the lightest day.
+  for (const d of chosen?.days || []) assigned[d.day] = { name: d.name, from: d.from, base: d.items };
+  // More sessions than days with no split to use: main lifts move into the lightest day.
   // (With no days at all there is nothing to fold into; the summary says the week is off.)
-  for (const t of open.length ? todo.slice(slots.length) : []) {
+  for (const t of !chosen && open.length ? todo.slice(slots.length) : []) {
     const mains = resolveDay(db, t.day, { template: true }).filter((it) => isLiftItem(db, it) && (focus.includes(it.exerciseId) || db.exercises[it.exerciseId]?.category === 'compound')).slice(0, 2);
     for (const m of mains) {
       const target = slots.map((d) => assigned[d]).sort((a, b) => a.base.filter((x) => db.exercises[x.exerciseId]?.category === 'compound').length - b.base.filter((x) => db.exercises[x.exerciseId]?.category === 'compound').length)[0];
@@ -209,13 +230,14 @@ export function composeWeek(db, avail, fromDay = todayKey(), { keepCardio = fals
     const v = days[d];
     if (!v?.base || dayIndex(d) < dayIndex(fromDay)) continue; // earlier days this week may have nothing stored
     const g = adaptToGym(db, clone(v.base), gymOf(d));
-    const fit = fitItems(db, g.items, v.minutes, { focus, extraFor: extra });
+    const fit = fitItems(db, g.items, v.minutes, { focus, extraFor: chosen ? null : extra });
     v.items = [...fit.items, ...(v.cond || [])];
     const label = d[0].toUpperCase() + d.slice(1);
     if (g.notes.length || fit.notes.length) summary.push(`${label}: ${[...g.notes, ...fit.notes].join('; ')}`);
   }
-  const week = { start, avail, days, off };
-  if (todo.length > open.length && open.length) summary.unshift(`${todo.length} sessions in ${open.length} day${open.length > 1 ? 's' : ''}: every focus lift still gets done once.`);
+  const week = { start, avail, days, off, ...(chosen ? { shape: { key: chosen.key, templates: todo.map((t) => t.day) } } : {}) };
+  if (chosen) summary.unshift(`${chosen.name} this week.`);
+  else if (todo.length > open.length && open.length) summary.unshift(`${todo.length} sessions in ${open.length} day${open.length > 1 ? 's' : ''}: every focus lift still gets done once.`);
   if (!open.length) summary.unshift('No training days this week — the plan picks up again next Monday.');
   return { week, summary };
 }
@@ -308,7 +330,7 @@ export function shiftWeek(db, date = todayStr()) {
   const prev = db.week?.start === mondayOf(date) ? db.week.avail || {} : {};
   const avail = {};
   for (const d of order) if (dayIndex(d) >= dayIndex(today)) avail[d] = { on: targets.includes(d), minutes: prev[d]?.minutes || null, gymId: prev[d]?.gymId || '' };
-  const res = composeWeek(db, avail, today, { keepCardio: true });
+  const res = composeWeek(db, avail, today, { keepCardio: true, keepSessions: true });
   res.week.off = off;
   res.moves = todo.slice(0, targets.length).map((t, i) => ({ from: t.day, to: targets[i], name: t.name }));
   res.overflow = todo.slice(targets.length).map((t) => t.name);

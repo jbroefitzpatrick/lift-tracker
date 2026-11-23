@@ -343,7 +343,7 @@ export function createProgressScreens(A) {
     for (const s of A.db.sessions) {
       for (const e of s.entries) {
         if (e.exerciseId !== exId) continue;
-        const good = e.sets.filter((x) => !x.pain && x.reps > 0);
+        const good = e.sets.filter((x) => !x.pain && x.reps > 0).map((x) => ({ ...x, weight: Number(x.weight) || 0 }));
         if (!good.length) continue;
         const top = good.reduce((a, b) => (b.weight > a.weight || (b.weight === a.weight && b.reps > a.reps) ? b : a));
         out.push({
@@ -445,7 +445,7 @@ export function createProgressScreens(A) {
     const histRow = (h) => `
       <div class="hist-row">
         <div class="row between"><b>${A.fmtDate(h.date)}</b><span class="muted small">${h.logged ? 'logged max' : h.isDeload ? 'deload' : h.excluded ? 'not counted' : bw ? `${h.totalReps} reps` : `est. max ${Math.round(toDisp(h.best1rm))}`}</span></div>
-        <p class="small">${h.sets.map((x) => `${A.fmtW(x.weight, ex).replace(` ${wUnit()}`, '')}×${x.reps}${x.rir != null ? ` @${x.rir}` : ''}${x.pain ? ' (pain)' : ''}`).join(', ')}</p>
+        <p class="small">${h.sets.map((x) => `${x.weight == null ? '' : `${A.fmtW(x.weight, ex).replace(` ${wUnit()}`, '')}×`}${x.reps ?? 0}${x.rir != null ? ` @${x.rir}` : ''}${x.pain ? ' (pain)' : ''}`).join(', ')}</p>
       </div>`;
     // The last five, the rest one tap away.
     const recent = [...hist].reverse();

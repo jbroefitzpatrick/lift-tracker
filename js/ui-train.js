@@ -4,7 +4,7 @@ import { icon } from './icons.js';
 import { DAY_KEYS, RECOVERY_GROUPS, resolveDay, weekOverride, groupOf } from './engine.js';
 import { todayStr, mondayOf, addDays, weekOrder } from './store.js';
 import { estimateMinutes } from './builder.js';
-import { composeWeek, adjustDay, splitDay, liftTemplates, doneTemplates, missedTemplates, todayKey, dayIndex, shiftWeek, moveDay, skipDay, planSpread, previewSpread } from './week.js';
+import { weekShapes, composeWeek, adjustDay, splitDay, liftTemplates, doneTemplates, missedTemplates, todayKey, dayIndex, shiftWeek, moveDay, skipDay, planSpread, previewSpread } from './week.js';
 import { dueChecks, record, notReady, learnSlowRecovery, RATINGS, groupSets } from './recovery.js';
 import { TEMPLATES, buildFinisher, condHistory, condTarget, fmtTarget } from './conditioning.js';
 import { RUN_KINDS, runKinds, scheduleRuns, goalWeek, paces, fmtClock, parseClock, weekRuns } from './running.js';
@@ -53,30 +53,35 @@ export function createTrain(ctx) {
       <select data-wk="${d}:minutes" aria-label="${FULL[d]} minutes" ${a.on ? '' : 'disabled'}>${MIN_CHOICES.map((m) => `<option value="${m}" ${+a.minutes === m ? 'selected' : ''}>${m} min</option>`).join('')}</select>
       ${gyms ? `<select data-wk="${d}:gymId" aria-label="${FULL[d]} gym" ${a.on ? '' : 'disabled'}><option value="">Usual gym</option>${db.gyms.map((g) => `<option value="${g.id}" ${a.gymId === g.id ? 'selected' : ''}>${esc(g.name)}</option>`).join('')}</select>` : ''}
     </div>`).join('');
-    const { week, summary } = composeWeek(db, st.avail);
+    const shapes = weekShapes(db, st.avail);
+    if (!shapes.some((o) => o.key === st.shape)) st.shape = shapes[0]?.key || null;
+    const { week, summary } = composeWeek(db, st.avail, undefined, { shape: st.shape });
+    const shapeCards = shapes.length > 1 ? `<h3 class="sheet-h">How to split it</h3><div class="list-group wk-shapes" role="radiogroup" aria-label="How to split the week">${shapes.map((o) => `<button class="list-row ${o.key === st.shape ? 'picked' : ''}" data-a="wk-shape" data-v="${o.key}" role="radio" aria-checked="${o.key === st.shape}"><span class="grow"><b>${esc(o.name)}${o.recommended ? ' <small class="wk-rec">Recommended</small>' : ''}</b><span class="pick-sub">${esc(o.why)}</span><span class="pick-sub">${o.keptSets} of ${o.totalSets} sets · ${Math.min(...o.minutes)}–${Math.max(...o.minutes)} min${o.overlap ? ' · same muscles on back-to-back days' : ''}</span></span>${o.key === st.shape ? icon('check', 'chev') : ''}</button>`).join('')}</div>` : '';
     const preview = weekOrder().filter((d) => st.avail[d]).map((d) => {
       const v = week.days[d];
       if (!v?.items?.length) return `<div class="wk-day muted"><b>${SHORT[d]}</b><span>${st.avail[d].on ? 'Free: cardio or recovery' : 'Rest'}</span></div>`;
       const lifts = v.items.filter((i) => db.exercises[i.exerciseId]?.category !== 'conditioning');
-      return `<div class="wk-day"><b>${SHORT[d]}</b><span><b>${esc(v.name)}</b> · ${lifts.length} exercises · ~${estimateMinutes(lifts)} min</span></div>`;
+      return `<details class="wk-day-more"><summary class="wk-day"><b>${SHORT[d]}</b><span class="grow"><b>${esc(v.name)}</b> · ${lifts.length} exercises · ~${estimateMinutes(lifts)} min</span>${icon('right', 'chev')}</summary><div class="wk-lifts">${lifts.map((i) => `<div><span>${esc(db.exercises[i.exerciseId].name)}</span><b>${i.sets} × ${i.repMin === i.repMax ? i.repMin : `${i.repMin}–${i.repMax}`}</b></div>`).join('')}</div></details>`;
     }).join('');
     return `<div class="avail-list">${rows}</div>
+      ${shapeCards}
       <h3 class="sheet-h">This week</h3>
       <div class="wk-preview">${preview}</div>
-      ${summary.length ? `<ul class="wk-notes">${summary.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>` : ''}`;
+      ${summary.filter((l) => !shapes.length || !l.endsWith('this week.')).length ? `<ul class="wk-notes">${summary.filter((l) => !shapes.length || !l.endsWith('this week.')).map((l) => `<li>${esc(l)}</li>`).join('')}</ul>` : ''}`;
   }
 
   function openPlanner(n = null) {
     st.avail = defaultAvail(n);
+    st.shape = ctx.db.week?.start === mondayOf(todayStr()) ? ctx.db.week.shape?.key || null : null;
     const left = DAY_KEYS.length - dayIndex(todayKey());
     ctx.openSheet(`<h2>Adjust week</h2>
-      <p class="muted small">Choose your days and time. Focus lifts always stay.</p>
-      <div class="chips" role="group" aria-label="Number of days">${Array.from({ length: Math.min(6, left) }, (_, i) => `<button class="chip ${n === i + 1 ? 'on' : ''}" data-a="wk-n" data-v="${i + 1}">${i + 1} day${i ? 's' : ''}</button>`).join('')}</div>
+      <p class="muted small">Choose your days and time. Fewer days than usual rebuilds the week so every muscle stays covered.</p>
+      <div class="field"><span>Days this week</span><div class="chips wk-count" style="--n:${Math.min(6, left)}" role="group" aria-label="Number of days">${Array.from({ length: Math.min(6, left) }, (_, i) => `<button class="chip ${n === i + 1 ? 'on' : ''}" data-a="wk-n" data-v="${i + 1}" aria-label="${i + 1} day${i ? 's' : ''}">${i + 1}</button>`).join('')}</div></div>
       <div id="wk-body">${plannerBody()}</div>
       <button class="btn primary block big" data-a="wk-apply">Apply</button>
       ${ctx.db.week?.start === mondayOf(todayStr()) ? '<button class="btn block" data-a="wk-reset">Reset to plan</button>' : ''}
       <button class="btn plain block" data-a="close-sheet">Cancel</button>
-      <p class="muted small">Weekly volume matters more than which day it lands on. ${ctx.refChips(['schoenfeld2016freq'])}</p>`);
+      <p class="muted small">With weekly sets matched, how often a muscle trains makes little difference, so keeping the sets matters more than keeping the usual days. ${ctx.refChips(['schoenfeld2019freq', 'grgic2018freq', 'pelland2026', 'spiering2021', 'rpLandmarks'])}</p>`);
   }
 
   // ---------- Missed a day, or a day that won't work ----------
@@ -389,10 +394,11 @@ export function createTrain(ctx) {
     'off-skip': (d) => done(skipDay(ctx.db, d.day)),
     'off-spread': (d) => { const r = planSpread(ctx.db, d.day); if (!r) return ctx.toast('No other workouts left this week to spread it over.'); done(`Spread over ${r.targets.filter((t) => r.placed.some((p) => p.to === t)).map((t) => SHORT[t]).join(', ')}.`); },
     'wk-open': (d) => openPlanner(d.v ? +d.v : null),
-    'wk-n': (d) => { st.avail = defaultAvail(+d.v); document.querySelectorAll('[data-a="wk-n"]').forEach((b) => b.classList.toggle('on', b.dataset.v === d.v)); refreshPlanner(); },
+    'wk-shape': (d) => { st.shape = d.v; refreshPlanner(); },
+    'wk-n': (d) => { st.shape = null; st.avail = defaultAvail(+d.v); document.querySelectorAll('[data-a="wk-n"]').forEach((b) => b.classList.toggle('on', b.dataset.v === d.v)); refreshPlanner(); },
     'wk-apply': () => {
       const db = ctx.db;
-      const { week, summary } = composeWeek(db, st.avail);
+      const { week, summary } = composeWeek(db, st.avail, undefined, { shape: st.shape });
       db.week = week;
       db.settings.weekPromptDismissed = `${week.start}:${todayStr()}`;
       ctx.persist(); ctx.closeSheet(); ctx.render();
@@ -503,6 +509,7 @@ export function createTrain(ctx) {
     const k = e.target.dataset?.wk;
     if (!k) return false;
     const [d, field] = k.split(':');
+    if (field === 'on') st.shape = null;
     st.avail[d][field] = field === 'on' ? e.target.checked : field === 'minutes' ? +e.target.value : e.target.value;
     document.querySelectorAll('[data-a="wk-n"]').forEach((b) => b.classList.remove('on'));
     refreshPlanner();
