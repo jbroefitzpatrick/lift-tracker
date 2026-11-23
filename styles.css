@@ -1675,3 +1675,36 @@ body.in-workout .ex-hero.big { cursor: zoom-out; }
 /* Lift picker (max-out day, peaking): a check on the right when chosen */
 .pick-row .pick-check { width: 22px; height: 22px; display: grid; place-items: center; color: var(--accent); }
 .pick-row.on { background: var(--accent-soft); }
+
+/* Audit fixes: comfortable tap areas without making small controls look bigger */
+.fp-btn { min-height: 44px; padding-inline: 14px; }
+.small-link, .sub-link, .meal-title, .set-badge, .sheet-x, .wb-back { position: relative; }
+.small-link::after, .sub-link::after, .meal-title::after { content: ""; position: absolute; inset: -13px -6px; }
+.set-badge::after, .sheet-x::after, .wb-back::after { content: ""; position: absolute; inset: -6px; }
+button.vol-btn { min-height: 44px; }
+.fresh-row.vol.sub.vol-btn { min-height: 44px; }
+
+/* Lift days: muscles fold into one line */
+.muscle-line { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; margin-bottom: 6px; padding: 0 2px; border: 0; background: none; color: var(--muted); font: inherit; font-size: 0.875rem; text-align: left; cursor: pointer; }
+.muscle-line b { color: var(--text); font-weight: 600; }
+.muscle-line .low { color: var(--bad); } .muscle-line .mid { color: var(--warn); }
+.muscle-line .ic { flex: none; transition: transform 0.15s; }
+.muscle-line[aria-expanded="true"] .ic { transform: rotate(180deg); }
+
+/* The skipped-exercise banner: sentence on its own line, actions under it */
+.slim-banner.review-card.stacked { display: grid; grid-template-columns: 1fr 1fr 44px; gap: 6px; padding: 6px 8px 8px; }
+.slim-banner.stacked .banner-main { grid-column: 1 / -1; }
+
+.quiet-link { color: var(--muted); font-size: 0.8125rem; }
+
+/* Next button: long exercise names wrap instead of being cut off */
+.ex-nav .btn .ell { white-space: normal; overflow: visible; text-wrap: balance; line-height: 1.15; padding-block: 6px; }
+
+/* Big goal */
+.goal-card { display: grid; gap: 5px; width: 100%; margin-bottom: 12px; padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+.goal-top { display: flex; align-items: center; justify-content: space-between; }
+.goal-name { font-size: 0.8125rem; font-weight: 700; color: var(--muted); }
+.goal-val { font-size: 1.75rem; font-weight: 800; line-height: 1.1; }
+.goal-track { display: block; height: 8px; border-radius: 4px; overflow: hidden; background: var(--surface-3); }
+.goal-track i { display: block; height: 100%; border-radius: 4px; background: var(--accent-strong); }
+.goal-sub { font-size: 0.8125rem; color: var(--muted); }

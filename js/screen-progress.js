@@ -17,6 +17,7 @@ import { strengthAreas, LEVELS } from './standards.js';
 import { roundToGym, activeGym } from './gym.js';
 import { CATEGORIES } from './bank.js';
 import { maxesFor } from './maxes.js';
+import { getGoal } from './big-goal.js';
 
 export function createProgressScreens(A) {
   // ---------- This week at a glance ----------
@@ -183,7 +184,7 @@ export function createProgressScreens(A) {
       <span class="key-label">${A.esc(s.label)}</span>
       <b class="key-name">${A.esc(s.ex.name)}</b>
       <span class="key-val num">${Math.round(toDisp(s.now))}<small> ${wUnit()}</small></span>
-      <span class="key-sub">${s.pct != null ? `${pctText(s.pct)} in 8 wk` : 'New'}${ratio ? ` · ${ratio.toFixed(2)}× BW` : ''}</span>
+      <span class="key-sub">${s.pct != null ? `${pctText(s.pct)} in 8 wk` : 'New'}${ratio ? ` · ${ratio.toFixed(2)}× body weight` : ''}</span>
       ${sparkSvg(s.h, 'spark key-spark')}
     </button>`;
   }
@@ -231,7 +232,7 @@ export function createProgressScreens(A) {
     const bw = person().bw;
     const lvl = (n) => (n >= 0 ? LEVELS[n] : 'Starting out');
     const parts = a.parts.map((p) => p.basis
-      ? `<div class="post-metric"><span class="pm-label">${A.esc(p.name)}${p.basis.f !== 1 ? ` (from ${A.esc(p.basis.s.ex.name)})` : ''}</span><b class="num">${wtEst(p.equiv)} · ${p.ratio.toFixed(2)}× BW</b><span class="pm-sub">${lvl(p.level)} · stronger than ${p.pct}%</span></div>`
+      ? `<div class="post-metric"><span class="pm-label">${A.esc(p.name)}${p.basis.f !== 1 ? ` (from ${A.esc(p.basis.s.ex.name)})` : ''}</span><b class="num">${wtEst(p.equiv)} · ${p.ratio.toFixed(2)}× body weight</b><span class="pm-sub">${lvl(p.level)} · stronger than ${p.pct}%</span></div>`
       : `<p class="small muted">${A.esc(p.name)}: not logged yet</p>`).join('');
     const multi = a.parts.length > 1;
     const val = (p, i) => (bw ? wtEst(p.levels[i] * bw) : `${p.levels[i].toFixed(2)}×`);
@@ -255,6 +256,7 @@ export function createProgressScreens(A) {
     const groups = GROUPS.map((g) => ({ g, lifts: groupLifts(g) })).filter((x) => x.lifts.length);
     if (!keys.length && !groups.length) return `${A.subHeader('Strength', 'progress-back')}<p class="muted small pad">Log a few workouts with weights and your lifts show up here.</p>`;
     return `${A.subHeader('Strength', 'progress-back', 'Estimated one-rep max from your best set each workout')}
+      ${getGoal(A.db).type === 'club' ? A.goals.card() : ''}
       ${standardsPanel()}
       <h2 class="group-title">By muscle group</h2>
       <div class="list-group">${groups.map(({ g, lifts }) => {
@@ -317,6 +319,7 @@ export function createProgressScreens(A) {
     return `<header class="top"><h1 class="grow">Progress</h1></header>
       ${!A.db.sessions.length && !A.db.cardio.length ? '<div class="empty"><div class="big">No workouts yet</div><p class="muted">Finished workouts show up here.</p></div>' : ''}
       ${weekRingsCard()}
+      ${A.db.sessions.length || A.db.cardio.length ? A.goals.card() : ''}
       ${calendarCard()}
       <div class="list-group">
         <button class="list-row" data-a="prog-sub" data-v="strength"><span class="grow"><b>Strength</b><span class="pick-sub">Estimated max for your main lifts over time</span></span>${icon('right', 'chev')}</button>
@@ -341,7 +344,7 @@ export function createProgressScreens(A) {
       const all = [...A.db.sessions].reverse();
       const row = (s) => `
         <button class="list-row" data-a="summary" data-id="${s.id}">
-          <span class="grow"><b>${s.freestyle ? 'Freestyle' : A.esc(A.db.plan[s.day]?.name || DAY_NAMES[s.day])}${s.isDeload ? ' · deload' : ''}</b><span class="pick-sub">${A.fmtDate(s.date)} · ${Math.round(workoutBurn(A.db, s).minutes)} min · ~${Math.round(workoutBurn(A.db, s).active)} kcal</span></span>
+          <span class="grow"><b>${s.freestyle ? 'Custom workout' : A.esc(A.db.plan[s.day]?.name || DAY_NAMES[s.day])}${s.isDeload ? ' · deload' : ''}</b><span class="pick-sub">${A.fmtDate(s.date)} · ${Math.round(workoutBurn(A.db, s).minutes)} min · ~${Math.round(workoutBurn(A.db, s).active)} kcal</span></span>
           ${s.prs?.length ? `<span class="pill good">${s.prs.length} PR${s.prs.length > 1 ? 's' : ''}</span>` : (() => { const up = s.results.filter((r) => r.status === 'progressed').length; return up ? `<span class="muted small">${up} up</span>` : ''; })()}${icon('right', 'chev')}
         </button>`;
       const months = [];

@@ -134,7 +134,7 @@ export async function finishedContests(env, now = Date.now()) {
     const end = new Date(Date.parse(`${c.start}T12:00:00Z`) + (c.days - 1) * 86400000).toISOString().slice(0, 10);
     if (end >= today) continue;
     await env.DB.prepare('INSERT OR IGNORE INTO contest_done (id, done) VALUES (?, ?)').bind(c.id, now).run();
-    const what = c.kind === 'workouts' ? 'Most workouts' : `Biggest gain on ${c.ex_name || 'a lift'}`;
+    const what = { workouts: 'Most workouts', minutes: 'Most minutes', miles: 'Most miles run', volume: 'Most weight lifted' }[c.kind] || `Biggest gain on ${c.ex_name || 'a lift'}`;
     await pushTo(env, c.a, { title: `Challenge over: ${what}`, body: `See how you did against ${c.b_name}.`, tag: `contest-${c.id}`, url: './?open=people' });
     await pushTo(env, c.b, { title: `Challenge over: ${what}`, body: `See how you did against ${c.a_name}.`, tag: `contest-${c.id}`, url: './?open=people' });
   }

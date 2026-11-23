@@ -442,7 +442,7 @@ export function evaluate(db, entry, session) {
   const next = { ...st };
 
   if (session.isDeload) {
-    return { result: { ...res, status: 'deload', message: 'Deload session — not counted.' }, state: null };
+    return { result: { ...res, status: 'deload', message: 'Deload workout, not counted.' }, state: null };
   }
   if (entry.pain) {
     next.painDates = [...st.painDates, session.date].filter((d) => daysBetween(d, session.date) <= 30);
@@ -451,7 +451,7 @@ export function evaluate(db, entry, session) {
       result: {
         ...res,
         status: 'pain',
-        message: `Stopped for pain — not counted.${ex.substitute ? ` Substitute: ${ex.substitute}.` : ''}${warn ? ' Second pain flag in two weeks.' : ''}`,
+        message: `Stopped for pain, not counted.${ex.substitute ? ` Substitute: ${ex.substitute}.` : ''}${warn ? ' Second pain flag in two weeks.' : ''}`,
       },
       state: next,
     };

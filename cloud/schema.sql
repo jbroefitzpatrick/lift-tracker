@@ -79,7 +79,7 @@ CREATE TABLE IF NOT EXISTS contests (-- head-to-head challenges between friends
   id TEXT PRIMARY KEY,
   a TEXT NOT NULL,              -- who challenged
   b TEXT NOT NULL,
-  kind TEXT NOT NULL,           -- 'workouts' | 'lift'
+  kind TEXT NOT NULL,           -- 'workouts' | 'minutes' | 'miles' | 'volume' | 'lift'
   ex TEXT,                      -- lift: exercise id
   ex_name TEXT,
   days INTEGER NOT NULL,
@@ -185,3 +185,37 @@ CREATE TABLE IF NOT EXISTS requests (   -- friend requests sent by username
   PRIMARY KEY (from_user, to_user)
 );
 CREATE INDEX IF NOT EXISTS requests_to ON requests (to_user);
+
+CREATE TABLE IF NOT EXISTS blocks (     -- user_id blocked "blocked"; hides each from the other
+  user_id TEXT NOT NULL,
+  blocked TEXT NOT NULL,
+  created INTEGER NOT NULL,
+  PRIMARY KEY (user_id, blocked)
+);
+CREATE INDEX IF NOT EXISTS blocks_blocked ON blocks (blocked);
+CREATE TABLE IF NOT EXISTS reports (    -- reviewed with cloud/moderate.cjs
+  id TEXT PRIMARY KEY,
+  reporter TEXT NOT NULL,
+  target TEXT NOT NULL,         -- the person reported
+  kind TEXT NOT NULL,           -- 'user' | 'post' | 'comment'
+  item TEXT,                    -- post or comment id
+  reason TEXT NOT NULL,
+  note TEXT,
+  snapshot TEXT NOT NULL,       -- what was reported, kept if it is later edited or deleted
+  status TEXT NOT NULL DEFAULT 'open', -- open | done
+  created INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS reports_status ON reports (status, created);
+CREATE TABLE IF NOT EXISTS suspended (  -- removed from People by moderation; their own training data stays
+  user_id TEXT PRIMARY KEY,
+  reason TEXT,
+  created INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS contest_scores ( -- each person's running total in a challenge; only the two of them see it
+  contest_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  value REAL NOT NULL,
+  updated INTEGER NOT NULL,
+  PRIMARY KEY (contest_id, user_id)
+);

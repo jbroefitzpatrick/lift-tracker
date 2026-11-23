@@ -56,6 +56,16 @@ async function profilesOf(env, ids, me) {
   const r = await env.DB.prepare(`SELECT * FROM profiles WHERE user_id IN (${inList(ids.length)})`).bind(...ids).all();
   return Object.fromEntries((r.results || []).map((p) => { const { findable, ...rest } = pubProfile(p); return [p.user_id, p.user_id === me ? { ...rest, findable } : rest]; }));
 }
+// Blocking works both ways: neither person can find, contact or see the other.
+const CONTEST_KINDS = ['workouts', 'minutes', 'miles', 'volume', 'lift'];
+const CONTEST_TEXT = { workouts: 'Most workouts', minutes: 'Most minutes', miles: 'Most miles run', volume: 'Most weight lifted' };
+const REPORT_REASONS = ['harassment', 'hate', 'sexual', 'violence', 'selfharm', 'spam', 'other'];
+async function blockedIds(env, me) {
+  const r = await env.DB.prepare('SELECT blocked AS id FROM blocks WHERE user_id = ? UNION SELECT user_id AS id FROM blocks WHERE blocked = ?').bind(me, me).all();
+  return new Set((r.results || []).map((x) => x.id));
+}
+const isBlocked = async (env, a, b) => !!(await env.DB.prepare('SELECT 1 FROM blocks WHERE (user_id = ? AND blocked = ?) OR (user_id = ? AND blocked = ?)').bind(a, b, b, a).first());
+
 async function makeFriends(env, a, b) {
   const id = rid();
   await env.DB.batch([
@@ -67,9 +77,11 @@ async function makeFriends(env, a, b) {
 
 export async function handleSocial(path, body, user, env, json) {
   const me = user.id;
+  if (await env.DB.prepare('SELECT 1 FROM suspended WHERE user_id = ?').bind(me).first()) return json({ error: 'This account can no longer use People. Your training data is not affected.', suspended: true }, 403);
 
   // Everything the People tab shows, in one request.
   if (path === '/v2/social') {
+    const hidden = await blockedIds(env, me);
     const links = await linksOf(env, me);
     const ids = [me, ...new Set(links.map((l) => l.user.id))];
     const cards = {};
@@ -77,8 +89,11 @@ export async function handleSocial(path, body, user, env, json) {
     for (const c of cr.results || []) cards[c.user_id] = { ...JSON.parse(c.data), updated: c.updated };
     const ch = await env.DB.prepare(`SELECT c.owner, c.item, c.from_user, u.name FROM cheers c JOIN users u ON u.id = c.from_user WHERE c.owner IN (${inList(ids.length)}) AND c.created > ?`).bind(...ids, now() - 60 * 86400000).all();
     const cheers = {};
-    for (const c of ch.results || []) (cheers[`${c.owner}:${c.item}`] ||= []).push({ id: c.from_user, name: c.name });
+    for (const c of ch.results || []) if (!hidden.has(c.from_user)) (cheers[`${c.owner}:${c.item}`] ||= []).push({ id: c.from_user, name: c.name });
     const ct = await env.DB.prepare("SELECT * FROM contests WHERE (a = ? OR b = ?) AND (status IN ('pending', 'active') OR created > ?) ORDER BY created DESC LIMIT 40").bind(me, me, now() - 60 * 86400000).all();
+    const ctIds = (ct.results || []).map((c) => c.id);
+    const scoreRows = ctIds.length ? (await env.DB.prepare(`SELECT contest_id, user_id, value FROM contest_scores WHERE contest_id IN (${inList(ctIds.length)})`).bind(...ctIds).all()).results || [] : [];
+    const scoresOf = (id) => Object.fromEntries(scoreRows.filter((x) => x.contest_id === id).map((x) => [x.user_id, x.value]));
     const pr = await env.DB.prepare("SELECT * FROM proposals WHERE (coach = ? OR client = ?) AND (status = 'pending' OR decided > ?) ORDER BY created DESC LIMIT 40").bind(me, me, now() - 14 * 86400000).all();
     const linkIds = links.filter((l) => l.kind === 'coach').map((l) => l.id);
     let messages = [];
@@ -89,16 +104,18 @@ export async function handleSocial(path, body, user, env, json) {
     // Posts: friends' posts to all friends, posts sent to me, and my own (last 60 days).
     const friendIds = [me, ...links.filter((l) => l.kind === 'friend').map((l) => l.user.id)];
     const ps = await env.DB.prepare(`SELECT p.*, u.name AS user_name FROM posts p JOIN users u ON u.id = p.user_id WHERE p.created > ? AND ((p.user_id IN (${inList(friendIds.length)}) AND p.audience = 'friends') OR p.to_user = ? OR p.user_id = ?) ORDER BY p.created DESC LIMIT 60`).bind(now() - 60 * 86400000, ...friendIds, me, me).all();
-    const posts = (ps.results || []).map((p) => ({ id: p.id, user: { id: p.user_id, name: p.user_name }, kind: p.kind, data: JSON.parse(p.data || '{}'), media: JSON.parse(p.media || '[]'), text: p.text, audience: p.audience, to: p.to_user, created: p.created }));
+    const posts = (ps.results || []).filter((p) => !hidden.has(p.user_id)).map((p) => ({ id: p.id, user: { id: p.user_id, name: p.user_name }, kind: p.kind, data: JSON.parse(p.data || '{}'), media: JSON.parse(p.media || '[]'), text: p.text, audience: p.audience, to: p.to_user, created: p.created }));
     const visiblePosts = new Set(posts.map((p) => `p:${p.id}`));
     const cm = await env.DB.prepare(`SELECT c.*, u.name AS user_name FROM comments c JOIN users u ON u.id = c.user_id WHERE c.item_owner IN (${inList(ids.length)}) AND c.created > ? ORDER BY c.created ASC LIMIT 600`).bind(...ids, now() - 60 * 86400000).all();
-    const comments = (cm.results || []).filter((c) => !c.item.startsWith('p:') || visiblePosts.has(c.item))
+    const comments = (cm.results || []).filter((c) => !hidden.has(c.user_id) && (!c.item.startsWith('p:') || visiblePosts.has(c.item)))
       .map((c) => ({ id: c.id, owner: c.item_owner, item: c.item, user: { id: c.user_id, name: c.user_name }, text: c.text, created: c.created }));
     const inv = await env.DB.prepare('SELECT code, kind, created FROM invites WHERE user_id = ? AND created > ? ORDER BY created DESC').bind(me, now() - INVITE_DAYS * 86400000).all();
     const rq = await env.DB.prepare('SELECT r.from_user, r.to_user, r.created, uf.name AS from_name, ut.name AS to_name FROM requests r JOIN users uf ON uf.id = r.from_user JOIN users ut ON ut.id = r.to_user WHERE r.from_user = ? OR r.to_user = ? ORDER BY r.created DESC LIMIT 100').bind(me, me).all();
     const reqs = rq.results || [];
     const profiles = await profilesOf(env, [...new Set([...ids, ...reqs.map((x) => (x.from_user === me ? x.to_user : x.from_user))])], me);
+    const mine = await env.DB.prepare('SELECT b.blocked AS id, u.name FROM blocks b JOIN users u ON u.id = b.blocked WHERE b.user_id = ? ORDER BY b.created DESC').bind(me).all();
     return json({
+      blocked: mine.results || [],
       profiles,
       requests: {
         in: reqs.filter((x) => x.to_user === me).map((x) => ({ user: { id: x.from_user, name: x.from_name }, created: x.created })),
@@ -106,7 +123,7 @@ export async function handleSocial(path, body, user, env, json) {
       },
       me: { id: me, name: user.name },
       links, cards, cheers,
-      contests: (ct.results || []).map((c) => ({ id: c.id, a: c.a, b: c.b, kind: c.kind, ex: c.ex, exName: c.ex_name, days: c.days, start: c.start, status: c.status, created: c.created })),
+      contests: (ct.results || []).map((c) => ({ id: c.id, a: c.a, b: c.b, kind: c.kind, ex: c.ex, exName: c.ex_name, days: c.days, start: c.start, status: c.status, created: c.created, scores: scoresOf(c.id) })),
       proposals: (pr.results || []).map((p) => ({ id: p.id, coach: p.coach, client: p.client, data: JSON.parse(p.data), note: p.note, status: p.status, created: p.created, decided: p.decided })),
       messages,
       posts, comments,
@@ -144,6 +161,7 @@ export async function handleSocial(path, body, user, env, json) {
     const inv = code && await env.DB.prepare('SELECT i.*, u.name FROM invites i JOIN users u ON u.id = i.user_id WHERE i.code = ? AND i.created > ?').bind(code, now() - INVITE_DAYS * 86400000).first();
     if (!inv) return json({ error: 'That invite code isn\'t valid or has expired.' }, 404);
     if (inv.user_id === me) return json({ error: 'That\'s your own invite. Send it to someone else.' }, 400);
+    if (await isBlocked(env, me, inv.user_id)) return json({ error: 'That invite code isn\'t valid or has expired.' }, 404);
     if (path === '/v2/social/invite/peek') return json({ kind: inv.kind, from: { id: inv.user_id, name: inv.name }, perms: inv.perms ? JSON.parse(inv.perms) : null });
     // friend: either way round. coach: the inviter wants me as their coach. client: the inviter will coach me.
     const kind = inv.kind === 'friend' ? 'friend' : 'coach';
@@ -191,6 +209,7 @@ export async function handleSocial(path, body, user, env, json) {
     const p = await env.DB.prepare('SELECT p.*, u.name FROM profiles p JOIN users u ON u.id = p.user_id WHERE p.handle = ? AND p.findable = 1').bind(handle).first();
     if (!p) return json({ error: `No one goes by @${handle}.` }, 404);
     if (p.user_id === me) return json({ error: 'That is your username.' }, 400);
+    if (await isBlocked(env, me, p.user_id)) return json({ error: `No one goes by @${handle}.` }, 404);
     const friend = await linkBetween(env, me, p.user_id, 'friend');
     const rq = await env.DB.prepare('SELECT from_user FROM requests WHERE (from_user = ? AND to_user = ?) OR (from_user = ? AND to_user = ?)').bind(me, p.user_id, p.user_id, me).first();
     const { findable: _hidden, ...shown } = pubProfile(p);
@@ -201,7 +220,7 @@ export async function handleSocial(path, body, user, env, json) {
   if (path === '/v2/social/request') {
     const to = String(body.to || '');
     const target = to && to !== me && await env.DB.prepare('SELECT u.id, u.name, p.findable FROM users u LEFT JOIN profiles p ON p.user_id = u.id WHERE u.id = ?').bind(to).first();
-    if (!target) return json({ error: 'Not found.' }, 404);
+    if (!target || await isBlocked(env, me, to)) return json({ error: 'Not found.' }, 404);
     if (await linkBetween(env, me, to, 'friend')) return json({ error: `You and ${target.name} are already friends.` }, 400);
     if (await env.DB.prepare('SELECT 1 FROM requests WHERE from_user = ? AND to_user = ?').bind(to, me).first()) {
       const id = await makeFriends(env, to, me);
@@ -265,6 +284,7 @@ export async function handleSocial(path, body, user, env, json) {
   // automatic feed items (records and workouts from each person's card).
   async function canSee(owner, item) {
     if (owner === me) return true;
+    if (await isBlocked(env, me, owner)) return false;
     if (item.startsWith('p:')) {
       const p = await env.DB.prepare('SELECT * FROM posts WHERE id = ? AND user_id = ?').bind(item.slice(2), owner).first();
       if (!p) return false;
@@ -318,19 +338,70 @@ export async function handleSocial(path, body, user, env, json) {
     return json({ ok: true });
   }
 
+  // ---------- Block and report ----------
+  if (path === '/v2/social/block') {
+    const id = String(body.id || '');
+    if (!id || id === me || !(await env.DB.prepare('SELECT 1 FROM users WHERE id = ?').bind(id).first())) return json({ error: 'Not found.' }, 404);
+    const ls = await env.DB.prepare('SELECT id FROM links WHERE (a = ? AND b = ?) OR (a = ? AND b = ?)').bind(me, id, id, me).all();
+    await env.DB.batch([
+      env.DB.prepare('INSERT OR IGNORE INTO blocks (user_id, blocked, created) VALUES (?, ?, ?)').bind(me, id, now()),
+      ...(ls.results || []).map((l) => env.DB.prepare('DELETE FROM messages WHERE link_id = ?').bind(l.id)),
+      env.DB.prepare('DELETE FROM links WHERE (a = ? AND b = ?) OR (a = ? AND b = ?)').bind(me, id, id, me),
+      env.DB.prepare('DELETE FROM requests WHERE (from_user = ? AND to_user = ?) OR (from_user = ? AND to_user = ?)').bind(me, id, id, me),
+      env.DB.prepare("UPDATE proposals SET status = 'withdrawn', decided = ? WHERE ((coach = ? AND client = ?) OR (coach = ? AND client = ?)) AND status = 'pending'").bind(now(), me, id, id, me),
+      env.DB.prepare("UPDATE contests SET status = 'cancelled' WHERE ((a = ? AND b = ?) OR (a = ? AND b = ?)) AND status IN ('pending', 'active')").bind(me, id, id, me),
+      // Their comments and likes come off my posts, so my other friends stop seeing them too.
+      env.DB.prepare('DELETE FROM comments WHERE item_owner = ? AND user_id = ?').bind(me, id),
+      env.DB.prepare('DELETE FROM cheers WHERE owner = ? AND from_user = ?').bind(me, id),
+    ]);
+    return json({ ok: true });
+  }
+  if (path === '/v2/social/unblock') {
+    await env.DB.prepare('DELETE FROM blocks WHERE user_id = ? AND blocked = ?').bind(me, String(body.id || '')).run();
+    return json({ ok: true });
+  }
+  if (path === '/v2/social/report') {
+    const kind = ['user', 'post', 'comment'].includes(body.kind) ? body.kind : null;
+    const reason = REPORT_REASONS.includes(body.reason) ? body.reason : null;
+    if (!kind || !reason) return json({ error: 'Choose a reason.' }, 400);
+    const n = await env.DB.prepare('SELECT COUNT(*) AS n FROM reports WHERE reporter = ? AND created > ?').bind(me, now() - 86400000).first();
+    if ((n?.n || 0) >= 20) return json({ error: 'Too many reports today. Try again tomorrow.' }, 429);
+    let target = String(body.user || ''); let item = null; let content = {};
+    if (kind === 'post') {
+      item = String(body.item || '');
+      const p = await env.DB.prepare('SELECT * FROM posts WHERE id = ?').bind(item).first();
+      if (!p || !(await canSee(p.user_id, `p:${p.id}`))) return json({ error: 'Not found.' }, 404);
+      target = p.user_id; content = { text: p.text, media: JSON.parse(p.media || '[]'), data: JSON.parse(p.data || '{}') };
+    } else if (kind === 'comment') {
+      item = String(body.item || '');
+      const c = await env.DB.prepare('SELECT * FROM comments WHERE id = ?').bind(item).first();
+      if (!c || !(await canSee(c.item_owner, c.item))) return json({ error: 'Not found.' }, 404);
+      target = c.user_id; content = { text: c.text };
+    }
+    if (target === me) return json({ error: 'That is your own.' }, 400);
+    const who = await env.DB.prepare('SELECT u.name, p.handle, p.bio, p.photo, p.gym FROM users u LEFT JOIN profiles p ON p.user_id = u.id WHERE u.id = ?').bind(target).first();
+    if (!who) return json({ error: 'Not found.' }, 404);
+    const id = rid();
+    await env.DB.prepare('INSERT INTO reports (id, reporter, target, kind, item, reason, note, snapshot, status, created) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind(id, me, target, kind, item, reason, String(body.note || '').trim().slice(0, 500), JSON.stringify({ who, ...content }), 'open', now()).run();
+    if (env.MODERATOR_ID) await pushTo(env, env.MODERATOR_ID, { title: 'New report in Lift', body: `${kind}: ${reason}`, tag: `report-${id}`, url: './' });
+    return json({ ok: true });
+  }
+
   // Head-to-head challenges.
   if (path === '/v2/social/contest') {
     const to = String(body.to || '');
     if (!(await linkBetween(env, me, to, 'friend'))) return json({ error: 'You can challenge friends only.' }, 403);
-    const kind = body.kind === 'lift' ? 'lift' : 'workouts';
+    const kind = CONTEST_KINDS.includes(body.kind) ? body.kind : 'workouts';
     const days = [7, 14, 28].includes(+body.days) ? +body.days : 7;
     if (kind === 'lift' && !body.ex) return json({ error: 'Pick a lift.' }, 400);
     const open = await env.DB.prepare("SELECT COUNT(*) AS n FROM contests WHERE (a = ? OR b = ?) AND status IN ('pending', 'active')").bind(me, me).first();
     if ((open?.n || 0) >= 10) return json({ error: 'You have 10 challenges going. Finish some first.' }, 400);
     const id = rid();
+    if (await isBlocked(env, me, to)) return json({ error: 'You can challenge friends only.' }, 403);
     await env.DB.prepare("INSERT INTO contests (id, a, b, kind, ex, ex_name, days, start, status, created) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, 'pending', ?)")
       .bind(id, me, to, kind, kind === 'lift' ? String(body.ex).slice(0, 80) : null, kind === 'lift' ? String(body.exName || '').slice(0, 80) : null, days, now()).run();
-    await pushTo(env, to, { title: `${user.name} challenged you`, body: kind === 'workouts' ? `Most workouts over ${days} days.` : `Biggest gain on ${body.exName || 'a lift'} over ${days} days.`, tag: `contest-${id}`, url: './?open=people' });
+    await pushTo(env, to, { title: `${user.name} challenged you`, body: kind === 'lift' ? `Biggest gain on ${body.exName || 'a lift'} over ${days} days. Open People to answer.` : `${CONTEST_TEXT[kind]} over ${days} days. Open People to answer.`, tag: `contest-${id}`, url: './?open=people' });
     return json({ ok: true, id });
   }
   if (path === '/v2/social/contest/respond') {
@@ -345,6 +416,19 @@ export async function handleSocial(path, body, user, env, json) {
     if (body.accept && !isDate(body.today)) return json({ error: 'Missing date.' }, 400);
     await env.DB.prepare('UPDATE contests SET status = ?, start = ? WHERE id = ?').bind(body.accept ? 'active' : 'declined', body.accept ? body.today : null, c.id).run();
     if (body.accept) await pushTo(env, c.a, { title: `${user.name} accepted your challenge`, body: 'It starts today. Good luck.', tag: `contest-${c.id}`, url: './?open=people' });
+    return json({ ok: true });
+  }
+
+  // Running totals for active challenges: each phone reports its own, and only the two people in
+  // the challenge get them back.
+  if (path === '/v2/social/contest/score') {
+    const entries = Object.entries(body.scores || {}).slice(0, 20);
+    for (const [id, raw] of entries) {
+      const v = Number(raw);
+      if (!Number.isFinite(v) || v < 0 || v > 1e9) continue;
+      const c = await env.DB.prepare("SELECT id FROM contests WHERE id = ? AND status = 'active' AND (a = ? OR b = ?)").bind(String(id), me, me).first();
+      if (c) await env.DB.prepare('INSERT INTO contest_scores (contest_id, user_id, value, updated) VALUES (?, ?, ?, ?) ON CONFLICT(contest_id, user_id) DO UPDATE SET value = excluded.value, updated = excluded.updated').bind(c.id, me, v, now()).run();
+    }
     return json({ ok: true });
   }
 

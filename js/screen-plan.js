@@ -182,7 +182,7 @@ export function createPlanScreens(A) {
         <button class="list-row" data-a="plan-swap" data-i="${i}"><span class="grow">Swap exercise</span></button>
         ${(() => { const items = A.db.plan[day].items; const linked = items.filter((x) => groupNum(x.group) === groupNum(it.group)).length > 1;
           return linked ? `<button class="list-row" data-a="plan-unlink" data-i="${i}"><span class="grow">Unlink from group</span></button>`
-            : i < items.length - 1 ? `<button class="list-row" data-a="plan-link-next" data-i="${i}"><span class="grow">Link with next exercise</span></button>` : ''; })()}
+            : i < items.length - 1 ? `<button class="list-row" data-a="plan-link-next" data-i="${i}"><span class="grow">Superset with next exercise</span></button>` : ''; })()}
         <button class="list-row" data-a="plan-up" data-i="${i}" ${i === 0 ? 'disabled' : ''}><span class="grow">Move up</span></button>
         <button class="list-row" data-a="plan-down" data-i="${i}" ${i === A.db.plan[day].items.length - 1 ? 'disabled' : ''}><span class="grow">Move down</span></button>
         <button class="list-row danger-row" data-a="plan-del" data-i="${i}"><span class="grow">Remove from this day</span></button>

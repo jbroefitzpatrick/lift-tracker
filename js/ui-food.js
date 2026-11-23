@@ -31,6 +31,14 @@ export function createFood(ctx) {
     // Two snacks: number them so they can be told apart.
     return name === 'Snack' && list.filter((x) => x === 'Snack').length > 1 ? `Snack ${list.slice(0, m).filter((x) => x === 'Snack').length}` : name;
   }
+  // What to aim for at each meal: a snack counts as half a meal.
+  function mealAim(m, t) {
+    const weight = (i) => (/snack/i.test(mealName(i, t.meals)) ? 0.5 : 1);
+    let sum = 0;
+    for (let i = 1; i <= t.meals; i++) sum += weight(i);
+    const share = weight(m) / sum;
+    return { kcal: Math.round((t.kcal * share) / 10) * 10, p: Math.round(t.protein * share) };
+  }
   // The meal for this time of day: each meal has a usual hour (breakfast 8, lunch 12:30, dinner
   // 18:30, snacks in between or 21); the nearest one wins.
   function mealForNow(count, now = new Date()) {
@@ -64,10 +72,11 @@ export function createFood(ctx) {
     const mealCards = meals.map((m) => {
       const items = entries.filter((x) => Math.min(x.meal, t.meals) === m);
       const mt = items.reduce((a, x) => ({ kcal: a.kcal + x.kcal, p: a.p + x.p }), { kcal: 0, p: 0 });
-      const low = items.length && mt.p < t.perMealProtein * 0.8;
+      const aimM = mealAim(m, t);
+      const low = items.length && mt.p < aimM.p * 0.8;
       return `<section class="meal" aria-label="${esc(mealName(m, t.meals))}">
         <div class="meal-head">
-          <div class="grow"><h3><button class="meal-title" data-a="meal-rename" data-meal="${m}" aria-label="Rename ${esc(mealName(m, t.meals))}">${esc(mealName(m, t.meals))}</button></h3><p class="muted small">${items.length ? `${r0(mt.kcal)} kcal · ${r0(mt.p)} g protein${low ? ` · <span class="hint">aim ~${t.perMealProtein} g</span>` : ''}` : `Aim ~${Math.round(t.kcal / t.meals / 10) * 10} kcal · ${t.perMealProtein} g protein`}</p></div>
+          <div class="grow"><h3><button class="meal-title" data-a="meal-rename" data-meal="${m}" aria-label="Rename ${esc(mealName(m, t.meals))}">${esc(mealName(m, t.meals))}</button></h3><p class="muted small">${items.length ? `${r0(mt.kcal)} kcal · ${r0(mt.p)} g protein${low ? ` · <span class="hint">aim ~${aimM.p} g</span>` : ''}` : `Aim ~${aimM.kcal} kcal · ${aimM.p} g protein`}</p></div>
           <button class="icon-btn accent" data-a="food-add" data-meal="${m}" aria-label="Add food to ${esc(mealName(m, t.meals))}">${icon('plus')}</button>
         </div>
         ${items.map((x) => `<div class="list-row food-row"><span class="grow"><b>${esc(x.name)}</b><span class="pick-sub">${esc(fmtQty(x))} · ${r0(x.kcal)} kcal · P ${r0(x.p)} · C ${r0(x.c)} · F ${r0(x.f)}</span></span>
@@ -100,7 +109,7 @@ export function createFood(ctx) {
       <div class="food-search"><button class="search-btn" data-a="food-add" data-meal="${nextMeal}">${icon('search')}<span>Search foods</span></button><button class="icon-btn accent" data-a="food-more" data-meal="${nextMeal}" aria-label="More ways to add food">${icon('plus')}</button></div>
       ${mealCards}
       <div class="list-group"><button class="list-row" data-a="food-energy"><span class="grow"><b>Energy balance and weekly check-in</b><span class="pick-sub">Burned ~${r0(dayEnergy(db, d).total).toLocaleString()} kcal today${db.profile ? '' : ' · default targets'}</span></span>${icon('right', 'chev')}</button></div>
-      <button class="text-link center-link" data-a="food-off">Turn off food tracking</button>`;
+      <button class="text-link center-link quiet-link" data-a="food-off">Turn off food tracking</button>`;
   }
 
   function openSettings() {
@@ -192,7 +201,7 @@ export function createFood(ctx) {
       <div class="rx-row"><span class="muted">Fat</span><b>${t.fat} g</b></div>
       <p class="muted small">About 25% of calories, never below ~0.6 g/kg. ${ctx.refChips(['helms2014'])}</p>
       <div class="rx-row"><span class="muted">Carbs</span><b>${t.carbs} g</b></div>
-      <p class="muted small">The rest of your calories — fuel for training.</p>
+      <p class="muted small">The rest of your calories, to fuel training.</p>
       <div class="rx-row"><span class="muted">Fiber</span><b>${t.fiber} g</b></div>
       <p class="muted small">14 g per 1,000 kcal. ${ctx.refChips(['dga2020'])}</p>
       <p class="muted small">Estimates, not medical advice. If you have a medical condition or a history of disordered eating, work with a doctor or dietitian.</p>

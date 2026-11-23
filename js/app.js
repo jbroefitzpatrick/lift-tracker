@@ -31,6 +31,8 @@ import { createYear } from './ui-year.js';
 import { createExtras } from './ui-extra.js';
 import { createCloud } from './ui-cloud.js';
 import { createAccountUi } from './ui-account.js';
+import { createGoals } from './ui-goals.js';
+import { goalProgress, goalHit, getGoal } from './big-goal.js';
 import { createPeople } from './ui-people.js';
 import { moveDay, copyDayTo, catchUpDay, laggingMuscles, maxDayTo } from './week.js';
 import { estimatedMax, testPlan, PEAKS, peakLength, peakWeek, startPeak, peakTestDate, TEST_REST, MAX_AIM } from './maxes.js';
@@ -107,6 +109,7 @@ const A = {
   get ensureSession() { return ensureSession; },
   get fmtRest() { return fmtRest; },
   get health() { return health; },
+  get goals() { return goals; },
   get helpBtn() { return helpBtn; },
   get isDeloadFor() { return isDeloadFor; },
   get metricOf() { return metricOf; },
@@ -155,7 +158,7 @@ const $ = (sel, root = document) => root.querySelector(sel);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 // After each save, sync is scheduled (when signed in to an account).
 let afterPersist = null;
-const persist = () => { if (!save(db)) toast('Could not save — storage may be full.'); afterPersist?.(); };
+const persist = () => { if (!save(db)) toast('Could not save. Storage may be full.'); afterPersist?.(); };
 // iPhone ignores the vibration call; toggling a hidden switch control gives a light tap (iOS 18+).
 let tapLabel = null;
 function iosTap() {
@@ -189,7 +192,7 @@ function effort(rir, form = 'aim') {
 
 function fmtW(w, ex) {
   if (w == null) return 'TBD';
-  if (ex?.type === 'bodyweight') return w === 0 ? 'BW' : `BW+${toDisp(w)}`;
+  if (ex?.type === 'bodyweight') return w === 0 ? 'Body weight' : `Body weight + ${toDisp(w)}`;
   return wt(w);
 }
 
@@ -330,7 +333,7 @@ function runRest() {
       }
       beep();
       haptic([200, 100, 200]);
-      toast('Rest over — next set');
+      toast('Rest over. Next set.');
       stopRest();
     } else renderRest();
   }, 250);
@@ -699,7 +702,9 @@ function finishWorkout() {
     const cardioId = pats.every((p) => p === 'mobility') ? 'mobility' : ids.every((id) => id === 'run-easy' || id === 'run-long') ? 'zone2-run' : 'conditioning';
     db.cardio.push({ id: `c${finishedAt}`, date: s.date, ts: finishedAt, cardioId, minutes, note: 'From workout', fromWorkout: true });
   }
+  const goalBefore = getGoal(db).on ? goalProgress(db) : null;
   db.sessions.push(saved);
+  if (goalBefore) { const hit = goalHit(goalBefore, goalProgress(db)); if (hit) saved.goalHit = hit; }
   db.lastFinish = { id: saved.id, date: s.date, finishedAt, reopen };
   db.activeSession = null;
   persist();
@@ -737,7 +742,7 @@ function skippedPrompt(day) {
     && recent.every((x) => !x.entries.some((e) => e.uid === i.uid || e.exerciseId === i.exerciseId)));
   if (!it) return '';
   const name = db.exercises[it.exerciseId].name;
-  return `<div class="slim-banner review-card"><span class="grow banner-main"><span class="dot" aria-hidden="true"></span><span><b>Skipped ${esc(name)}</b> the last 3 times</span></span><button class="btn sm" data-a="swap" data-uid="${it.uid}">Swap</button><button class="btn sm" data-a="skip-remove" data-uid="${it.uid}">Remove</button><button class="icon-btn subtle" data-a="skip-keep" data-uid="${it.uid}" aria-label="Keep it">${icon('x')}</button></div>`;
+  return `<div class="slim-banner review-card stacked"><span class="grow banner-main"><span class="dot" aria-hidden="true"></span><span><b>Skipped ${esc(name)}</b> the last 3 times</span></span><button class="btn sm" data-a="swap" data-uid="${it.uid}">Swap</button><button class="btn sm" data-a="skip-remove" data-uid="${it.uid}">Remove</button><button class="icon-btn subtle" data-a="skip-keep" data-uid="${it.uid}" aria-label="Keep it">${icon('x')}</button></div>`;
 }
 
 // ---------- Quick start: three questions to a plan ----------
@@ -1010,7 +1015,7 @@ function cardModel(item, session, isDeload) {
     const n = isDeload ? Math.ceil(item.sets / 2) : item.sets;
     const key = METRIC_FIELDS[metric][0][0];
     const sets = entry ? entry.sets : Array.from({ length: n }, () => ({ [key]: item.target ?? null, done: false }));
-    const notices = isAvailable(db, ex) ? [] : [['warn', `Not available at ${gym.name} — swap it`]];
+    const notices = isAvailable(db, ex) ? [] : [['warn', `Not available at ${gym.name}. Swap it.`]];
     const pn = painNotice(ex, entry);
     if (pn) notices.push(pn);
     return { ex, gym, metric, t: { sets: n, weight: null, reps: item.target, st: getState(db, ex.id) }, target: null, entry, sets, notices, conditioning: true };
@@ -1022,7 +1027,7 @@ function cardModel(item, session, isDeload) {
   const entry = session?.entries[item.uid];
   const sets = entry ? entry.sets : t.setWeights ? t.setWeights.map((w, i) => newSet(roundToGym(ex, w, gym), t.setReps[i])) : Array.from({ length: t.sets }, () => newSet(target, t.reps));
   const notices = [];
-  if (!isAvailable(db, ex)) notices.push(['warn', db.exPrefs[ex.id] === 'never' ? 'Marked "never suggest" — swap it' : `Not available at ${gym.name} — swap it`]);
+  if (!isAvailable(db, ex)) notices.push(['warn', db.exPrefs[ex.id] === 'never' ? 'Marked "never suggest". Swap it.' : `Not available at ${gym.name}. Swap it.`]);
   if (entry?.pain) notices.push(['bad', `Stopped for pain${ex.substitute ? ` · try ${ex.substitute}` : ''}`]);
   else if (t.painWarning) notices.push(['bad', 'Two pain flags in two weeks']);
   const pn = painNotice(ex, entry);
@@ -1043,11 +1048,11 @@ function openExMenu(uid) {
   const row = (a, ic, label, extra = '', cls = '') => `<button class="list-row ${cls}" data-a="${a}" data-uid="${uid}" ${extra}>${icon(ic)}<span class="grow">${label}</span></button>`;
   openSheet(`<h2>${esc(item.ex.name)}</h2>
     <div class="list-group menu">
-      ${row('log-all', 'check', 'Log all sets')}
+      ${row('log-all', 'check', 'Complete all sets')}
       ${row('swap', 'swap', 'Swap exercise')}
       ${sessionFor(ui.day) && !sessionFor(ui.day).entries[uid]?.maxTest && item.ex.category !== 'conditioning' && item.ex.type !== 'bodyweight' && !item.ex.noLoad && (item.metric || item.ex.metric || 'reps') === 'reps' ? row('max-test', 'up', 'Test your max') : ''}
-      ${grp?.linked ? row('unlink-one', 'x', 'Unlink') : i < items.length - 1 ? row('link-next', 'plus', 'Link with next') : ''}
-      ${planIt && item.ex.category !== 'conditioning' ? row('ex-lock', 'bookmark', planIt.lock ? 'Allow variety' : 'Keep every week') : ''}
+      ${grp?.linked ? row('unlink-one', 'x', 'Unlink') : i < items.length - 1 ? row('link-next', 'plus', 'Superset with next') : ''}
+      ${planIt && item.ex.category !== 'conditioning' ? row('ex-lock', 'bookmark', planIt.lock ? 'Unlock exercise' : 'Lock exercise') : ''}
       ${row('ex-details', 'info', 'More info')}
       ${row('ex-remove', 'trash', 'Delete', '', 'danger-row')}
     </div>
@@ -1099,7 +1104,7 @@ function openExerciseSheet(uid, focus) {
     </div>
     ${[item.swappedFrom ? `Swapped in for ${esc(item.swappedFrom)} today.` : '', esc(item.note || ''), esc(ex.notes || '')].filter(Boolean).map((n) => `<p class="muted small">${n}</p>`).join('')}
 
-    ${warm.length ? `<h3 class="sheet-h" id="warmup">Warm-up</h3><div class="kv-list">${warm.map((w) => row(`${fmtW(w.weight, ex)} × ${w.reps}`, barbell ? plateText(w.weight, gym) : '&nbsp;')).join('')}</div>` : ''}
+    ${warm.length ? `<h3 class="sheet-h" id="warmup">Ramp-up sets</h3><div class="kv-list">${warm.map((w) => row(`${fmtW(w.weight, ex)} × ${w.reps}`, barbell ? plateText(w.weight, gym) : '&nbsp;')).join('')}</div>` : ''}
 
     ${info.cues ? `<h3 class="sheet-h">Form</h3><ul class="cues">${info.cues.split(' · ').map((c) => `<li>${esc(c)}</li>`).join('')}</ul>` : ''}
     <button class="list-row plain-row" data-a="ex-info" data-id="${ex.id}"><span class="grow">Photos, instructions and records</span>${icon('right', 'chev')}</button>
@@ -1112,7 +1117,7 @@ function openExerciseSheet(uid, focus) {
       <button class="list-row" data-a="swap" data-uid="${uid}">${icon('swap')}<span class="grow">Swap exercise</span>${icon('right', 'chev')}</button>
       ${groupsOf(items).find((g) => g.items.includes(item))?.linked
         ? `<button class="list-row" data-a="unlink-one" data-uid="${uid}">${icon('x')}<span class="grow">Unlink</span></button>`
-        : i < count - 1 ? `<button class="list-row" data-a="link-next" data-uid="${uid}">${icon('plus')}<span class="grow">Link with next</span></button>` : ''}
+        : i < count - 1 ? `<button class="list-row" data-a="link-next" data-uid="${uid}">${icon('plus')}<span class="grow">Superset with next</span></button>` : ''}
       <button class="list-row" data-a="ex-move" data-uid="${uid}" data-v="-1" ${i <= 0 ? 'disabled' : ''}>${icon('up')}<span class="grow">Move up</span></button>
       <button class="list-row" data-a="ex-move" data-uid="${uid}" data-v="1" ${i >= count - 1 ? 'disabled' : ''}>${icon('arrowDown')}<span class="grow">Move down</span></button>
       ${lastUndone ? `<button class="list-row" data-a="remove-set" data-uid="${uid}">${icon('minus')}<span class="grow">Remove last set</span></button>` : ''}
@@ -1149,7 +1154,7 @@ function blockCheckinBanner() {
   const b = checkinDue(db);
   if (!b) return '';
   return `<div class="notice-card">
-    <p><b>Block ${b.index} check-in.</b> It's your deload week — review how your focus lifts moved and pick the next block's focus.</p>
+    <p><b>Block ${b.index} check-in.</b> It's your deload week. Review how your focus lifts moved and pick the next block's focus.</p>
     <div class="row"><button class="btn primary" data-a="block-review" data-i="${b.index}">Review block</button></div>
   </div>`;
 }
@@ -1255,7 +1260,7 @@ function cardioSection(day, title, defaultOpen = true) {
   const nextLine = Object.keys(tomorrow.loads).length ? ` Tomorrow: ${esc(tomorrow.name || 'lifting')}.` : '';
   const logged = isToday ? db.cardio.filter((c) => c.date === todayStr()) : [];
   const head = `<button class="section-head" data-a="cardio-toggle" data-day="${day}" data-open="${open ? 1 : 0}" aria-expanded="${open}">
-    <span class="grow"><b>${title}</b><span class="pick-sub">${logged.length ? `${logged.length} logged today` : top[0] ? `Best fit now: ${esc(top[0].c.name)}` : ''}</span></span>${CHEVRON}</button>`;
+    <span class="grow"><b>${title}</b><span class="pick-sub">${logged.length ? `${logged.length} logged today` : top[0] ? `Suggested: ${esc(top[0].c.name)}` : ''}</span></span>${CHEVRON}</button>`;
   if (!open) return `<section class="card cardio collapsed">${head}</section>`;
   return `<section class="card cardio">
     ${head}
@@ -1263,7 +1268,7 @@ function cardioSection(day, title, defaultOpen = true) {
     ${logged.map((c) => `<div class="list-row logged"><span class="grow"><b>${esc(CARDIO[c.cardioId]?.name || String(c.cardioId || 'Cardio').replace(/[-_]+/g, ' ').replace(/^./, (x) => x.toUpperCase()))}</b> · ${c.minutes} min${c.distance ? ` · ${c.distance} mi` : ''}${c.cardioId !== 'conditioning' && !c.fromWorkout ? ` · ~${Math.round(cardioBurn(db, c, CARDIO[c.cardioId]).active)} kcal` : ''}</span>
       <button class="mini" data-a="cardio-del" data-id="${c.id}" aria-label="Delete">${icon('x')}</button></div>`).join('')}
     ${weeklyCardioLine()}
-    ${top.slice(0, 3).map(cardioRow).join('') || '<p class="muted small">Everything is a stretch today — consider resting.</p>'}
+    ${top.slice(0, 3).map(cardioRow).join('') || '<p class="muted small">Everything is a stretch today. Consider resting.</p>'}
     <div class="row"><button class="btn grow" data-a="cardio-all" data-day="${day}">All options</button><button class="btn grow" data-a="open-templates" data-day="${day}">Conditioning</button></div>
   </section>`;
 }
@@ -1277,7 +1282,7 @@ function openAddWorkout(day) {
     <div class="list-group">
       ${row('cardio-all', 'Cardio', 'Run, bike, row, swim and more, ranked by how your muscles feel')}
       ${row('open-templates', 'Mobility or recovery', 'Yoga, stretching, foam rolling, recovery routines')}
-      ${row('add-catchup', 'Train what\'s behind', `Least trained this week: ${esc(low.join(', '))}`)}
+      ${row('add-catchup', 'Catch up', `Least trained this week: ${esc(low.join(', '))}`)}
       ${lifts.length ? row('add-double', 'Repeat a lifting day', `Do ${esc(lifts.slice(0, 3).map((t) => t.name).join(', '))} again today`) : ''}
       ${row('start-empty', 'Build your own', 'Pick exercises as you go')}
       ${maxCandidates().length ? row('maxday-open', 'Max-out day', 'Test your one-rep max on a few lifts') : ''}
@@ -1574,7 +1579,7 @@ function openSetSheet(uid, idx) {
     <div class="field"><span>Reps</span>${stepper('f-reps', s.reps, 1)}</div>
     <div class="field"><span>Set type</span>
       <div class="chips" id="set-types">${[['', 'Normal'], ...Object.entries(SET_TYPES).map(([k, v]) => [k, v[1]])].map(([k, l]) => `<button class="chip ${(s.type || '') === k ? 'on' : ''}" data-a="set-type" data-uid="${uid}" data-i="${idx}" data-v="${k}">${l}</button>`).join('')}</div>
-      <p class="muted small">Warm-up sets don't count toward progression, volume or records.</p></div>
+      <p class="muted small">Ramp-up sets don't count toward progression, volume or records.</p></div>
     ${db.settings.effortScale === 'rpe'
       ? `<div class="field"><span>RPE <span class="muted">(how hard, 10 = nothing left; optional)</span></span>
       <div class="chips rir">${['–', 10, 9, 8, 7, 6, 5].map((r) => `<button class="chip ${(r === '–' ? s.rir == null : s.rir === 10 - r) ? 'on' : ''}" data-a="rir" data-v="${r === '–' ? r : 10 - r}">${r}</button>`).join('')}</div>`
@@ -1916,7 +1921,7 @@ function screenSettings() {
     </div>
     <h2 class="group-title">Logging</h2>
     <div class="card">
-      <label class="toggle"><input type="checkbox" data-a="set-warmups" ${s.warmups ? 'checked' : ''}><span>Warm-up sets on the first big lift</span></label>
+      <label class="toggle"><input type="checkbox" data-a="set-warmups" ${s.warmups ? 'checked' : ''}><span>Ramp-up sets on the first big lift</span></label>
       <label class="toggle"><input type="checkbox" data-a="set-autoadvance" ${s.autoAdvance !== false ? 'checked' : ''}><span>Auto-advance in supersets</span></label>
       <label class="toggle"><input type="checkbox" data-a="set-ramp" ${s.rampEffort ? 'checked' : ''}><span>Ramp effort through each block (reps in reserve 3 → 1)</span></label>
       ${legacy ? `<details class="sub-details"><summary>Sample-plan options</summary>
@@ -1961,6 +1966,7 @@ function screenSettings() {
     <div class="list-group">
       ${row('open-builder', '', 'Training goals', p ? 'Plan builder · ' + (EXPERIENCE[p.experience]?.label || '') : 'Set up your goals')}
       ${row('settings-page', 'training', 'Training', `Week starts ${FULL_DAY[s.weekStart || 'mon']} · ${esc(prog)}`)}
+      ${row('goal-open', '', 'Big goal', esc(goals.summary()))}
       ${row('settings-page', 'gym', 'Gym', esc(activeGym(db).name))}
     </div>
     <div class="list-group">
@@ -2062,6 +2068,7 @@ const focusUi = createFocus(ctx);
 const exEditor = createExerciseEditor(ctx);
 const planTools = createPlanTools(ctx);
 const health = createHealth(ctx);
+const goals = createGoals(ctx);
 const tour = createTour(ctx);
 
 // ---------- Render ----------
@@ -2188,7 +2195,7 @@ function render() {
 // ---------- Events ----------
 
 const actions = {
-  tab: (d) => { ui.infoFrom = null; if (d.tab === 'today') ui.peek = false; if (!$('#sheet').hidden) closeSheet(); ui.summaryFresh = false; ui.selecting = false; ui.tab = d.tab === 'progress' ? 'history' : d.tab; if (d.tab === 'progress') ui.progSub = null; if (d.tab === 'plan') ui.planView = 'week'; if (d.tab === 'today') ui.summaryId = null; if (d.tab === 'history') ui.historyEx = null; if (d.tab === 'people') { if (ui.people) { ui.people.client = null; ui.people.edit = null; ui.people.profile = null; } people.refresh(); } window.scrollTo(0, 0); render(); },
+  tab: (d) => { ui.infoFrom = null; if (d.tab === 'today') ui.peek = false; if (!$('#sheet').hidden) closeSheet(); ui.summaryFresh = false; ui.selecting = false; ui.tab = d.tab === 'progress' ? 'history' : d.tab; if (d.tab === 'progress') { ui.progSub = null; ui.historyEx = null; } if (d.tab === 'plan') ui.planView = 'week'; if (d.tab === 'today') ui.summaryId = null; if (d.tab === 'history') ui.historyEx = null; if (d.tab === 'people') { if (ui.people) { ui.people.client = null; ui.people.edit = null; ui.people.profile = null; } people.refresh(); } window.scrollTo(0, 0); render(); },
   day: (d) => { ui.day = d.day; ui.tab = 'today'; ui.showCardio = false; ui.selecting = false; render(); },
   'open-set': (d) => openSetSheet(d.uid, +d.i),
   'leave-workout-view': () => { closeSheet(); ui.peek = true; render(); toast('Your workout keeps running. Tap "Back to workout" to return.'); },
@@ -2225,7 +2232,7 @@ const actions = {
     const list = db.sessions.filter((s) => s.date === d.date);
     if (!list.length) return openBackfill(d.date);
     if (list.length === 1 && !d.more) return actions.summary({ id: list[0].id });
-    openSheet(`<h2>${fmtDate(d.date)}</h2><div class="list-group">${list.map((s) => `<button class="list-row" data-a="summary" data-id="${s.id}"><span class="grow"><b>${s.freestyle ? 'Freestyle' : esc(db.plan[s.day]?.name || 'Workout')}</b><span class="pick-sub">${Math.round(workoutBurn(db, s).minutes)} min</span></span>${icon('right', 'chev')}</button>`).join('')}</div><button class="btn block" data-a="close-sheet">Close</button>`);
+    openSheet(`<h2>${fmtDate(d.date)}</h2><div class="list-group">${list.map((s) => `<button class="list-row" data-a="summary" data-id="${s.id}"><span class="grow"><b>${s.freestyle ? 'Custom workout' : esc(db.plan[s.day]?.name || 'Workout')}</b><span class="pick-sub">${Math.round(workoutBurn(db, s).minutes)} min</span></span>${icon('right', 'chev')}</button>`).join('')}</div><button class="btn block" data-a="close-sheet">Close</button>`);
   },
   'backfill-go': (d) => {
     const date = d.date;
@@ -2773,7 +2780,7 @@ const actions = {
     if (it.lock) { delete it.variants; delete it.rotate; delete it.autoVar; }
     applyVariety(db, db.settings.variety || 'low', focusFor(db, blockInfo(db).index) || []);
     persist(); closeSheet(); render();
-    toast(it.lock ? 'Kept the same every week.' : 'Follows your variety setting again.');
+    toast(it.lock ? 'Locked. It stays every week.' : 'Unlocked.');
   },
   'add-drop': (d) => {
     const sx = ensureSession(ui.day);
@@ -2979,6 +2986,15 @@ const actions = {
   'cardio-log': (d) => openCardioSheet(d.id),
   'cardio-all': (d) => openCardioAll(d.day || ui.day),
   'std-area': (d) => openStrengthArea(d.v),
+  'muscles-toggle': () => { ui.showMuscles = !ui.showMuscles; render(); },
+  'quick-log': (d) => {
+    const row = (attrs, t) => `<button class="list-row" ${attrs}><span class="grow"><b>${t}</b></span>${icon('right', 'chev')}</button>`;
+    openSheet(`<h2>Log something else</h2><div class="list-group">
+      ${row(`data-a="cardio-all" data-day="${d.day}"`, 'Cardio')}
+      ${row('data-a="cardio-log" data-id="yoga"', 'Yoga')}
+      ${row('data-a="cardio-log" data-id="mobility"', 'Mobility')}
+    </div>`);
+  },
   // Max testing
   'max-test': (d) => {
     const session = sessionFor(ui.day); const e = session?.entries[d.uid];
@@ -3254,7 +3270,7 @@ const actions = {
   },
 };
 
-Object.assign(actions, food.actions, year.actions, extras.actions, cloud.actions, acctUi.actions, people.actions, pain.actions, train.actions, focusUi.actions, exEditor.actions, planTools.actions, health.actions);
+Object.assign(actions, food.actions, year.actions, extras.actions, cloud.actions, acctUi.actions, people.actions, goals.actions, pain.actions, train.actions, focusUi.actions, exEditor.actions, planTools.actions, health.actions);
 
 onReorder('session', (uid, to, opt = {}) => {
   const shown = todayItems(ui.day);
@@ -3425,7 +3441,7 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
 
 onSaveError((e) => {
   if (e?.blocked) { ui.saveBlocked = e.message; render(); return; }
-  toast('Could not save — storage may be full. Export a backup.');
+  toast('Could not save. Storage may be full. Export a backup.');
 });
 
 // Shown when a save was refused because it would have erased most of the history.

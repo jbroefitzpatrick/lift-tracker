@@ -284,6 +284,7 @@ export async function handleV2(req, env, url, json, allowedOrigins, accessOk) {
         env.DB.prepare('DELETE FROM challenges WHERE user_id = ?').bind(id),
         env.DB.prepare('DELETE FROM cards WHERE user_id = ?').bind(id),
         env.DB.prepare('DELETE FROM cheers WHERE owner = ? OR from_user = ?').bind(id, id),
+        env.DB.prepare('DELETE FROM contest_scores WHERE user_id = ? OR contest_id IN (SELECT id FROM contests WHERE a = ? OR b = ?)').bind(id, id, id),
         env.DB.prepare('DELETE FROM contests WHERE a = ? OR b = ?').bind(id, id),
         env.DB.prepare('DELETE FROM proposals WHERE coach = ? OR client = ?').bind(id, id),
         env.DB.prepare('DELETE FROM invites WHERE user_id = ?').bind(id),
@@ -293,6 +294,8 @@ export async function handleV2(req, env, url, json, allowedOrigins, accessOk) {
         env.DB.prepare('DELETE FROM posts WHERE user_id = ?').bind(id),
         env.DB.prepare('DELETE FROM comments WHERE user_id = ? OR item_owner = ?').bind(id, id),
         env.DB.prepare('DELETE FROM profiles WHERE user_id = ?').bind(id),
+        env.DB.prepare('DELETE FROM blocks WHERE user_id = ? OR blocked = ?').bind(id, id),
+        env.DB.prepare('DELETE FROM reports WHERE reporter = ? OR target = ?').bind(id, id),
         env.DB.prepare('DELETE FROM requests WHERE from_user = ? OR to_user = ?').bind(id, id),
         env.DB.prepare('DELETE FROM users WHERE id = ?').bind(id),
       ];

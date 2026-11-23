@@ -17,6 +17,7 @@ export async function handleMedia(req, env, path, json, authUser) {
   if (path === '/v2/media/upload' && req.method === 'POST') {
     const user = await authUser(req, env);
     if (!user) return json({ error: 'Signed out.' }, 401);
+    if (env.DB && await env.DB.prepare('SELECT 1 FROM suspended WHERE user_id = ?').bind(user.id).first()) return json({ error: 'This account can no longer post.' }, 403);
     const type = (req.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase();
     if (!TYPES.includes(type)) return json({ error: 'Photos (JPEG, PNG) and videos (MP4, MOV) only.' }, 400);
     const buf = await req.arrayBuffer();

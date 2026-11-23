@@ -88,7 +88,7 @@ export function createYear(ctx) {
         ${total !== 52 ? `<p class="small hint">${total < 52 ? `${52 - total} weeks unplanned` : `${total - 52} weeks past one year`} — adjust phase lengths.</p>` : ''}
       </div>
       ${guide ? `<div class="card"><h3>Now: ${PHASE_TYPES[now.phase.type].label}, week ${now.weekInPhase} of ${now.weeks}</h3><p class="small">${esc(guide.text)} ${ctx.refChips(guide.refs)}</p></div>` : ''}
-      <div class="card"><h3>Bodyweight path</h3><div id="yr-chart"></div><p class="muted small">Projected from the middle of each phase's target rate. Real progress varies — the weekly check-in on the Food tab corrects course.</p></div>
+      <div class="card"><h3>Bodyweight path</h3><div id="yr-chart"></div><p class="muted small">Projected from the middle of each phase's target rate. Real progress varies. The weekly check-in on the Food tab corrects course.</p></div>
       <h2 class="sect-h">Phases</h2>
       <div class="field inline"><span>Start date (a Monday)</span><input type="date" data-yr="start" value="${plan.start}"></div>
       ${phaseCards}
@@ -105,7 +105,7 @@ export function createYear(ctx) {
     'yr-suggest': async () => {
       if (ctx.db.yearPlan && !(await ctx.ask('Replace your year plan with a suggested one?', 'Replace'))) return;
       ctx.db.yearPlan = suggestYear(ctx.db.profile, mondayOf(todayStr()));
-      ctx.persist(); ctx.render(); ctx.toast('Suggested year added — edit any phase.');
+      ctx.persist(); ctx.render(); ctx.toast('Suggested year added. Edit any phase.');
     },
     'yr-blank': () => { ctx.db.yearPlan = { start: mondayOf(todayStr()), phases: [newPhase('maintain', 52)] }; ctx.persist(); ctx.render(); },
     'yr-clear': async () => { if (!(await ctx.ask('Remove the year plan? Targets go back to your profile goal.', 'Remove', true))) return; ctx.db.yearPlan = null; ctx.persist(); ctx.render(); },

@@ -124,7 +124,7 @@ export function createCloud(ctx) {
     },
     'cloud-code': () => recoveryKit(cloudConfig().code, false),
     'cloud-copy': async (d) => {
-      try { await navigator.clipboard.writeText(d.v); ctx.toast('Copied.'); } catch { ctx.toast('Copy failed — select the code and copy it instead.'); }
+      try { await navigator.clipboard.writeText(d.v); ctx.toast('Copied.'); } catch { ctx.toast('Copy failed. Select the code and copy it instead.'); }
     },
     'cloud-link': async () => {
       const c = cloudConfig();

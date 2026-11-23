@@ -264,7 +264,7 @@ export function createWorkoutScreens(A) {
 
     if (session && mode !== 'both' && A.ui.workoutCardio !== day) { /* cardio stays out of the way during a workout */ } else if (session || mode === 'both') html += A.cardioSection(day, session ? 'Cardio' : 'Cardio after lifting', true);
     else if (A.ui.showCardio) html += A.cardioSection(day, 'Cardio', true);
-    if (!session) html += `<div class="chips quick-log" role="group" aria-label="Log something else"><button class="chip" data-a="cardio-all" data-day="${day}">${icon('plus')} Log cardio</button><button class="chip" data-a="cardio-log" data-id="yoga">${icon('plus')} Yoga</button><button class="chip" data-a="cardio-log" data-id="mobility">${icon('plus')} Mobility</button></div>`;
+    if (!session) html += `<div class="quick-log"><button class="chip" data-a="quick-log" data-day="${day}">${icon('plus')} Log cardio, yoga or mobility</button></div>`;
 
     if (session) {
       const has = (ph) => session.order.some((u) => session.entries[u]?.phase === ph);
@@ -295,7 +295,11 @@ export function createWorkoutScreens(A) {
     }).filter(Boolean).sort((x, y) => y.load - x.load);
     if (!tiles.length) return '';
     // Small body icons with names, scrolling sideways so a big day doesn't push the list down.
-    return `<div class="target-strip" role="group" aria-label="Muscles worked today">${tiles.map(({ g, lead, pct }) => `<button class="target-tile" data-a="open-recovery" data-g="${g.id}" aria-label="${g.name}, ${pct}% recovered"><span class="tile-art">${muscleIcon(lead)}<span class="pct-badge ${pct < 50 ? 'low' : pct < 80 ? 'mid' : ''}">${pct}%</span></span><span class="tile-name">${g.name}</span></button>`).join('')}</div>`;
+    const names = tiles.slice(0, 3).map((x) => x.g.name).join(', ');
+    const low = Math.min(...tiles.map((x) => x.pct));
+    const line = `<button class="muscle-line" data-a="muscles-toggle" aria-expanded="${!!A.ui.showMuscles}"><span class="grow"><b>${A.esc(names)}${tiles.length > 3 ? ` +${tiles.length - 3}` : ''}</b><span class="${low < 50 ? 'low' : low < 80 ? 'mid' : ''}"> · ${low === 100 ? 'fully recovered' : `${low}% recovered`}</span></span>${icon('down')}</button>`;
+    if (!A.ui.showMuscles) return line;
+    return line + `<div class="target-strip" role="group" aria-label="Muscles worked today">${tiles.map(({ g, lead, pct }) => `<button class="target-tile" data-a="open-recovery" data-g="${g.id}" aria-label="${g.name}, ${pct}% recovered"><span class="tile-art">${muscleIcon(lead)}<span class="pct-badge ${pct < 50 ? 'low' : pct < 80 ? 'mid' : ''}">${pct}%</span></span><span class="tile-name">${g.name}</span></button>`).join('')}</div>`;
   }
 
   function exerciseRow(item, session, isDeload, selecting, sel) {
@@ -466,7 +470,7 @@ export function createWorkoutScreens(A) {
       ${notices.filter((n) => n[2] !== 'pain').map(([c, m]) => `<p class="notice ${c}">${A.esc(m)}</p>`).join('')}
       ${A.pain.exerciseCard(ex, item, entry, t, (e) => isAvailable(A.db, e))}
       ${warmBlock(item, entry, warm, ex, gym, barbell)}
-      ${!warm.length && !conditioning && !ended && session ? `<button class="text-btn warm-make" data-a="warm-make" data-uid="${item.uid}">${icon('plus')} Warm-up sets</button>` : ''}
+      ${!warm.length && !conditioning && !ended && session ? `<button class="text-btn warm-make" data-a="warm-make" data-uid="${item.uid}">${icon('plus')} Ramp-up sets</button>` : ''}
       <div class="set-table" role="group" aria-label="Sets">
         ${setHead(conditioning, fields, ex)}
         ${rows}
@@ -492,16 +496,16 @@ export function createWorkoutScreens(A) {
     const done = warm.filter((w) => w.done).length;
     const open = A.ui.warmOpen?.[item.uid] ?? !!entry?.maxTest; // a max test starts with its warm-ups showing
     return `<details class="warmup" data-uid="${item.uid}" ${open ? 'open' : ''}>
-      <summary>Warm-up · ${done ? `${done} of ${warm.length} done` : `${warm.length} sets`}</summary>
+      <summary>Ramp-up sets · ${done ? `${done} of ${warm.length} done` : `${warm.length}`}</summary>
       <div class="set-head warm" aria-hidden="true"><span></span><span>${ex.type === 'dumbbell' ? `${wUnit()} each` : wUnit()}</span><span>Reps</span><span></span></div>
       ${warm.map((w, i) => `<div class="set-row warm ${w.done ? 'done' : ''}" data-swipe="warm-del" data-swipe-label="Delete" data-uid="${item.uid}" data-i="${i}">
-        <span class="set-badge ty-w">W</span>
-        <input class="cell" type="text" inputmode="decimal" data-warm="${item.uid}:${i}:weight" value="${toDisp(w.weight) ?? ''}" aria-label="Warm-up ${i + 1} weight">
-        <input class="cell" type="text" inputmode="numeric" data-warm="${item.uid}:${i}:reps" value="${w.reps}" aria-label="Warm-up ${i + 1} reps">
-        <button class="check" data-a="warm-check" data-uid="${item.uid}" data-i="${i}" aria-pressed="${!!w.done}" aria-label="${w.done ? 'Undo' : 'Complete'} warm-up ${i + 1}">${icon('check')}</button>
+        <span class="set-badge ty-w">R</span>
+        <input class="cell" type="text" inputmode="decimal" data-warm="${item.uid}:${i}:weight" value="${toDisp(w.weight) ?? ''}" aria-label="Ramp-up set ${i + 1} weight">
+        <input class="cell" type="text" inputmode="numeric" data-warm="${item.uid}:${i}:reps" value="${w.reps}" aria-label="Ramp-up set ${i + 1} reps">
+        <button class="check" data-a="warm-check" data-uid="${item.uid}" data-i="${i}" aria-pressed="${!!w.done}" aria-label="${w.done ? 'Undo' : 'Complete'} ramp-up set ${i + 1}">${icon('check')}</button>
         ${barbell ? `<span class="wu-plates">${plateText(w.weight, gym)}</span>` : ''}
       </div>`).join('')}
-      <button class="text-btn small-text" data-a="warm-add" data-uid="${item.uid}">${icon('plus')} Add warm-up</button>
+      <button class="text-btn small-text" data-a="warm-add" data-uid="${item.uid}">${icon('plus')} Add ramp-up set</button>
     </details>`;
   }
 
@@ -528,7 +532,7 @@ export function createWorkoutScreens(A) {
     return [{ weight: ex.type === 'bodyweight' ? 0 : weight ? roundToGym(ex, weight * 0.5, gym) : null, reps: 8 }];
   }
 
-  const SET_TYPES = { w: ['W', 'Warm-up'], d: ['D', 'Drop set'], f: ['F', 'To failure'] };
+  const SET_TYPES = { w: ['R', 'Ramp-up'], d: ['D', 'Drop set'], f: ['F', 'To failure'] };
 
   function setHead(conditioning, fields, ex) {
     if (conditioning) return `<div class="set-head" aria-hidden="true"><span>Round</span><span>${fields[0][1]}${sideNote(ex) ? ` ${sideNote(ex)}` : ''}</span><span>${fields[1][1]}</span><span></span></div>`;
@@ -545,7 +549,7 @@ export function createWorkoutScreens(A) {
       const disabled = ended && !s.done && !s.pain;
       const pw = last?.weights?.[i];
       const pr = last?.reps?.[i];
-      const prev = pr != null ? (ex.noLoad ? `${pr} reps` : `${ex.type === 'bodyweight' && !pw ? 'BW' : pw} × ${pr}`) : '';
+      const prev = pr != null ? (ex.noLoad ? `${pr} reps` : (ex.type === 'bodyweight' && !pw ? `${pr} reps` : `${pw} × ${pr}`)) : '';
       const ty = SET_TYPES[s.type];
       return `<div class="set-row lift ${ex.noLoad ? 'no-load' : ''} ${s.done ? 'done' : ''} ${s.pain ? 'pain' : ''} ${disabled ? 'disabled' : ''}" data-swipe="del-set" data-uid="${item.uid}" data-i="${i}" data-swipe-label="Delete">
         <button class="set-badge ${ty ? `ty-${s.type}` : ''}" data-a="open-set" data-uid="${item.uid}" data-i="${i}" aria-label="Set ${i + 1}${ty ? `, ${ty[1]}` : ''}. Options: type, effort, pain">${ty ? ty[0] : i + 1}</button>
@@ -628,9 +632,9 @@ export function createWorkoutScreens(A) {
   // ---------- Summary ----------
 
   const STATUS = {
-    progressed: ['up', 'Progressed', 'good'],
-    held: ['minus', 'Hold', ''],
-    missed: ['minus', 'Missed range', 'warn'],
+    progressed: ['up', 'Going up', 'good'],
+    held: ['minus', 'Same next time', ''],
+    missed: ['minus', 'Short of target', 'warn'],
     reduced: ['arrowDown', 'Reduced', 'warn'],
     pain: ['x', 'Pain', 'bad'],
     deload: ['minus', 'Deload', ''],
@@ -661,7 +665,7 @@ export function createWorkoutScreens(A) {
     };
     const prs = s.prs || [];
     const adj = s.adjustments || [];
-    return `<header class="top"><div><h1>${A.ui.summaryFresh ? 'Workout done' : 'Workout'}</h1><p class="muted small">${A.fmtDate(s.date)} · ${DAY_NAMES[s.day]} · ${s.freestyle ? 'Freestyle' : A.esc(A.db.plan[s.day]?.name || '')}${s.isDeload ? ' · deload' : ''}</p></div></header>
+    return `<header class="top"><div><h1>${A.ui.summaryFresh ? 'Workout done' : 'Workout'}</h1><p class="muted small">${A.fmtDate(s.date)} · ${DAY_NAMES[s.day]} · ${s.freestyle ? 'Custom workout' : A.esc(A.db.plan[s.day]?.name || '')}${s.isDeload ? ' · deload' : ''}</p></div></header>
       <div class="stats sum-stats">
         <div class="stat"><b data-count="${mins}">${mins}</b><span>min</span></div>
         <div class="stat"><b data-count="${sets}">${sets}</b><span>sets</span></div>
@@ -669,6 +673,7 @@ export function createWorkoutScreens(A) {
         <button class="stat" data-a="energy-why" aria-label="About ${Math.round(workoutBurn(A.db, s).active)} active calories"><b>~${Math.round(workoutBurn(A.db, s).active)}</b><span>active kcal</span></button>
       </div>
       ${prs.length ? `<div class="card pr-card ${A.ui.summaryFresh ? 'celebrate' : ''}"><h3>${prs.length === 1 ? 'New record' : `${prs.length} new records`}</h3>${prs.map((p) => `<p class="small"><b>${A.esc(p.name)}</b> — ${A.esc(p.text)}</p>`).join('')}${A.peopleOn() && prs.some((p) => p.type === 'e1rm' || p.type === 'reps') ? `<button class="btn block" data-a="ppl-share-pr" data-sid="${s.id}">Share with friends</button>` : ''}</div>` : ''}
+      ${s.goalHit ? `<div class="card pr-card ${A.ui.summaryFresh ? 'celebrate' : ''}"><h3>Big goal reached</h3><p class="small"><b>${A.esc(s.goalHit)}</b></p></div>` : ''}
       ${s.isDeload ? '<p class="muted small pad">Deload workouts don\'t change targets.</p>' : res.length ? `<div class="card"><h3>Next time${progressed.length ? ` · <span class="up-count">${progressed.length} up</span>` : ''}</h3>${[...progressed, ...res.filter((r) => !progressed.includes(r) && !stalled.includes(r)), ...stalled].map(row).join('')}</div>` : ''}
       ${adj.length ? `<div class="card"><h3>Plan adjustments from your check-ins</h3>${adj.map((a) => `<p class="small">${A.esc(a.text)}</p>`).join('')}</div>` : ''}
       ${A.ui.summaryFresh ? A.extras.summaryBackupCard() : ''}
