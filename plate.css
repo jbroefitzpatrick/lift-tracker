@@ -487,3 +487,38 @@ body.resting #main:has(.ex-nav) { padding-bottom: calc(var(--tabbar-h) + 156px +
 .wk-lifts b { flex: none; color: var(--text); font-variant-numeric: tabular-nums; }
 .wk-count { display: grid; grid-template-columns: repeat(var(--n), minmax(0, 1fr)); gap: 6px; overflow: visible; }
 .wk-count .chip { justify-content: center; min-width: 0; padding-inline: 0; text-align: center; }
+/* ---------- Feed ---------- */
+.feed-card.flat .feed-post { padding: 12px 0 6px; gap: 9px; touch-action: manipulation; }
+.feed-day { margin: 14px 0 0; color: var(--muted); font-size: 0.75rem; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; }
+.feed-card.flat > .feed-day:first-child { margin-top: 4px; }
+.fp-head .grow { display: grid; gap: 0; }
+.fp-more { flex: none; display: grid; place-items: center; width: 40px; height: 40px; margin: -6px -8px -6px 0; padding: 0; border: 0; background: none; color: var(--muted); }
+.fp-more .ic { width: 18px; height: 18px; }
+.fa-work > b { font-size: 1.25rem; line-height: 1.15; }
+.fa-work .hl-stats { margin-top: 6px; }
+.fa-bests { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+.fa-bests span { padding: 3px 8px; border-radius: 6px; background: var(--surface-3); font-size: 0.8125rem; font-weight: 600; }
+.fa-bests b { font-size: inherit; font-weight: 800; color: var(--good); }
+.fa-mile { background: var(--surface-2); box-shadow: inset 3px 0 0 var(--accent-strong); }
+.fp-who, .fp-last, .fp-digest { display: flex; align-items: center; gap: 8px; width: 100%; padding: 0; border: 0; background: none; color: var(--muted); font: inherit; font-size: 0.8125rem; text-align: left; }
+.fp-who { min-height: 28px; }
+.fp-last { display: block; min-height: 22px; color: var(--text); line-height: 1.35; }
+.fp-last span { display: block; color: var(--muted); font-size: 0.75rem; }
+.fp-faces { display: inline-flex; flex: none; }
+.fp-faces .avatar { width: 24px; height: 24px; margin-left: -7px; border: 2px solid var(--bg); font-size: 0.5625rem; }
+.fp-faces .avatar:first-child { margin-left: 0; }
+.fp-digest { min-height: 52px; margin: 2px 0 8px; padding: 8px 12px; border-radius: var(--radius-sm); background: var(--surface-2); color: var(--text); font-size: 0.875rem; }
+.fp-digest .fp-faces .avatar { border-color: var(--surface-2); }
+.fp-digest .chev { width: 16px; height: 16px; flex: none; color: var(--muted); }
+.fp-actions { gap: 16px; }
+.fp-btn { display: inline-flex; align-items: center; gap: 5px; }
+.fp-btn .ic { width: 17px; height: 17px; }
+.feed-end { margin: 16px 0 6px; color: var(--muted); font-size: 0.8125rem; text-align: center; }
+.feed-empty { display: grid; justify-items: center; gap: 8px; padding: 14px 0; text-align: center; }
+.quick-replies { margin: 10px 0 2px; }
+/* Post and Challenge */
+.ppl-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 0 0 10px; }
+.ppl-actions.one { grid-template-columns: 1fr; }
+.ppl-actions .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; margin: 0; min-height: 44px; }
+.ppl-actions .ic { width: 17px; height: 17px; }
+.fa-win { box-shadow: inset 3px 0 0 var(--accent-strong); }

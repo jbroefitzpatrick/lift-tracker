@@ -3,6 +3,8 @@
 
 import { e1rm } from './engine.js';
 import { CARDIO } from './cardio-bank.js';
+import { fmtTime, goalProgress, runLog, getGoal } from './big-goal.js';
+import { streakInfo } from './streak.js';
 
 const num = (v) => { const n = Number(v); return Number.isFinite(n) && n > 0 ? n : 0; };
 const clock = (sec) => { const s = Math.round(sec); const h = Math.floor(s / 3600); const m = Math.floor((s % 3600) / 60); return h ? `${h}:${String(m).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}` : `${m}:${String(s % 60).padStart(2, '0')}`; };
@@ -68,6 +70,36 @@ export function modesFor(item) {
 }
 export const runFields = (item) => [['mi', 'Distance'], ['sec', 'Time'], ['pace', 'Pace']].filter(([k]) => item?.[k] > 0);
 
+// Things worth posting that aren't one workout: maxes, streaks, clubs, running bests, milestones.
+const WORKOUT_MARKS = [10, 25, 50, 100, 150, 200, 250, 300, 400, 500, 750, 1000];
+export function accomplishments(db, today) {
+  const out = [];
+  const maxes = [];
+  for (const m of db.maxes || []) if (m.weight > 0) maxes.push({ exId: m.exerciseId, w: m.weight, r: m.reps || 1, date: m.date, how: 'Logged max' });
+  for (const s of db.sessions || []) for (const e of s.entries || []) {
+    if (!e.maxTest) continue;
+    const best = goodSets(e).filter((x) => x.weight > 0 && x.reps > 0).reduce((a, x) => (!a || x.weight > a.weight ? x : a), null);
+    if (best) maxes.push({ exId: e.exerciseId, w: best.weight, r: best.reps, date: s.date, how: 'Tested max' });
+  }
+  for (const m of maxes.sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5)) out.push({ key: `max:${m.exId}:${m.date}:${m.w}`, t: 'win', title: db.exercises?.[m.exId]?.name || 'Max', label: m.how, w: m.w, r: m.r, exId: m.exId, date: m.date });
+  const streak = streakInfo(db, today).current;
+  if (streak >= 2) out.push({ key: `streak:${streak}`, t: 'win', title: `${streak}-week streak`, label: 'Streak', big: `${streak} weeks`, sub: 'Hit the weekly goal every week', date: today });
+  const n = (db.sessions || []).length;
+  const mark = WORKOUT_MARKS.filter((v) => n >= v).pop();
+  if (mark) out.push({ key: `count:${mark}`, t: 'win', title: `${mark.toLocaleString()} workouts`, label: 'Milestone', big: `${mark.toLocaleString()} workouts`, sub: 'Logged and counting', date: today });
+  const saved = { ...db, settings: { ...db.settings, bigGoal: { on: true, type: 'club' } } };
+  const club = goalProgress(saved);
+  if (club.earned) out.push({ key: `club:${club.earned}`, t: 'win', title: `${club.earned.toLocaleString()}-lb club`, label: 'Strength club', wBig: club.value, sub: 'Squat, bench and deadlift total', date: today });
+  const runs = runLog(db);
+  const long = runs.reduce((a, r) => (!a || r.mi > a.mi ? r : a), null);
+  if (long) out.push({ key: `long:${long.date}`, t: 'win', title: 'Longest run', label: 'Running best', big: `${(Math.round(long.mi * 100) / 100).toLocaleString()} miles`, sub: long.sec ? fmtTime(long.sec) : '', date: long.date });
+  const mile = runs.filter((r) => r.mi >= 1 && r.sec > 0).reduce((a, r) => (!a || r.sec / r.mi < a.sec / a.mi ? r : a), null);
+  if (mile) out.push({ key: `pace:${mile.date}`, t: 'win', title: 'Fastest pace', label: 'Running best', big: `${fmtTime(mile.sec / mile.mi)} per mile`, sub: `Over ${(Math.round(mile.mi * 100) / 100)} miles`, date: mile.date });
+  const g = getGoal(db);
+  if (g.on && g.type !== 'club') { const p = goalProgress(db); if (p.reached) out.push({ key: `goal:${p.title}`, t: 'win', title: p.title, label: 'Big goal reached', big: p.title, sub: '', date: today }); }
+  return out;
+}
+
 // The data sent with the post. Old versions of the app show it as a plain workout card.
 export function buildHighlight(item, { mode, set = 0, show = {} } = {}) {
   if (!item) return null;
@@ -89,6 +121,15 @@ export const highlightPayload = (hl) => ({ name: hl.name, date: hl.date, sets: h
 export function highlightHtml(hl, { esc, wt, wtEst, toDisp, fmtDate, art = () => '' }) {
   const name = esc(String(hl?.name || '').slice(0, 80));
   const when = hl?.date && /^\d{4}-\d\d-\d\d$/.test(hl.date) ? ` · ${esc(fmtDate(hl.date))}` : '';
+  if (hl?.t === 'win') {
+    const w = num(hl.w);
+    const pic = w ? art(hl.exId, w) : '';
+    const big = w ? (num(hl.r) > 1 ? `${wt(w)} × ${num(hl.r)}` : wt(w)) : num(hl.wBig) ? wtEst(num(hl.wBig)) : String(hl.big || '').slice(0, 40);
+    const line = w ? String(hl.title || '').slice(0, 60) : String(hl.sub || '').slice(0, 60);
+    const label = String(hl.label || 'Accomplishment').slice(0, 30);
+    const head = w || num(hl.wBig) ? `${esc(label)} · ${name}` : esc(label);
+    return `<div class="post-metric fa-win ${pic ? 'has-art' : ''}">${pic}<span class="pm-label">${head}</span><b class="num">${esc(big)}</b>${w ? (when ? `<span class="pm-sub">${esc(when.replace(' · ', ''))}</span>` : '') : line ? `<span class="pm-sub">${esc(line)}</span>` : ''}</div>`;
+  }
   if (hl?.t === 'run') {
     const stats = [num(hl.mi) ? [`${num(hl.mi).toFixed(2)}`, 'miles'] : null, num(hl.sec) ? [clock(num(hl.sec)), 'time'] : null, num(hl.pace) ? [clock(num(hl.pace)), 'per mile'] : null].filter(Boolean);
     return `<div class="post-metric hl-post"><span class="pm-label">${name}${when}</span><div class="hl-stats">${stats.map(([v, l]) => `<div><b class="num">${esc(v)}</b><span>${l}</span></div>`).join('')}</div></div>`;

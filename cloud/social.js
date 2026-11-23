@@ -273,7 +273,7 @@ export async function handleSocial(path, body, user, env, json) {
     if (body.on === false) await env.DB.prepare('DELETE FROM cheers WHERE owner = ? AND item = ? AND from_user = ?').bind(owner, item, me).run();
     else {
       await env.DB.prepare('INSERT OR IGNORE INTO cheers (owner, item, from_user, created) VALUES (?, ?, ?, ?)').bind(owner, item, me, now()).run();
-      if (owner !== me) await pushTo(env, owner, { title: `${user.name} liked your ${item.startsWith('p:') ? 'post' : item.startsWith('w:') ? 'workout' : 'new best'}`, body: '', tag: `like-${item}`, url: './?open=people' });
+      if (owner !== me) await pushTo(env, owner, { title: `${user.name} gave you big ups on your ${item.startsWith('p:') ? 'post' : item.startsWith('w:') ? 'workout' : item.startsWith('m:') ? 'streak' : 'new best'}`, body: '', tag: `like-${item}`, url: './?open=people' });
     }
     return json({ ok: true });
   }

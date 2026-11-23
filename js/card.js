@@ -54,6 +54,7 @@ export function buildCard(db, name) {
     name: s.freestyle ? 'Workout' : db.plan?.[s.day]?.name || 'Workout',
     sets: s.entries.reduce((a, e) => a + goodSets(e).length, 0),
     prs: s.prs?.length || 0,
+    minutes: s.finishedAt && s.startedAt ? Math.round(Math.max(0, Math.min(240, (s.finishedAt - s.startedAt - (s.pausedMs || 0)) / 60000))) : null,
   }));
   return {
     v: 1, name, today,
