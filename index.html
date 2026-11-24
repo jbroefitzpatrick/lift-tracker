@@ -18,13 +18,19 @@
   <link rel="preload" href="fonts/archivo-var.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="plate.css">
+  <link rel="stylesheet" href="themes.css">
 </head>
 <body>
   <main id="main"></main>
 
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs>
+    <linearGradient id="g-steel" x1="0" x2="1"><stop offset="0" stop-color="#7d868f"/><stop offset=".35" stop-color="#e4e8ec"/><stop offset=".55" stop-color="#aab2ba"/><stop offset="1" stop-color="#6b737b"/></linearGradient>
+    <linearGradient id="g-steel-v" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#eef1f4"/><stop offset=".5" stop-color="#aeb6be"/><stop offset="1" stop-color="#737b83"/></linearGradient>
+    <radialGradient id="g-steel-r" cx=".35" cy=".3" r=".8"><stop offset="0" stop-color="#eef1f4"/><stop offset=".6" stop-color="#a3abb3"/><stop offset="1" stop-color="#666e76"/></radialGradient>
+  </defs></svg>
   <div id="rest" hidden role="timer" aria-label="Rest timer">
     <div class="row">
-      <svg id="rest-plate" viewBox="0 0 56 56" aria-hidden="true"><circle cx="28" cy="28" r="27" fill="#141518"/><circle cx="28" cy="28" r="23" fill="none" stroke="#3a3c41" stroke-width="7"/><circle id="rest-ring" cx="28" cy="28" r="23" fill="none" stroke="#1f5fbf" stroke-width="7" stroke-dasharray="144.51" stroke-dashoffset="0" transform="rotate(-90 28 28)"/><circle cx="28" cy="28" r="12" fill="#2b2d31" stroke="#55585e"/><circle cx="28" cy="28" r="4" fill="#d8d9d6"/></svg>
+      <button id="rest-pause" aria-label="Pause rest"><svg id="rest-plate" viewBox="0 0 56 56" aria-hidden="true"><circle cx="28" cy="28" r="27" fill="#141518"/><circle cx="28" cy="28" r="23" fill="none" stroke="#3a3c41" stroke-width="7"/><circle id="rest-ring" cx="28" cy="28" r="23" fill="none" stroke="#1f5fbf" stroke-width="7" stroke-dasharray="144.51" stroke-dashoffset="0" transform="rotate(-90 28 28)"/><circle cx="28" cy="28" r="12" fill="#2b2d31" stroke="#55585e"/><g id="rest-glyph-pause" fill="#d8d9d6"><rect x="23.5" y="22.5" width="3.4" height="11" rx="1"/><rect x="29.1" y="22.5" width="3.4" height="11" rx="1"/></g><path id="rest-glyph-play" d="M25 22.2v11.6l9.2-5.8z" fill="#d8d9d6" style="display:none"/></svg></button>
       <div class="grow"><div id="rest-time" class="tnum">0:00</div><div id="rest-label">Rest</div></div>
       <button id="rest-minus" class="mini" aria-label="15 seconds less">−15</button>
       <button id="rest-plus" class="mini" aria-label="15 seconds more">+15</button>

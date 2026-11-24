@@ -36,6 +36,9 @@ export const KG_GYM = {
 };
 export const LB_GYM = { barWeight: 45, plates: [45, 35, 25, 10, 5, 2.5], dbStep: 5, machineStep: 5, dbMax: 150 };
 // Choices offered in the gym editor, per unit (stored as pounds).
+export const SMITH_CHOICES = () => (unit === 'kg' ? [5, 7.5, 10, 12.5, 15].map(lbOfKg) : [10, 15, 20, 25, 30, 35]);
+// The usual Smith bar when a gym hasn't said: 25 lb, or 10 kg.
+export const smithBar = (gym) => gym?.smithBar ?? (unit === 'kg' ? lbOfKg(10) : 25);
 export const BAR_CHOICES = () => (unit === 'kg' ? [20, 15, 10].map(lbOfKg) : [45, 35, 33, 25, 20, 15]);
 export const PLATE_CHOICES = () => (unit === 'kg' ? [25, 20, 15, 10, 5, 2.5, 2, 1.25, 0.5].map(lbOfKg) : [55, 45, 35, 25, 15, 10, 5, 2.5, 1.25]);
 export const DB_STEP_CHOICES = () => (unit === 'kg' ? [1, 2, 2.5, 5].map(lbOfKg) : [2.5, 5, 10]);

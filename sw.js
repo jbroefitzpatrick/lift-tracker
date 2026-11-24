@@ -1,6 +1,6 @@
 // Offline support: cache the app shell, serve from cache first, refresh in the background.
 // Bump VERSION whenever you deploy changes so phones pick up the new files.
-const VERSION = 'lift-v67';
+const VERSION = 'lift-v73';
 const IMG_CACHE = 'lift-img-v1'; // exercise photos, cached as they're viewed
 const SHELL = [
   './',
@@ -8,6 +8,7 @@ const SHELL = [
   './privacy.html',
   './styles.css',
   './plate.css',
+  './themes.css',
   './fonts/archivo-var.woff2',
   './manifest.webmanifest',
   './js/app.js',
@@ -28,6 +29,7 @@ const SHELL = [
   './js/foods.js',
   './js/year.js',
   './js/exercise-info.js',
+  './js/exercise-info-extra.js',
   './js/ui-food.js',
   './js/ui-year.js',
   './js/ui-extra.js',
@@ -75,6 +77,8 @@ const SHELL = [
   './js/week-shape.js',
   './js/recovery.js',
   './js/running.js',
+  './js/event-plan.js',
+  './js/ui-event.js',
   './js/ui-train.js',
   './js/variety.js',
   './js/swipe.js',

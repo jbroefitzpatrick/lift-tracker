@@ -66,41 +66,39 @@ export function inRange(rows, range, today) {
   return rows.filter((r) => dayNum(r.date) >= from);
 }
 
-// The average curve: [{ t, v }], with null where there's a long gap in training.
-export function trendLine(points, samples = 72) {
+// The trend as straight steps: workouts grouped into periods (2 weeks for a short range, a month
+// for a year, two months beyond), one value per period. 'best' (lifts): the average of the period's
+// two best workouts (the best one when it had only one or two), so light days and deloads don't pull it down. 'median' (body measures): the
+// middle value. gap: an empty period before this one (drawn dashed, not as a break).
+export function stepTrend(points, mode = 'median') {
   const pts = points.filter((p) => Number.isFinite(p.v)).map((p) => ({ t: p.t ?? dayNum(p.x), v: p.v })).sort((a, b) => a.t - b.t);
   if (pts.length < 2) return [];
-  const t0 = pts[0].t; const t1 = pts[pts.length - 1].t; const span = t1 - t0;
+  const t0 = pts[0].t; const span = pts[pts.length - 1].t - t0;
   if (!span) return [];
-  const gap = span / (pts.length - 1);
-  const bw = Math.max(7, Math.min(45, Math.max(span / 12, gap * 1.6)));
-  const limit = Math.max(bw * 2.5, 30);
-  const n = Math.min(samples, Math.max(12, Math.ceil(span / 2)));
-  const out = [];
-  for (let i = 0; i <= n; i++) {
-    const t = t0 + (span * i) / n;
-    let sw = 0; let sx = 0; let sy = 0; let sxx = 0; let sxy = 0; let near = Infinity; let lo = Infinity; let hi = -Infinity;
-    for (const p of pts) {
-      const d = p.t - t;
-      near = Math.min(near, Math.abs(d));
-      if (Math.abs(d) > bw * 3) continue;
-      const w = Math.exp(-(d * d) / (2 * bw * bw));
-      sw += w; sx += w * d; sy += w * p.v; sxx += w * d * d; sxy += w * d * p.v;
-      lo = Math.min(lo, p.v); hi = Math.max(hi, p.v);
-    }
-    if (near > limit || !sw) { out.push({ t, v: null }); continue; }
-    const det = sw * sxx - sx * sx;
-    const fit = Math.abs(det) > 1e-6 ? (sy * sxx - sx * sxy) / det : sy / sw;
-    out.push({ t, v: Math.min(hi, Math.max(lo, fit)) }); // never beyond the nearby workouts
+  const bin = span <= 120 ? 14 : span <= 400 ? 28 : 56;
+  const bins = new Map();
+  for (const p of pts) { const k = Math.floor((p.t - t0) / bin); if (!bins.has(k)) bins.set(k, []); bins.get(k).push(p); }
+  const keys = [...bins.keys()].sort((a, b) => a - b);
+  if (keys.length < 2) {
+    // Everything inside one period: a straight least-squares line across it.
+    const n = pts.length; const mt = pts.reduce((a, p) => a + p.t, 0) / n; const mv = pts.reduce((a, p) => a + p.v, 0) / n;
+    const sxx = pts.reduce((a, p) => a + (p.t - mt) ** 2, 0); const slope = sxx ? pts.reduce((a, p) => a + (p.t - mt) * (p.v - mv), 0) / sxx : 0;
+    return [{ t: pts[0].t, v: mv + slope * (pts[0].t - mt) }, { t: pts[n - 1].t, v: mv + slope * (pts[n - 1].t - mt) }];
   }
-  return out;
+  return keys.map((k, i) => {
+    const g = bins.get(k);
+    const vs = g.map((p) => p.v).sort((a, b) => b - a);
+    const v = mode === 'best' ? (vs.length > 2 ? (vs[0] + vs[1]) / 2 : vs[0]) : vs.length % 2 ? vs[(vs.length - 1) / 2] : (vs[vs.length / 2 - 1] + vs[vs.length / 2]) / 2;
+    const t = g.reduce((a, p) => a + p.t, 0) / g.length;
+    return { t, v, gap: i > 0 && k - keys[i - 1] > 1 };
+  });
 }
 
 // Summary for a chart: latest, best, and the change along the trend (not one lucky session).
 export function chartStats(rows, key) {
   const pts = rows.filter((r) => r[key] > 0);
   if (!pts.length) return null;
-  const trend = trendLine(pts.map((r) => ({ x: r.date, v: r[key] }))).filter((p) => p.v != null);
+  const trend = stepTrend(pts.map((r) => ({ x: r.date, v: r[key] })), 'best');
   const first = trend[0]?.v ?? pts[0][key];
   const last = trend[trend.length - 1]?.v ?? pts[pts.length - 1][key];
   const days = dayNum(pts[pts.length - 1].date) - dayNum(pts[0].date);

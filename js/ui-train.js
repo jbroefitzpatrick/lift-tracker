@@ -1,13 +1,13 @@
 // Flexible training: the week planner, adjust-today, recovery check-ins and routines, finishers,
-// conditioning targets, the running goal, and sharing/installing the app.
+// conditioning targets, and sharing/installing the app.
 import { icon } from './icons.js';
+import { fmtDur } from './event-plan.js';
 import { DAY_KEYS, RECOVERY_GROUPS, resolveDay, weekOverride, groupOf } from './engine.js';
 import { todayStr, mondayOf, addDays, weekOrder } from './store.js';
 import { estimateMinutes } from './builder.js';
 import { weekShapes, composeWeek, adjustDay, splitDay, liftTemplates, doneTemplates, missedTemplates, todayKey, dayIndex, shiftWeek, moveDay, skipDay, planSpread, previewSpread } from './week.js';
 import { dueChecks, record, notReady, learnSlowRecovery, RATINGS, groupSets } from './recovery.js';
 import { TEMPLATES, buildFinisher, condHistory, condTarget, fmtTarget } from './conditioning.js';
-import { RUN_KINDS, runKinds, scheduleRuns, goalWeek, paces, fmtClock, parseClock, weekRuns } from './running.js';
 import { liftLoads } from './fatigue.js';
 import { CORE_FINISHER } from './core.js';
 
@@ -277,7 +277,7 @@ export function createTrain(ctx) {
   function condInfo(item, entry, ex, metric) {
     const db = ctx.db;
     let html = '';
-    if (item.paceSec) html += `<p class="cond-target"><b>Target:</b> ${fmtClock(item.paceSec)} per ${fmtTarget(metric, item.target)}</p>`;
+    if (item.paceSec) html += `<p class="cond-target"><b>Target:</b> ${fmtDur(item.paceSec)} per ${fmtTarget(metric, item.target)}</p>`;
     const hist = condHistory(db, ex.id, metric, item.target);
     const t = condTarget(hist);
     if (t) {
@@ -300,52 +300,7 @@ export function createTrain(ctx) {
     return t?.lower ? `≤${t.value.toFixed(1)}` : '';
   }
 
-  // ---------- Running goal ----------
 
-  function legLoads() {
-    const db = ctx.db;
-    const out = {};
-    for (const d of DAY_KEYS) {
-      // The regular weekly plan, not this week's adjustments.
-      const lift = db.plan[d] && ['lift', 'both'].includes(db.settings.dayModes?.[d] || 'lift');
-      const l = lift ? liftLoads(db, resolveDay(db, d, { template: true }).map((i) => ({ exerciseId: i.exerciseId, sets: i.sets }))) : {};
-      out[d] = ['quads', 'hamstrings', 'glutes'].reduce((a, m) => a + (l[m] || 0), 0) / 2;
-    }
-    return out;
-  }
-
-  function runCard() {
-    const db = ctx.db;
-    const g = db.runGoal;
-    const wk = goalWeek(g);
-    if (!g || !wk) {
-      return `<div class="card run-card"><div class="row between"><div><h3>Running goal</h3><p class="muted small">A faster 5k alongside lifting.</p></div>
-        <button class="btn sm" data-a="run-open">${g ? 'Start a new goal' : 'Set up'}</button></div></div>`;
-    }
-    const p = paces(g, wk);
-    const runs = weekRuns(g, wk);
-    return `<div class="card run-card"><div class="row between"><h3>5k: ${fmtClock(g.trials?.at(-1)?.sec || g.current5k)} → ${fmtClock(g.target5k)}</h3><button class="link-btn" data-a="run-open">Edit</button></div>
-      <p class="muted small">Week ${wk} of ${g.weeks} · easy ${fmtClock(p.easy)}/mi · tempo ${fmtClock(p.tempo)}/mi · intervals ${fmtClock(p.interval)}/mi${g.liftMaintenance ? ' · lifting at maintenance' : ''}</p>
-      ${Object.entries(g.days).sort((a, b) => dayIndex(a[1]) - dayIndex(b[1])).map(([k, d]) => { const kind = k.split('#')[0]; const r = runs[kind]; return `<div class="run-row"><b>${SHORT[d]}</b><span class="grow">${esc(db.exercises[r.exerciseId]?.name || RUN_KINDS[kind].name)}<span class="pick-sub">${esc(r.note)}</span></span></div>`; }).join('')}
-    </div>`;
-  }
-
-  function openRunGoal() {
-    const g = ctx.db.runGoal || {};
-    st.run = { runsPerWeek: g.runsPerWeek || 3, liftMaintenance: g.liftMaintenance ?? true, weeks: g.weeks || 8 };
-    ctx.openSheet(`<h2>Running goal</h2>
-      <p class="muted small">Your current 5k sets your training paces. About 80% of running stays easy; hard runs avoid your heavy leg days. ${ctx.refChips(['daniels2014', 'seiler2010', 'schumann2022'])}</p>
-      <div class="grid2">
-        <div class="field"><span>Current 5k (mm:ss)</span><input id="rg-cur" type="text" inputmode="numeric" placeholder="25:00" value="${g.current5k ? fmtClock(g.trials?.at(-1)?.sec || g.current5k) : ''}"></div>
-        <div class="field"><span>Goal 5k (mm:ss)</span><input id="rg-tgt" type="text" inputmode="numeric" placeholder="23:00" value="${g.target5k ? fmtClock(g.target5k) : ''}"></div>
-      </div>
-      <div class="field"><span>Length</span><div class="segmented small-seg" role="radiogroup">${[6, 8, 10, 12].map((w) => `<button class="${st.run.weeks === w ? 'on' : ''}" data-a="rg-set" data-k="weeks" data-v="${w}" role="radio">${w} weeks</button>`).join('')}</div></div>
-      <div class="field"><span>Runs per week</span><div class="segmented small-seg" role="radiogroup">${[2, 3, 4, 5].map((n) => `<button class="${st.run.runsPerWeek === n ? 'on' : ''}" data-a="rg-set" data-k="runsPerWeek" data-v="${n}" role="radio">${n}</button>`).join('')}</div></div>
-      <label class="toggle"><input type="checkbox" id="rg-maint" ${st.run.liftMaintenance ? 'checked' : ''}><span>Keep lifting at maintenance (fewer accessory sets) ${ctx.refChips(['bickel2011'])}</span></label>
-      <button class="btn primary block big" data-a="rg-save">Save goal</button>
-      ${ctx.db.runGoal ? '<button class="btn block danger" data-a="rg-remove">Remove running goal</button>' : ''}
-      <button class="btn plain block" data-a="close-sheet">Cancel</button>`);
-  }
 
   // ---------- Share and install ----------
 
@@ -476,27 +431,6 @@ export function createTrain(ctx) {
     'fin-shuffle': () => { st.fin.shuffle += 1; st.fin.alt = []; const el = $('#fin-preview'); if (el) el.innerHTML = finisherPreview(); },
     'fin-add': () => { ctx.addTemplateToSession(st.finTpl); ctx.closeSheet(); ctx.toast('Finisher added at the end. Tap a round\'s play button to time it.'); },
     'cond-rpe': (d) => { const e = ctx.sessionEntry(d.uid, true); if (!e) return; e.rpe = +d.v; ctx.persist(); ctx.render(); },
-    'run-open': () => openRunGoal(),
-    'rg-set': (d) => { st.run[d.k] = +d.v; document.querySelectorAll(`[data-a="rg-set"][data-k="${d.k}"]`).forEach((b) => b.classList.toggle('on', b.dataset.v === d.v)); },
-    'rg-save': () => {
-      const db = ctx.db;
-      const cur = parseClock($('#rg-cur').value);
-      const tgt = parseClock($('#rg-tgt').value);
-      if (!cur || !tgt) return ctx.toast('Enter both 5k times as minutes:seconds, e.g. 24:30.');
-      if (tgt >= cur) return ctx.toast('The goal should be faster than your current time.');
-      const kinds = runKinds(st.run.runsPerWeek);
-      const liftDays = DAY_KEYS.filter((d) => db.plan[d] && ['lift', 'both'].includes(db.settings.dayModes?.[d] || 'lift'));
-      const days = scheduleRuns(kinds, legLoads(), liftDays);
-      const prev = db.runGoal;
-      db.runGoal = {
-        start: prev && goalWeek(prev) && prev.target5k === tgt ? prev.start : mondayOf(todayStr()),
-        weeks: st.run.weeks, current5k: cur, target5k: tgt, runsPerWeek: st.run.runsPerWeek, days,
-        liftMaintenance: $('#rg-maint').checked, trials: prev?.trials || [],
-      };
-      ctx.persist(); ctx.closeSheet(); ctx.render();
-      ctx.toast(`Runs on ${Object.values(days).sort((a, b) => dayIndex(a) - dayIndex(b)).map((d) => SHORT[d]).join(', ')}.`);
-    },
-    'rg-remove': async () => { if (!(await ctx.ask('Remove the running goal? Logged runs stay in your history.', 'Remove', true))) return; ctx.db.runGoal = null; ctx.persist(); ctx.closeSheet(); ctx.render(); },
     'open-share': () => openShare(),
     'share-app': async () => {
       try { if (navigator.share) await navigator.share({ title: 'ProFitz (working title)', text: 'Workout, cardio and nutrition tracker', url: APP_URL }); else { await navigator.clipboard.writeText(APP_URL); ctx.toast('Link copied.'); } } catch {}
@@ -516,5 +450,5 @@ export function createTrain(ctx) {
     return true;
   }
 
-  return { weekPrompt, openPlanner, openDayOff, dayHasWorkout, canTakeOff, recoveryCheck, recoveryCards, recoveryReminder, condInfo, condPlaceholder, runCard, installHint, openShare, actions, onChange };
+  return { weekPrompt, openPlanner, openDayOff, dayHasWorkout, canTakeOff, recoveryCheck, recoveryCards, recoveryReminder, condInfo, condPlaceholder, installHint, openShare, actions, onChange };
 }

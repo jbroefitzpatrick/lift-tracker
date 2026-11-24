@@ -113,7 +113,28 @@ function focusMuscles(liftItems) {
   return Object.keys(w).sort((x, y) => w[y] - w[x]).filter((m) => w[m] >= 3).slice(0, 5);
 }
 
+// A warm-up or cool-down edited by hand is kept for that date as edited (until it's shuffled).
+const KEY = { warmup: 'warmList', cooldown: 'coolList' };
+function stored(db, day, phase) {
+  const l = db.dayExtras?.[dateOf(day)]?.[KEY[phase]];
+  return l ? l.filter((r) => db.exercises[r.exerciseId]).map((r) => ({ ...r, ex: db.exercises[r.exerciseId] })) : null;
+}
+export const extraStored = (db, day, phase) => !!db.dayExtras?.[dateOf(day)]?.[KEY[phase]];
+// current: the items as shown now (in their shown order). fn changes the list in place.
+export function editExtraList(db, day, phase, current, fn) {
+  const list = current.map(({ ex, ...r }) => ({ ...r }));
+  fn(list);
+  list.forEach((r, i) => { r.group = `${phase === 'warmup' ? 'W' : 'C'}${i + 1}`; });
+  db.dayExtras ||= {};
+  const date = dateOf(day);
+  db.dayExtras[date] = { ...(db.dayExtras[date] || {}), [KEY[phase]]: list };
+}
+// Every warm-up drill, for swapping one out.
+export const WARM_DRILLS = () => [...DRILLS.mobilize, ...DRILLS.prime];
+
 export function warmupItems(db, day, liftItems) {
+  const kept = stored(db, day, 'warmup');
+  if (kept) return kept;
   const date = dateOf(day);
   const rand = rng(`${date}:${day}:${db.dayExtras?.[date]?.warmSeed || 0}`);
   const focus = focusMuscles(liftItems);
@@ -178,10 +199,13 @@ export function warmupFocus(liftItems) { return focusMuscles(liftItems); }
 export function shuffleWarmup(db, day) {
   db.dayExtras ||= {};
   const date = dateOf(day);
-  db.dayExtras[date] = { ...(db.dayExtras[date] || {}), warmSeed: (db.dayExtras[date]?.warmSeed || 0) + 1 };
+  const { warmList, coolList, ...rest } = db.dayExtras[date] || {};
+  db.dayExtras[date] = { ...rest, warmSeed: (rest.warmSeed || 0) + 1 };
 }
 
 export function cooldownItems(db, day, liftItems) {
+  const kept = stored(db, day, 'cooldown');
+  if (kept) return kept;
   const date = dateOf(day);
   const rand = rng(`cool:${date}:${day}:${db.dayExtras?.[date]?.warmSeed || 0}`);
   const focus = focusMuscles(liftItems).slice(0, 4);

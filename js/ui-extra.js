@@ -1,12 +1,14 @@
 // Exercise detail, gyms & equipment, data & security, measurements & photos, weekly volume, backups.
 import { icon } from './icons.js';
+import { seedFromHistory } from './engine.js';
 import { parseCsv, detectFormat, readWorkouts, planImport, applyImport } from './import-apps.js';
 import { account, signOut } from './account.js';
 import { resetSyncState } from './sync.js';
 import { EX_INFO, stepsFor } from './exercise-info.js';
+import { EXTRA_STEPS } from './exercise-info-extra.js';
 import { bestRecords } from './records.js';
 import { activeGym, GEAR } from './gym.js';
-import { wt, wtEst, toDisp, wUnit, BAR_CHOICES, PLATE_CHOICES, DB_STEP_CHOICES, MACHINE_STEP_CHOICES, fromDisp } from './units.js';
+import { wt, wtEst, toDisp, wUnit, SMITH_CHOICES, smithBar, BAR_CHOICES, PLATE_CHOICES, DB_STEP_CHOICES, MACHINE_STEP_CHOICES, fromDisp } from './units.js';
 import { MUSCLES } from './bank.js';
 import { muscleIcon } from './body.js';
 import { TRACKED_MUSCLES, volumeTarget } from './builder.js';
@@ -40,7 +42,8 @@ export function createExtras(ctx) {
       ${info.images ? `<div class="ex-imgs">${info.images.map((src, i) => `<img src="${src}" alt="${esc(ex.name)} — ${i ? 'end' : 'start'} position" loading="lazy" referrerpolicy="no-referrer">`).join('')}</div>
         <p class="muted small">${info.approx ? `Photos show a close variation (${esc(info.src)}). ` : ''}Images & steps: <a href="https://github.com/yuhonas/free-exercise-db" target="_blank" rel="noopener">free-exercise-db</a> (public domain).</p>` : ''}
       ${info.cues ? `<h3 class="sect">Key cues</h3><ul class="cues">${info.cues.split(' · ').map((c) => `<li>${esc(c)}</li>`).join('')}</ul>` : ''}
-      ${(info.steps = stepsFor(ex.id, () => ctx.render())) ? `<details class="refs"><summary>Step by step${info.level ? ` · ${esc(info.level)}` : ''}</summary><ol>${info.steps.map((s) => `<li>${esc(s)}</li>`).join('')}</ol></details>` : ''}
+      ${(info.steps = EXTRA_STEPS[ex.id] || stepsFor(ex.id, () => ctx.render())) ? `<details class="refs"><summary>Step by step${info.level ? ` · ${esc(info.level)}` : ''}</summary><ol>${info.steps.map((s) => `<li>${esc(s)}</li>`).join('')}</ol></details>` : ''}
+      ${db.exCues?.[ex.id]?.length ? `<h3 class="sect">Your cues</h3><ul class="cues">${db.exCues[ex.id].map((c) => `<li>${esc(c)}</li>`).join('')}</ul>` : ''}
       ${ex.notes ? `<h3 class="sect">Your notes</h3><p class="small">${esc(ex.notes)}</p>` : ''}
       <a class="btn block demo-link" href="${demo}" target="_blank" rel="noopener">Watch a demo on YouTube</a>
       <button class="btn block" data-a="ex-edit" data-id="${ex.id}">${ex.custom ? 'Edit exercise' : 'Edit muscles and notes'}</button>
@@ -156,7 +159,7 @@ export function createExtras(ctx) {
     return `<div class="card">
       <div class="chips wrap">${db.gyms.map((x) => `<button class="chip ${x.id === g.id ? 'on' : ''}" data-a="gym-use" data-id="${x.id}">${esc(x.name)}</button>`).join('')}
         <button class="chip" data-a="gym-add">Add gym</button></div>
-      <p class="small">${esc(g.name)}: ${wt(g.barWeight)} bar · plates ${g.plates.map(toDisp).join(', ')} · dumbbells every ${wt(g.dbStep)} up to ${toDisp(g.dbMax)} · machines every ${wt(g.machineStep)}${g.unavailable.length ? ` · ${g.unavailable.length} exercises marked unavailable` : ''}</p>
+      <p class="small">${esc(g.name)}: ${wt(g.barWeight)} bar · ${wt(smithBar(g))} Smith bar · plates ${g.plates.map(toDisp).join(', ')} · dumbbells every ${wt(g.dbStep)} up to ${toDisp(g.dbMax)} · machines every ${wt(g.machineStep)}${g.unavailable.length ? ` · ${g.unavailable.length} exercises marked unavailable` : ''}</p>
       <button class="btn block" data-a="gym-edit" data-id="${g.id}">Edit ${esc(g.name)}</button>
     </div>`;
   }
@@ -177,6 +180,7 @@ export function createExtras(ctx) {
           <div class="chips wrap">${keys.map((k) => { const on = !(g.missing || []).includes(k); return `<button class="chip ${on ? 'on' : ''}" data-a="gym-gear" data-k="${k}" aria-pressed="${on}">${grp.items[k]}</button>`; }).join('')}</div>
           <div class="row gear-all"><button class="text-btn" data-a="gym-gear-all" data-g="${gk}" data-v="1">Select all</button><button class="text-btn" data-a="gym-gear-all" data-g="${gk}" data-v="0">Select none</button></div></details>`; }).join('')}</div></div>
       <div class="field"><span>Barbell weight (${wUnit()})</span>${chips('barWeight', BAR_CHOICES(), g.barWeight)}</div>
+      <div class="field"><span>Smith machine bar (${wUnit()})</span>${chips('smithBar', SMITH_CHOICES(), smithBar(g))}<p class="small muted">Most weigh 15–25 lb. A counterbalanced bar feels lighter; the label on the machine has the number.</p></div>
       <div class="field"><span>Plates available (${wUnit()})</span>${chips('plates', PLATE_CHOICES(), g.plates, true)}</div>
       <div class="grid2">
         <div class="field"><span>Dumbbell jumps (${wUnit()})</span>${chips('dbStep', DB_STEP_CHOICES(), g.dbStep)}</div>
@@ -493,6 +497,7 @@ export function createExtras(ctx) {
       if (!appImport?.plan) return;
       await safetySnapshot(ctx.db, 'Before importing workouts');
       const n = applyImport(ctx.db, appImport.plan, APP_NAMES[appImport.format]);
+      seedFromHistory(ctx.db); // lifts you've done start from your last workout, not a guess
       appImport = null;
       ctx.persist(); ctx.closeSheet(); ctx.render(); ctx.toast(`Imported ${n} workouts.`);
     },

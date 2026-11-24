@@ -57,7 +57,7 @@ export function detectPRs(db, entry, beforeTs) {
   const bestNow = sets.reduce((a, x) => (e1rm(x.weight, x.reps) > e1rm(a.weight, a.reps) ? x : a));
   const prevE1 = Math.max(...prev.map((x) => e1rm(x.weight, x.reps)));
   if (e1rm(bestNow.weight, bestNow.reps) > prevE1 + 0.5) {
-    prs.push({ type: 'e1rm', text: `Est. max ${wtEst(e1rm(bestNow.weight, bestNow.reps))}${bw ? ' incl. body weight' : ''} (${bw ? `+${toDisp(bestNow.added)}` : toDisp(bestNow.weight)}×${bestNow.reps}), up from ${Math.round(prevE1)}` });
+    prs.push({ type: 'e1rm', from: Math.round(prevE1), to: Math.round(e1rm(bestNow.weight, bestNow.reps)), text: `Est. max ${wtEst(e1rm(bestNow.weight, bestNow.reps))}${bw ? ' incl. body weight' : ''} (${bw ? `+${toDisp(bestNow.added)}` : toDisp(bestNow.weight)}×${bestNow.reps}), up from ${Math.round(toDisp(prevE1))}` });
   }
   // Rep PR: more reps than ever at this weight or heavier (report the heaviest one).
   const repPRs = sets.filter((x) => x.weight > 0 && x.reps > Math.max(0, ...prev.filter((p) => p.weight >= x.weight).map((p) => p.reps)))

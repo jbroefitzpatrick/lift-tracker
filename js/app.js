@@ -2,11 +2,13 @@ import { loadDb, LoadError, allowReplace, download, save, onSaveError, dailySnap
 import { onReorder, setAnnouncer } from './drag.js';
 import { icon } from './icons.js';
 import { EX_INFO } from './exercise-info.js';
+import { CUE_PRESETS, GENERAL_CUES } from './exercise-info-extra.js';
+import { createEvent } from './ui-event.js';
 import { blockInfo, focusFor, liftProgress, checkinDue, planCompounds, adherence } from './blocks.js';
 import { TEMPLATES, TEMPLATE_KINDS, templateItems, fmtTarget, METRIC_FIELDS } from './conditioning.js';
 import { METRICS, sideNote } from './bank.js';
 import { rankOf } from './exercise-rank.js';
-import { DELOAD_ACCESSORIES, DELOAD_STYLES, deloadDose, deloadOf, deloadText } from './engine.js';
+import { DELOAD_ACCESSORIES, DELOAD_STYLES, deloadDose, deloadOf, deloadText, seedFromHistory } from './engine.js';
 import { weekPeek } from './screen-plan.js';
 import { TYPES, ROW_ROTATION, defaultPlan } from './plan.js';
 import {
@@ -54,7 +56,7 @@ import { GROUPS, PARTS, groupById, groupOfMuscle, groupFreshness, weeklySets as 
 import { hoursToReady } from './fatigue.js';
 import { createTrain } from './ui-train.js';
 import { condScore, condHistory } from './conditioning.js';
-import { goalWeek } from './running.js';
+import { recordRun, vdotOf } from './event-plan.js';
 import { liftTemplates, doneTemplates } from './week.js';
 import { targets as foodTargets, dayTotals } from './nutrition.js';
 import { VARIETY, applyVariety } from './variety.js';
@@ -63,7 +65,7 @@ import { createFocus } from './ui-focus.js';
 import { createExerciseEditor } from './ui-exercise.js';
 import { CORE_PLACEMENTS, applyCore, coreCircuit } from './core.js';
 import { PROGRESSIONS, recommendScheme, schemeFor } from './engine.js';
-import { dayExtras, setDayExtra, warmupItems, cooldownItems, shuffleWarmup } from './warmcool.js';
+import { dayExtras, setDayExtra, warmupItems, cooldownItems, shuffleWarmup, editExtraList, WARM_DRILLS } from './warmcool.js';
 import { weekReview, applySuggestion, lastWeekStart, muscleWork, addOptions } from './review.js';
 import { createTour } from './tour.js';
 import { initGestures } from './gestures.js';
@@ -127,6 +129,9 @@ const A = {
   get saveBlockedBanner() { return saveBlockedBanner; },
   get screenHistory() { return screenHistory; },
   get sessionFor() { return sessionFor; },
+  get eventUi() { return eventUi; },
+  get openCues() { return openCues; },
+  get draftWarm() { return draftWarm; },
   get sessionItems() { return sessionItems; },
   get skippedPrompt() { return skippedPrompt; },
   get syncSession() { return syncSession; },
@@ -236,13 +241,22 @@ function toast(msg, act = null) {
 
 // ---------- Theme ----------
 
-function applyTheme() {
+// Display styles: light = Chalk, steel = Steel, dark = Rubber. Auto follows the phone: Chalk in
+// light mode, your dark style (Rubber or Steel) in dark mode.
+const STYLE_BG = { light: '#d8d9d6', steel: '#4a5058', dark: '#1a1b1e' };
+function resolvedTheme() {
   const t = db.settings.theme;
+  if (t !== 'system') return t;
+  return matchMedia('(prefers-color-scheme: dark)').matches ? db.settings.darkStyle || 'dark' : 'light';
+}
+matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', () => { if (db?.settings?.theme === 'system') applyTheme(); });
+function applyTheme() {
+  const t = resolvedTheme();
   const root = document.documentElement;
-  if (t === 'system') root.removeAttribute('data-theme');
-  else root.setAttribute('data-theme', t);
-  const dark = t === 'dark' || (t === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
-  $('meta[name="theme-color"]').setAttribute('content', dark ? '#1a1b1e' : '#d8d9d6');
+  root.setAttribute('data-theme', t);
+  root.setAttribute('data-texture', db.settings.texture === false ? 'off' : 'on');
+  root.setAttribute('data-motion', db.settings.motion === 'calm' ? 'calm' : 'full');
+  $('meta[name="theme-color"]').setAttribute('content', STYLE_BG[t] || STYLE_BG.dark);
   // Color accents: ember for achievements and a glow on each screen's main card (default),
   // or settings.colorStyle with any of ember, wash, region, flow ('' for none).
   const style = String(db.settings.colorStyle ?? 'ember wash').split(/\s+/).filter(Boolean);
@@ -320,14 +334,23 @@ function stopRest() {
 }
 function adjustRest(sec) {
   if (!rest) return;
+  if (rest.paused != null) rest.paused = Math.max(1000, rest.paused + sec * 1000);
   rest.endAt += sec * 1000;
   rest.total = Math.max(1, rest.total + sec);
   try { localStorage.setItem(REST_KEY, JSON.stringify(rest)); } catch {}
   renderRest();
 }
+// Pause keeps the time left; resume counts down from there.
+function toggleRestPause() {
+  if (!rest || rest.work) return;
+  if (rest.paused != null) { rest.endAt = Date.now() + rest.paused; delete rest.paused; try { localStorage.setItem(REST_KEY, JSON.stringify(rest)); } catch {} runRest(); }
+  else { rest.paused = Math.max(1000, rest.endAt - Date.now()); clearInterval(restTick); try { localStorage.setItem(REST_KEY, JSON.stringify(rest)); } catch {} renderRest(); }
+  haptic();
+}
 function runRest() {
   clearInterval(restTick);
   renderRest();
+  if (rest?.paused != null) return;
   restTick = setInterval(() => {
     if (!rest) return clearInterval(restTick);
     if (Date.now() >= rest.endAt) {
@@ -347,13 +370,19 @@ function runRest() {
 }
 function renderRest() {
   const el = $('#rest');
-  if (!rest || Date.now() >= rest.endAt) { el.hidden = true; document.body.classList.remove('resting'); return; }
-  const left = Math.ceil((rest.endAt - Date.now()) / 1000);
+  const paused = rest?.paused != null;
+  if (!rest || (!paused && Date.now() >= rest.endAt)) { el.hidden = true; document.body.classList.remove('resting'); return; }
+  const left = Math.ceil((paused ? rest.paused : rest.endAt - Date.now()) / 1000);
+  el.classList.toggle('paused', paused);
+  $('#rest-pause').setAttribute('aria-label', paused ? 'Resume rest' : 'Pause rest');
+  $('#rest-pause').hidden = false;
+  $('#rest-glyph-pause').style.display = paused ? 'none' : '';
+  $('#rest-glyph-play').style.display = paused ? '' : 'none';
   el.hidden = false;
   document.body.classList.add('resting');
   document.body.classList.toggle('rest-mini', !['today', 'exercise'].includes(ui.tab));
   $('#rest-time').textContent = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`;
-  $('#rest-label').textContent = rest.label || 'Rest';
+  $('#rest-label').textContent = paused ? 'Paused' : rest.label || 'Rest';
   $('#rest-bar').style.width = `${Math.max(0, Math.min(100, (left / rest.total) * 100))}%`;
   // The plate's ring drains: blue, then yellow, green, and red for the last ten seconds.
   const ring = $('#rest-ring');
@@ -433,6 +462,7 @@ function makeEntry(item, isDeload) {
     repMax: item.repMax,
     restSec: t.restSec ?? item.restSec,
     scheme: t.scheme !== 'double' ? t.scheme : undefined,
+    ...(item.warm?.length ? { warm: item.warm.map((w) => ({ ...w, done: false })) } : {}),
     ...(t.maxTest ? { maxTest: true, warm: t.warm.map((w) => ({ ...w, done: false })) } : {}),
     ...(t.ratios ? { ratios: t.ratios } : {}),
     ...(t.fixedLadder ? { fixedLadder: true } : {}),
@@ -586,6 +616,7 @@ function resumeSession(s = db.activeSession) {
 }
 
 function logSet(uid, idx, vals) {
+  document.body.classList.remove('typing');
   const session = sessionFor(ui.day);
   resumeSession(session); // logging a set picks the workout back up
   const entry = session.entries[uid];
@@ -597,6 +628,8 @@ function logSet(uid, idx, vals) {
   settleDone(session, uid);
   persist();
   render();
+  const row = document.querySelector(`.set-row[data-uid="${uid}"][data-i="${idx}"]`);
+  if (row) { row.classList.remove('flash'); void row.offsetWidth; row.classList.add('flash'); setTimeout(() => row.classList.remove('flash'), 800); }
   // On the exercise screen, move through the superset/circuit automatically, after a short beat
   // so the logged set registers before the next exercise slides in.
   if (ui.tab === 'exercise' && ui.exUid === uid && db.settings.autoAdvance !== false) {
@@ -648,7 +681,7 @@ function finishWorkout() {
   const finishedAt = Date.now();
   // Everything finishing changes, so "Resume workout" can put it all back (same day only).
   const clone = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));
-  const reopen = { active: clone(s), state: clone(db.state), plan: clone(db.plan), week: clone(db.week), runGoal: clone(db.runGoal), recoveryAdjust: clone(db.recoveryAdjust) };
+  const reopen = { active: clone(s), state: clone(db.state), plan: clone(db.plan), week: clone(db.week), event: clone(db.event), recoveryAdjust: clone(db.recoveryAdjust) };
   const results = [];
   const entries = [];
   const stateBefore = {}; // lets a later edit of this workout redo the progression math
@@ -671,8 +704,6 @@ function finishWorkout() {
           if (sc.lower ? sc.value < best - 0.05 : sc.value > best) prs.push({ exerciseId: e.exerciseId, name: ex.name, type: 'conditioning', text: `${sc.label}, best yet (was ${sc.lower ? `${best.toFixed(1)} s` : `${Math.round(best)} ${sc.unit}`})` });
         }
       }
-      // A 5k time trial updates the running goal's paces.
-      if (e.exerciseId === 'run-5k' && db.runGoal && done[0]?.time > 600) db.runGoal.trials = [...(db.runGoal.trials || []), { date: s.date, sec: done[0].time }];
     } else {
       const working = e.sets.filter((x) => x.type !== 'w');
       const { result, state } = evaluate(db, working.length ? { ...e, sets: working } : e, s);
@@ -689,6 +720,9 @@ function finishWorkout() {
       });
     }
   }
+  // A 5K time trial or race in an event plan updates its paces.
+  const trial = recordRun(db, { date: s.date, entries: s.order.map((u) => s.entries[u]).filter(Boolean) });
+  if (trial) setTimeout(() => toast(`Paces updated from your ${trial.m >= 5000 && trial.m <= 5001 ? '5K' : 'race'}: ${Math.floor(trial.sec / 60)}:${String(Math.round(trial.sec % 60)).padStart(2, '0')}.`), 1200);
   const saved = {
     id: s.id, date: s.date, day: s.day, isDeload: s.isDeload, freestyle: s.freestyle || undefined,
     startedAt: s.startedAt, finishedAt, pausedMs: s.pausedMs || undefined, entries, results, prs, stateBefore,
@@ -814,14 +848,26 @@ function prefetchImages() {
 }
 
 // ---------- Numbers count up on a fresh summary ----------
+// This week's rings fill from empty each time Progress opens.
+function fillRings() {
+  if (reduceMotion.matches || db.settings.motion === 'calm') return;
+  const rings = [...document.querySelectorAll('.week-rings .ring-fg')];
+  const to = rings.map((r) => r.getAttribute('stroke-dasharray'));
+  rings.forEach((r) => { r.style.transition = 'none'; r.setAttribute('stroke-dasharray', `0 ${to[rings.indexOf(r)].split(' ')[1]}`); });
+  void document.body.offsetWidth;
+  requestAnimationFrame(() => rings.forEach((r, i) => { r.style.transition = 'stroke-dasharray 0.9s cubic-bezier(0.2, 0.8, 0.2, 1)'; r.setAttribute('stroke-dasharray', to[i]); }));
+}
+
 function countUp() {
   if (reduceMotion.matches) return;
   for (const el of document.querySelectorAll('[data-count]:not([data-counted])')) {
     el.dataset.counted = '1';
     const to = +el.dataset.count;
     if (!(to > 0)) continue;
+    const from = +el.dataset.from || 0;
+    const ms = el.dataset.from ? 1100 : 700;
     const t0 = performance.now();
-    const step = (t) => { const k = Math.min(1, (t - t0) / 700); const e = 1 - (1 - k) ** 3; el.textContent = Math.round(to * e).toLocaleString(); if (k < 1) requestAnimationFrame(step); };
+    const step = (t) => { const k = Math.min(1, (t - t0) / ms); const e = 1 - (1 - k) ** 3; el.textContent = Math.round(from + (to - from) * e).toLocaleString(); if (k < 1) requestAnimationFrame(step); };
     requestAnimationFrame(step);
   }
 }
@@ -952,6 +998,7 @@ function openDayOptions() {
     session ? go('leave-workout-view', 'Plan, food and progress') : '',
     !session && train.canTakeOff(day) ? go('day-off', `Can't make it ${isToday ? 'today' : `this ${FULL_DAY[day]}`}`, `data-day="${day}"`) : '',
     go('wk-open', 'Adjust week'),
+    go('ev-choose', db.event ? 'Race or meet plan' : 'Add a race or meet'),
   ].filter(Boolean).join('');
   openSheet(`<h2>${FULL_DAY[day]}</h2>
     <h3 class="sheet-h">${isToday ? 'Today' : 'This workout'}</h3>
@@ -1698,6 +1745,7 @@ let typingSave = null;
 document.addEventListener('input', (e) => { if (e.target.id === 'photo-cmp-range') $('#photo-cmp')?.style.setProperty('--p', `${e.target.value}%`); });
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && !$('#sheet').hidden) closeSheet();
+  if (e.key === 'Enter' && e.target.id === 'cue-new') { e.preventDefault(); $('[data-a="cue-add"]')?.click(); }
   if (e.key === 'Enter' && e.target.id === 'ppl-find-q') { e.preventDefault(); actions['ppl-find-go']({}); }
 });
 document.addEventListener('toggle', (e) => { const d = e.target; if (d.matches?.('details.warmup')) (ui.warmOpen ||= {})[d.dataset.uid] = d.open; }, true);
@@ -1712,13 +1760,28 @@ const num = (id) => {
 const picker = { mode: null, uid: null, currentId: null, scope: 'today', q: '', cat: 'all', muscle: 'all' };
 const PICKER_TITLES = { 'es-add': 'Add exercise', swap: 'Swap exercise', 'plan-swap': 'Swap in plan', add: 'Add exercise', browse: 'Exercise library', 'session-add': 'Add to today', 'today-add': 'Add exercise' };
 
+const MULTI = ['session-add', 'today-add', 'add', 'es-add'];
+function pickerBar() {
+  const bar = $('#pk-bar');
+  if (!bar) return;
+  const n = picker.sel.length;
+  bar.hidden = !n;
+  bar.querySelector('button').textContent = n === 1 ? 'Add 1 exercise' : `Add ${n} exercises`;
+}
+
 function openPicker(opts) {
-  Object.assign(picker, { uid: null, currentId: null, scope: 'today', q: '', cat: 'all', muscle: 'all', showHidden: false, showRare: false }, opts);
+  Object.assign(picker, { uid: null, currentId: null, scope: 'today', q: '', cat: 'all', muscle: 'all', showHidden: false, showRare: false, sel: [], browseAll: false, moreAll: false }, opts);
+  const warmSwap = picker.mode === 'swap' && extraPhase(picker.uid);
+  const addFirst = picker.mode === 'today-add' && !sessionFor(ui.day);
   const cur = picker.currentId ? db.exercises[picker.currentId] : null;
   openSheet(`
     <h2>${PICKER_TITLES[picker.mode]}</h2>
     ${cur ? `<p class="muted small">Swapping out <b>${esc(cur.name)}</b> · ${esc(muscleLine(cur))}</p>` : ''}
-    ${picker.mode === 'swap' ? `<div class="chips seg">
+    ${addFirst ? `<div class="chips seg">
+      <button class="chip on" data-a="pk-scope" data-v="today">This ${FULL_DAY[ui.day]} only</button>
+      <button class="chip" data-a="pk-scope" data-v="plan">Every ${FULL_DAY[ui.day]}</button>
+    </div>` : ''}
+    ${picker.mode === 'swap' && !warmSwap ? `<div class="chips seg">
       <button class="chip on" data-a="pk-scope" data-v="today">Today only</button>
       <button class="chip" data-a="pk-scope" data-v="plan">Swap in plan</button>
     </div>` : ''}
@@ -1730,14 +1793,17 @@ function openPicker(opts) {
       ${Object.entries(MUSCLES).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}
     </select>
     <button class="btn block new-ex-btn" data-a="pk-custom">${icon('plus')} New exercise</button>
-    <div id="pk-list"></div>`);
+    <div id="pk-list"></div>
+    ${MULTI.includes(picker.mode) ? '<div class="pk-bar" id="pk-bar" hidden><button class="btn primary block big" data-a="pk-add-sel">Add</button></div>' : ''}`);
   renderPickerList();
 }
 
 function pickRow(ex, why) {
-  return `<button class="pick-row" data-a="pick" data-id="${ex.id}">
+  const multi = MULTI.includes(picker.mode);
+  const on = multi && picker.sel.includes(ex.id);
+  return `<button class="pick-row${on ? ' on' : ''}" data-a="${multi ? 'pk-toggle' : 'pick'}" data-id="${ex.id}"${multi ? ` aria-pressed="${on}"` : ''}>
     <span class="grow"><b>${esc(ex.name)}${db.exPrefs[ex.id] === 'prefer' ? ' <span class="fav-mark" aria-label="Preferred">' + icon('starFill') + '</span>' : ''}</b><span class="pick-sub">${isAvailable(db, ex) ? '' : '<em class="warn-t">Hidden</em> · '}${why ? `<em>${why}</em> · ` : ''}${esc(muscleLine(ex))}</span></span>
-    <span class="cat ${ex.category}">${CATEGORIES[ex.category]}</span>
+    <span class="cat ${ex.category}">${CATEGORIES[ex.category]}</span>${multi ? `<span class="pick-check" aria-hidden="true">${icon(on ? 'check' : 'plus')}</span>` : ''}
   </button>`;
 }
 
@@ -1764,24 +1830,53 @@ function renderPickerList() {
   const curEx = db.exercises[picker.currentId];
   const phase = picker.uid ? (sessionFor(ui.day)?.entries[picker.uid]?.phase || todayItems(ui.day).find((i) => i.uid === picker.uid)?.phase) : null;
   const warmMode = !!curEx && (WARM.includes(curEx.pattern) || phase === 'warmup' || phase === 'cooldown');
+  const focused = !!curEx && !q && picker.cat === 'all' && picker.muscle === 'all' && !picker.browseAll;
   if (warmMode) {
-    const want = phase === 'cooldown' || curEx.pattern === 'mobility' ? ['mobility', 'prehab'] : ['prehab', 'mobility'];
-    const pool = Object.values(db.exercises).filter((e) => e.id !== curEx.id && WARM.includes(e.pattern) && match(e));
-    const score = (e) => similarity(curEx, e) + (e.pattern === want[0] ? 3 : 0) - prefRank(db, e.id);
-    const sugg = pool.sort((a, b) => score(b) - score(a)).slice(0, 8);
-    if (sugg.length) html += `<h3 class="sect">Warm-up and mobility</h3>${sugg.map((e) => pickRow(e, e.primary.some((m) => curEx.primary.includes(m)) ? 'Same area' : 'Warm-up')).join('')}`;
+    const drills = new Set(WARM_DRILLS());
+    const want = phase === 'cooldown' || (!phase && curEx.pattern === 'mobility') ? ['mobility', 'prehab'] : ['prehab', 'mobility'];
+    const inPool = (e) => (phase === 'warmup' ? drills.has(e.id) || WARM.includes(e.pattern) : phase === 'cooldown' ? e.pattern === 'mobility' && e.metric === 'time' : WARM.includes(e.pattern));
+    const pool = Object.values(db.exercises).filter((e) => e.id !== curEx.id && inPool(e) && match(e));
+    const score = (e) => similarity(curEx, e) + (phase === 'warmup' && drills.has(e.id) ? 3 : e.pattern === want[0] ? 2 : 0) - prefRank(db, e.id);
+    pool.sort((a, b) => score(b) - score(a));
+    const sugg = pool.slice(0, 8);
+    const word = phase === 'cooldown' ? 'stretches' : phase === 'warmup' ? 'warm-up drills' : 'warm-up and mobility';
+    if (sugg.length) html += `<h3 class="sect">Suggested</h3>${sugg.map((e) => pickRow(e, e.primary.some((m) => curEx.primary.includes(m)) ? 'Same area' : '')).join('')}`;
+    if (focused) {
+      const rest = pool.slice(8).sort((a, b) => a.name.localeCompare(b.name));
+      if (rest.length) html += `<h3 class="sect">More ${word} <span class="muted small">${rest.length}</span></h3>${rest.map((e) => pickRow(e)).join('')}`;
+      el.innerHTML = html + '<button class="btn ghost block" data-a="pk-browse">Show every exercise</button>';
+      return;
+    }
   } else if (picker.currentId) {
     const sugg = similarExercises(db.exercises, picker.currentId, 12).filter((x) => match(x.ex))
       .sort((a, b) => prefRank(db, a.ex.id) - prefRank(db, b.ex.id)).slice(0, 8);
     if (sugg.length) {
-      html += `<h3 class="sect">Most similar</h3>${sugg.map((x) => pickRow(x.ex, x.samePattern ? 'Same movement' : 'Similar muscles')).join('')}`;
+      html += `<h3 class="sect">Recommended</h3>${sugg.map((x) => pickRow(x.ex, x.samePattern ? 'Same movement' : 'Similar muscles')).join('')}`;
+    }
+    // Then more for the same muscle, compounds and accessories, and a way out to other muscles.
+    if (focused) {
+      const m = curEx.primary[0];
+      const seen = new Set(sugg.map((x) => x.ex.id));
+      const more = Object.values(db.exercises).filter((e) => e.id !== curEx.id && !seen.has(e.id) && e.primary.includes(m) && !WARM.includes(e.pattern) && match(e) && rankOf(db, e) < 4)
+        .sort((a, b) => prefRank(db, a.id) - prefRank(db, b.id) || rankOf(db, a) - rankOf(db, b) || a.name.localeCompare(b.name));
+      const cap = picker.moreAll ? 99 : 6;
+      let hidden = 0;
+      for (const [cat, l] of [['compound', 'Compound'], ['accessory', 'Accessory']]) {
+        const list = more.filter((e) => e.category === cat);
+        if (!list.length) continue;
+        hidden += Math.max(0, list.length - cap);
+        html += `<h3 class="sect">${l} · ${MUSCLES[m] || 'same muscle'} <span class="muted small">${list.length}</span></h3>${list.slice(0, cap).map((e) => pickRow(e)).join('')}`;
+      }
+      if (hidden || picker.moreAll) html += `<button class="btn ghost block" data-a="pk-more">${picker.moreAll ? 'Show fewer' : `Show ${hidden} more for ${(MUSCLES[m] || 'this muscle').toLowerCase()}`}</button>`;
+      el.innerHTML = html + '<button class="btn block" data-a="pk-browse">Swap for a different muscle group</button>';
+      return;
     }
   }
   // Browsing without a search: what you've done lately, then the lifts most people start with.
   const shown = new Set();
   if (!picker.currentId && !q && picker.cat === 'all' && picker.muscle === 'all') {
     const recent = [];
-    for (const s2 of [...db.sessions].reverse()) for (const e of s2.entries) if (!recent.includes(e.exerciseId) && db.exercises[e.exerciseId] && match(db.exercises[e.exerciseId])) recent.push(e.exerciseId);
+    for (const s2 of [...db.sessions].reverse()) for (const e of s2.entries) if (!recent.includes(e.exerciseId) && db.exercises[e.exerciseId] && !['mobility', 'prehab'].includes(db.exercises[e.exerciseId].pattern) && match(db.exercises[e.exerciseId])) recent.push(e.exerciseId);
     const r = recent.slice(0, 6);
     if (r.length) { html += `<h3 class="sect">Recent</h3>${r.map((id) => pickRow(db.exercises[id])).join('')}`; r.forEach((id) => shown.add(id)); }
     const common = COMMON_LIFTS.filter((id) => db.exercises[id] && !shown.has(id) && match(db.exercises[id])).slice(0, 12);
@@ -1806,6 +1901,7 @@ function renderPickerList() {
   }).join('');
   if (rare || picker.showRare) html += `<button class="btn ghost block" data-a="pk-rare">${picker.showRare ? 'Show fewer' : `Show ${rare} more exercises`}</button>`;
   if (hiddenCount && picker.mode !== 'browse') html += `<button class="btn ghost block" data-a="pk-hidden">${picker.showHidden ? 'Hide' : 'Show'} ${hiddenCount} hidden exercises (never / not at this gym)</button>`;
+  queueMicrotask(pickerBar);
   el.innerHTML = html || `<div class="empty small-empty"><p class="muted">No matches${q ? ` for “${esc(picker.q.trim())}”` : ''}.</p>${q ? `<button class="btn primary" data-a="pk-custom" data-name="${esc(picker.q.trim())}">Create “${esc(picker.q.trim())}”</button>` : ''}</div>`;
 }
 
@@ -1856,7 +1952,16 @@ function draftDay(day) {
   if (!weekOverride(db, day)?.items) adjustDay(db, day, { minutes: weekOverride(db, day)?.minutes || null, gymId: weekOverride(db, day)?.gymId || null });
   return db.week.days[day];
 }
+const extraPhase = (uid) => /^(warmup|cooldown)-/.exec(uid || '')?.[1];
 function draftEdit(day, uid, fn) {
+  const ph = extraPhase(uid);
+  if (ph) {
+    const cur = todayItems(day).filter((i) => i.phase === ph);
+    if (!cur.some((i) => i.uid === uid)) return false;
+    editExtraList(db, day, ph, cur, (list) => { const it = list.find((i) => i.uid === uid); fn(it, list); });
+    persist();
+    return true;
+  }
   const o = draftDay(day);
   let hit = false;
   for (const list of [o.items, o.base || []]) { const it = list.find((i) => i.uid === uid); if (it) { fn(it, list); hit = true; } }
@@ -1865,6 +1970,35 @@ function draftEdit(day, uid, fn) {
   return true;
 }
 const notStarted = () => !sessionFor(ui.day);
+
+// Ramp-up sets planned before the workout starts: kept on this week's version of the day.
+function draftWarm(uid) {
+  const shown = todayItems(ui.day).find((i) => i.uid === uid);
+  if (!shown || shown.phase) return null;
+  const o = draftDay(ui.day);
+  const it = o.items.find((i) => i.uid === uid);
+  if (!it) return null;
+  if (!it.warm) {
+    const t = targetsFor(db, shown, isDeloadFor(ui.day));
+    const gym = activeGym(db);
+    it.warm = defaultWarm(shown.ex, roundToGym(shown.ex, t.weight, gym), gym).map((w) => ({ ...w, done: false }));
+    const b = o.base?.find((i) => i.uid === uid);
+    if (b) b.warm = it.warm;
+  }
+  return it.warm;
+}
+
+// Add an exercise to this week's version of a day, before its workout starts.
+function addToDraft(day, exId, n = 0) {
+  const o = draftDay(day);
+  const ex = db.exercises[exId];
+  const compound = ex.category === 'compound';
+  const nextGroup = Math.max(0, ...o.items.map((i) => parseInt(groupNum(i.group), 10) || 0)) + 1;
+  const it = { uid: `${day}-${Date.now().toString(36)}${n}`, exerciseId: exId, group: String(nextGroup), sets: 3, repMin: compound ? 6 : 10, repMax: compound ? 10 : 15, restSec: compound ? 150 : 90, note: '', manual: true };
+  o.items.push(it);
+  if (o.base) o.base.push({ ...it });
+  persist();
+}
 
 // Add an exercise to a weekday's plan with sensible defaults for its type.
 function addToPlanDay(day, exId) {
@@ -1891,6 +2025,16 @@ function addToSession(exId) {
   persist();
 }
 
+function addPlanItemQuiet(exId) {
+  const day = ui.planDay;
+  const items = db.plan[day].items;
+  const ex = db.exercises[exId];
+  const nextGroup = Math.max(0, ...items.map((i) => parseInt(groupNum(i.group), 10) || 0)) + 1;
+  const defaults = ex.category === 'compound' ? { sets: 3, repMin: 6, repMax: 10, restSec: 150 } : { sets: 3, repMin: 10, repMax: 15, restSec: 90 };
+  items.push({ uid: `${day}-${Date.now().toString(36)}${items.length}`, exerciseId: exId, group: String(nextGroup), note: '', manual: true, ...defaults });
+  persist();
+}
+
 function addPlanItem(exId) {
   const day = ui.planDay;
   const items = db.plan[day].items;
@@ -1907,6 +2051,48 @@ function addPlanItem(exId) {
 
 
 
+
+// ---------- Your own cues for an exercise ----------
+// A few short reminders shown on the exercise screen. Suggestions: coaching cues for the big lifts,
+// the form cues for this exercise, and a few that fit anything.
+const MAX_CUES = 5;
+function openCues(id) {
+  const ex = db.exercises[id];
+  if (!ex) return;
+  const mine = db.exCues?.[id] || [];
+  const form = String(EX_INFO[id]?.cues || '').split(' · ').filter(Boolean);
+  const sugg = [...new Set([...(CUE_PRESETS[id] || []), ...form, ...GENERAL_CUES])].filter((c) => !mine.includes(c));
+  const full = mine.length >= MAX_CUES;
+  openSheet(`<h2>Cues · ${esc(ex.name)}</h2>
+    <p class="muted small">Short reminders for this exercise. Up to ${MAX_CUES}.</p>
+    <label class="toggle"><input type="checkbox" data-a="cues-show" ${db.settings.showCues === false ? '' : 'checked'}><span>Show cues above the sets<span class="pick-sub">For every exercise. When off, they're under Cues on the exercise screen.</span></span></label>
+    ${mine.length ? `<div class="list-group cue-list">${mine.map((c, i) => `<div class="list-row"><span class="grow">${esc(c)}</span><button class="mini" data-a="cue-del" data-id="${id}" data-i="${i}" aria-label="Remove ${esc(c)}">${icon('x')}</button></div>`).join('')}</div>` : ''}
+    ${full ? '' : `<div class="row cue-add"><input id="cue-new" class="search" type="text" maxlength="60" placeholder="Write your own" autocomplete="off" enterkeyhint="done"><button class="btn primary" data-a="cue-add" data-id="${id}">Add</button></div>
+    ${sugg.length ? `<h3 class="sheet-h">Suggested</h3><div class="chips wrap">${sugg.slice(0, 14).map((c) => `<button class="chip" data-a="cue-pick" data-id="${id}" data-v="${esc(c)}">${icon('plus')} ${esc(c)}</button>`).join('')}</div>` : ''}`}
+    <button class="btn plain block" data-a="close-sheet">Done</button>`);
+}
+function addCue(id, text) {
+  const t = String(text || '').trim().replace(/\s+/g, ' ').slice(0, 60);
+  if (!t) return;
+  db.exCues ||= {};
+  const l = (db.exCues[id] ||= []);
+  if (l.length >= MAX_CUES || l.includes(t)) return;
+  l.push(t);
+  persist(); openCues(id); render();
+}
+
+// The old 5K running goal (db.runGoal) becomes a 5K race plan on the same date, or is dropped if done.
+function migrateRunGoal(d) {
+  const g = d.runGoal;
+  if (!g) return;
+  delete d.runGoal;
+  const date = addDays(g.start, (g.weeks || 8) * 7 - 2);
+  if (d.event || !g.start || date < todayStr()) return;
+  const cur = g.trials?.at(-1)?.sec || g.current5k;
+  d.event = { type: 'race', sport: 'run', distance: '5k', start: g.start, date, goalSec: g.target5k || undefined, recentKey: '5k', recentSec: cur || undefined,
+    vdotNow: cur ? vdotOf(5000, cur) : undefined, vdotGoal: g.target5k ? vdotOf(5000, Math.min(cur || g.target5k, g.target5k)) : undefined,
+    sessions: g.runsPerWeek || 3, lifting: 'hybrid', created: Date.now(), migrated: true };
+}
 
 // ---------- Settings ----------
 
@@ -1976,8 +2162,11 @@ function screenSettings() {
     <h2 class="group-title">Weight units</h2>
     <div class="card"><div class="segmented small-seg" role="radiogroup" aria-label="Weight units">${[['lb', 'Pounds (lb)'], ['kg', 'Kilograms (kg)']].map(([v, l]) => `<button class="${wUnit() === v ? 'on' : ''}" data-a="set-units" data-v="${v}" role="radio" aria-checked="${wUnit() === v}">${l}</button>`).join('')}</div>
       <p class="muted small">Everything is saved the same way, so you can switch back at any time.</p></div>
-    <h2 class="group-title">Theme</h2>    <div class="card">
-      <div class="segmented small-seg" role="radiogroup" aria-label="Theme">${['dark', 'light', 'system'].map((t) => `<button class="${s.theme === t ? 'on' : ''}" data-a="theme" data-v="${t}" role="radio" aria-checked="${s.theme === t}">${{ dark: 'Rubber', light: 'Chalk', system: 'Auto' }[t]}</button>`).join('')}</div>
+    <h2 class="group-title">Style</h2>    <div class="card">
+      <div class="style-pick" role="radiogroup" aria-label="Style">${[['light', 'Chalk', 'Light, matte'], ['steel', 'Steel', 'Cool, brushed'], ['dark', 'Rubber', 'Dark, warm']].map(([t, l, sub]) => { const on = resolvedTheme() === t; return `<button class="${on ? 'on' : ''}" data-a="theme" data-v="${t}" role="radio" aria-checked="${on}"><span class="sw ${{ light: 'chalk', steel: 'steel', dark: 'rubber' }[t]}"><b></b><i></i></span><span>${l}<br><small>${sub}</small></span></button>`; }).join('')}</div>
+      <label class="toggle"><input type="checkbox" data-a="theme-auto" ${s.theme === 'system' ? 'checked' : ''}><span>Match iPhone light and dark mode<span class="pick-sub">Chalk in light mode, ${s.darkStyle === 'steel' ? 'Steel' : 'Rubber'} in dark mode</span></span></label>
+      <label class="toggle"><input type="checkbox" data-a="texture" ${s.texture === false ? '' : 'checked'}><span>Texture<span class="pick-sub">Chalk dust, diamond plate or rubber floor behind the screens</span></span></label>
+      <div class="field"><span>Motion</span><div class="segmented small-seg" role="radiogroup" aria-label="Motion">${[['full', 'Full'], ['calm', 'Calm']].map(([v, l]) => `<button class="${(s.motion || 'full') === v ? 'on' : ''}" data-a="motion" data-v="${v}" role="radio" aria-checked="${(s.motion || 'full') === v}">${l}</button>`).join('')}</div></div>
       <p class="muted small">Text follows your iPhone's text size (Settings → Display & Brightness → Text Size).</p>
     </div>` },
     account: { title: 'Account and sync', html: acctUi.page() },
@@ -2107,6 +2296,7 @@ const planTools = createPlanTools(ctx);
 const health = createHealth(ctx);
 const goals = createGoals(ctx);
 const streak = createStreak(ctx);
+const eventUi = createEvent(ctx);
 const tour = createTour(ctx);
 
 // ---------- Render ----------
@@ -2210,6 +2400,7 @@ function render() {
     const between = prevKey.startsWith('exercise:') && key.startsWith('exercise:');
     restoreY = dir === 'back' && !between && scrollMem[key] != null ? scrollMem[key] : window.scrollY;
     animateIn(main, dir);
+    if (ui.tab === 'progress') fillRings();
   }
   navFrom = null;
   if (Math.abs(window.scrollY - restoreY) > 1 && document.body.style.position !== 'fixed') window.scrollTo(0, restoreY);
@@ -2238,7 +2429,7 @@ function render() {
 const actions = {
   tab: (d) => { ui.chartEx = null; ui.chartFrom = null; ui.infoFrom = null; if (d.tab === 'today') ui.peek = false; if (!$('#sheet').hidden) closeSheet(); ui.summaryFresh = false; ui.selecting = false; ui.tab = d.tab === 'progress' ? 'history' : d.tab; if (d.tab === 'progress') { ui.progSub = null; ui.historyEx = null; } if (d.tab === 'plan') ui.planView = 'week'; if (d.tab === 'today') ui.summaryId = null; if (d.tab === 'history') ui.historyEx = null; if (d.tab === 'people') { if (ui.people) { ui.people.client = null; ui.people.edit = null; ui.people.profile = null; } people.refresh(); } window.scrollTo(0, 0); render(); },
   day: (d) => { ui.day = d.day; ui.tab = 'today'; ui.showCardio = false; ui.selecting = false; render(); },
-  'open-set': (d) => openSetSheet(d.uid, +d.i),
+  'open-set': (d) => { if (notStarted()) return toast('Start the workout to change this.', { label: 'Start', a: 'start-workout' }); openSetSheet(d.uid, +d.i); },
   'leave-workout-view': () => { closeSheet(); ui.peek = true; render(); toast('Your workout keeps running. Tap "Back to workout" to return.'); },
   'back-to-workout': () => { ui.peek = false; ui.day = db.activeSession.day; ui.tab = 'today'; window.scrollTo(0, 0); render(); },
   // Goals per muscle group or per exercise
@@ -2257,7 +2448,7 @@ const actions = {
     persist(); closeSheet(); render();
     toast(d.v ? `Set to ${MGOALS[d.v].name.toLowerCase()}: ${it.repMin}–${it.repMax} reps.` : 'Follows the muscle\'s goal again.');
   },
-  'warm-check': (d) => { const w = warmFor(d.uid); if (!w?.[+d.i]) return; w[+d.i].done = !w[+d.i].done; (ui.warmOpen ||= {})[d.uid] = true; persist(); haptic(); render(); },
+  'warm-check': (d) => { if (notStarted() && !ensureSession(ui.day)) return; const w = warmFor(d.uid); if (!w?.[+d.i]) return; w[+d.i].done = !w[+d.i].done; (ui.warmOpen ||= {})[d.uid] = true; persist(); haptic(); render(); },
   'warm-add': (d) => { const w = warmFor(d.uid); if (!w) return; const last = w[w.length - 1] || { weight: 45, reps: 5 }; w.push({ weight: last.weight, reps: last.reps, done: false }); (ui.warmOpen ||= {})[d.uid] = true; persist(); render(); },
   'warm-del': (d) => { const w = warmFor(d.uid); if (!w) return; w.splice(+d.i, 1); persist(); render(); },
   pause: () => {
@@ -2341,6 +2532,10 @@ const actions = {
     toast(d.v === 'low' ? 'Same exercises every week.' : `${n} exercise${n === 1 ? '' : 's'} will rotate. Focus lifts stay the same.`);
   },
   check: (d) => {
+    // Typing in a set's field hides the timer and Next for the keyboard; logging the set ends typing
+    // (on iPhone, tapping a button doesn't take focus from the field by itself).
+    if (document.activeElement?.matches?.('input, textarea')) document.activeElement.blur();
+    document.body.classList.remove('typing');
     const session = sessionFor(ui.day) || ensureSession(ui.day);
     if (!session) return;
     const s = session.entries[d.uid].sets[+d.i];
@@ -2412,6 +2607,7 @@ const actions = {
     persist(); render();
   },
   dropset: (d, el) => {
+    if (notStarted()) { if (el) el.checked = !el.checked; return toast('Start the workout to change this.', { label: 'Start', a: 'start-workout' }); }
     const session = ensureSession(ui.day);
     if (!session) { el.checked = !el.checked; return; }
     const e = session.entries[d.uid];
@@ -2714,6 +2910,7 @@ const actions = {
     persist(); render(); toast('Undone.');
   },
   'warm-make': (d) => {
+    if (notStarted()) { if (draftWarm(d.uid)) { (ui.warmOpen ||= {})[d.uid] = true; persist(); render(); } return; }
     const sx = ensureSession(ui.day);
     if (!sx?.entries[d.uid]) return;
     delete sx.entries[d.uid].warm;
@@ -2724,7 +2921,7 @@ const actions = {
   'resume-finished': async () => {
     if (!canReopen()) return toast('Only a workout finished today can be reopened.');
     const { id, finishedAt, reopen } = db.lastFinish;
-    for (const k of ['state', 'plan', 'week', 'runGoal', 'recoveryAdjust']) { if (reopen[k] === undefined) delete db[k]; else db[k] = reopen[k]; }
+    for (const k of ['state', 'plan', 'week', 'event', 'recoveryAdjust']) { if (reopen[k] === undefined) delete db[k]; else db[k] = reopen[k]; }
     db.sessions = db.sessions.filter((x) => x.id !== id);
     db.cardio = (db.cardio || []).filter((c) => c.id !== `c${finishedAt}`);
     const a = reopen.active;
@@ -2846,6 +3043,7 @@ const actions = {
     toast(it.lock ? 'Locked. It stays every week.' : 'Unlocked.');
   },
   'add-drop': (d) => {
+    if (notStarted()) return toast('Start the workout to change this.', { label: 'Start', a: 'start-workout' });
     const sx = ensureSession(ui.day);
     const e = sx?.entries[d.uid];
     if (!e) return;
@@ -2871,6 +3069,11 @@ const actions = {
   'ex-note-save': (d) => { const sx = ensureSession(ui.day); if (!sx) return; sx.entries[d.uid].note = $('#ex-note').value.trim(); persist(); closeSheet(); render(); toast('Note saved.'); },
   'ex-move': (d) => {
     // Move past a whole neighbouring group so supersets stay together.
+    if (notStarted() && extraPhase(d.uid)) {
+      pushUndo();
+      draftEdit(ui.day, d.uid, (it, list) => { const i = list.indexOf(it); const j = i + (+d.v > 0 ? 1 : -1); if (j >= 0 && j < list.length) [list[i], list[j]] = [list[j], list[i]]; });
+      closeSheet(); render(); return;
+    }
     if (notStarted()) {
       const o = draftDay(ui.day);
       if (!o.items.some((i) => i.uid === d.uid)) return toast('That part of the workout can be moved once it starts.');
@@ -2903,8 +3106,12 @@ const actions = {
   },
   'ex-remove': async (d) => {
     if (!sessionFor(ui.day)) {
-      if (d.uid.startsWith('warmup-') || d.uid.startsWith('cooldown-')) return toast('Turn the warm-up or cool-down off with its button above the list.');
       pushUndo();
+      if (extraPhase(d.uid)) {
+        if (!draftEdit(ui.day, d.uid, (it, list) => list.splice(list.indexOf(it), 1))) return;
+        closeSheet(); render();
+        return toast(`Removed from this ${extraPhase(d.uid) === 'warmup' ? 'warm-up' : 'cool-down'}.`, { label: 'Undo', a: 'list-undo' });
+      }
       adjustDay(db, ui.day, { minutes: weekOverride(db, ui.day)?.minutes || null, gymId: weekOverride(db, ui.day)?.gymId || null });
       const o = db.week.days[ui.day];
       o.items = o.items.filter((i) => i.uid !== d.uid);
@@ -3313,9 +3520,46 @@ const actions = {
   swap: (d) => {
     const s = sessionFor(ui.day);
     if (!s && db.activeSession) return toast(`Finish or discard the ${DAY_NAMES[db.activeSession.day]} workout first.`);
-    const cur = s?.entries[d.uid]?.exerciseId || resolveDay(db, ui.day).find((i) => i.uid === d.uid)?.exerciseId;
+    const cur = s?.entries[d.uid]?.exerciseId || todayItems(ui.day).find((i) => i.uid === d.uid)?.exerciseId;
     openPicker({ mode: 'swap', uid: d.uid, currentId: cur });
   },
+  'pk-toggle': (d, el) => {
+    const i = picker.sel.indexOf(d.id);
+    if (i < 0) picker.sel.push(d.id); else picker.sel.splice(i, 1);
+    el.classList.toggle('on', i < 0); el.setAttribute('aria-pressed', i < 0);
+    const c = el.querySelector('.pick-check'); if (c) c.innerHTML = icon(i < 0 ? 'check' : 'plus');
+    pickerBar(); haptic();
+  },
+  'pk-add-sel': () => {
+    const ids = [...picker.sel];
+    if (!ids.length) return;
+    const day = ui.day;
+    const started = !!sessionFor(day);
+    if (picker.mode === 'add') { for (const id of ids) addPlanItemQuiet(id); closeSheet(); render(); }
+    else if (picker.mode === 'es-add') {
+      const sx = db.sessions.find((x) => x.id === ui.editId);
+      for (const id of ids) {
+        const st = getState(db, id);
+        const w = st.last?.weight ?? st.targetWeight ?? 0;
+        sx.entries.push({ uid: `${sx.id}-${Date.now().toString(36)}${sx.entries.length}`, exerciseId: id, name: db.exercises[id].name, group: String(sx.entries.length + 1), repMin: 8, repMax: 12, sets: [1, 2, 3].map(() => ({ weight: w, reps: st.last?.reps?.[0] || 10 })) });
+      }
+      closeSheet(); render();
+    } else if (picker.mode === 'session-add' || started) { ids.forEach((id) => addToSession(id)); closeSheet(); render(); }
+    else {
+      ids.forEach((id, n) => { if (picker.scope === 'plan') addToPlanDay(day, id); if (picker.scope !== 'plan' || weekOverride(db, day)?.items) addToDraft(day, id, n); });
+      closeSheet(); render();
+    }
+    const what = ids.length === 1 ? db.exercises[ids[0]].name : `${ids.length} exercises`;
+    const where = picker.mode === 'today-add' && !started ? (picker.scope === 'plan' ? ` to every ${FULL_DAY[day]}` : ` to this ${FULL_DAY[day]}`) : '';
+    toast(`Added ${what}${where}.`);
+  },
+  'pk-more': () => { picker.moreAll = !picker.moreAll; renderPickerList(); },
+  'pk-browse': () => { picker.browseAll = true; renderPickerList(); $('#pk-list')?.scrollIntoView({ block: 'start' }); },
+  'cues-open': (d) => openCues(d.id),
+  'cues-show': (d, el) => { db.settings.showCues = el.checked; persist(); render(); },
+  'cue-add': (d) => addCue(d.id, $('#cue-new')?.value),
+  'cue-pick': (d) => addCue(d.id, d.v),
+  'cue-del': (d) => { const l = db.exCues?.[d.id]; if (!l) return; l.splice(+d.i, 1); if (!l.length) delete db.exCues[d.id]; persist(); openCues(d.id); render(); },
   'pk-scope': (d, el) => {
     picker.scope = d.v;
     el.parentElement.querySelectorAll('.chip').forEach((c) => c.classList.toggle('on', c === el));
@@ -3326,13 +3570,14 @@ const actions = {
     renderPickerList();
   },
   // New exercise from the picker: after saving, it's picked as if chosen from the list.
-  'pk-custom': (d) => exEditor.open({ name: d.name || picker.q.trim(), then: (id) => { renderPickerList(); actions.pick({ id }); } }),
+  'pk-custom': (d) => exEditor.open({ name: d.name || picker.q.trim(), then: (id) => { if (MULTI.includes(picker.mode)) { picker.sel = [...new Set([...(picker.sel || []), id])]; return actions['pk-add-sel'](); } renderPickerList(); actions.pick({ id }); } }),
   'ex-edit': (d) => exEditor.open({ id: d.id }),
   'ex-new': () => exEditor.open({}),
   'pk-rare': () => { picker.showRare = !picker.showRare; renderPickerList(); },
   'pk-hidden': () => { picker.showHidden = !picker.showHidden; renderPickerList(); },
   pick: async (d) => {
     const ex = db.exercises[d.id];
+    if (MULTI.includes(picker.mode)) { picker.sel = [d.id]; return actions['pk-add-sel'](); }
     if (picker.mode === 'es-add') {
       const sx = db.sessions.find((x) => x.id === ui.editId);
       const st = getState(db, d.id);
@@ -3354,7 +3599,8 @@ const actions = {
     const entry = sessionFor(ui.day)?.entries[picker.uid];
     if (picker.scope === 'plan') swapInPlan(ui.day, picker.uid, d.id);
     if (picker.scope === 'today' && notStarted()) {
-      if (!draftEdit(ui.day, picker.uid, (it) => { it.exerciseId = d.id; delete it.role; delete it.variants; it.manual = true; })) return;
+      const drill = (it) => { it.exerciseId = d.id; const m = ex.metric === 'time' ? 'time' : 'reps'; if (m !== it.metric) { it.metric = m; it.target = m === 'time' ? 30 : 10; it.repMin = it.repMax = m === 'reps' ? it.target : 1; } };
+      if (!draftEdit(ui.day, picker.uid, extraPhase(picker.uid) ? drill : (it) => { it.exerciseId = d.id; delete it.role; delete it.variants; it.manual = true; })) return;
       closeSheet(); render(); return toast(`Swapped to ${ex.name} for this ${FULL_DAY[ui.day]}.`);
     }
     if (picker.scope === 'today' || sessionFor(ui.day)) swapInSession(picker.uid, d.id);
@@ -3366,7 +3612,15 @@ const actions = {
   'pe-rot': (d, el) => el.parentElement.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b === el)),
   'pe-var': (d, el) => { el.classList.toggle('on'); el.setAttribute('aria-pressed', el.classList.contains('on')); },
   mus: (d, el) => { el.classList.toggle('on'); el.setAttribute('aria-pressed', el.classList.contains('on')); },
-  theme: (d) => { db.settings.theme = d.v; persist(); applyTheme(); render(); },
+  theme: (d) => {
+    // Picking a style shows it now (Auto off). A dark style picked is also the one Auto uses at night.
+    if (d.v !== 'light') db.settings.darkStyle = d.v;
+    db.settings.theme = d.v;
+    persist(); applyTheme(); render();
+  },
+  'theme-auto': (d, el) => { if (el.checked) { const cur = resolvedTheme(); if (cur !== 'light') db.settings.darkStyle = cur; db.settings.theme = 'system'; } else db.settings.theme = resolvedTheme(); persist(); applyTheme(); render(); },
+  texture: (d, el) => { db.settings.texture = el.checked; persist(); applyTheme(); },
+  motion: (d) => { db.settings.motion = d.v; persist(); applyTheme(); render(); },
   sound: (d, el) => { db.settings.sound = el.checked; persist(); },
   'deload-every': (d) => { db.settings.deloadEvery = +d.v; persist(); render(); },
   'set-week': () => {
@@ -3391,7 +3645,7 @@ const actions = {
   },
 };
 
-Object.assign(actions, food.actions, year.actions, extras.actions, cloud.actions, acctUi.actions, people.actions, goals.actions, streak.actions, pain.actions, train.actions, focusUi.actions, exEditor.actions, planTools.actions, health.actions);
+Object.assign(actions, eventUi.actions, food.actions, year.actions, extras.actions, cloud.actions, acctUi.actions, people.actions, goals.actions, streak.actions, pain.actions, train.actions, focusUi.actions, exEditor.actions, planTools.actions, health.actions);
 
 onReorder('session', (uid, to, opt = {}) => {
   const shown = todayItems(ui.day);
@@ -3482,6 +3736,7 @@ document.addEventListener('change', (e) => {
     const v = k === 'reps' ? parseInt(el.value, 10) : k === 'weight' ? fromDisp(parseFloat(el.value)) : parseFloat(el.value);
     if (!entry || !Number.isFinite(v)) return;
     entry.sets[+i][k] = v;
+    ui.dialStale = true;
     if (k === 'weight' && !entry.fixedLadder && entry.scheme !== 'wave') {
       for (let j = +i + 1; j < entry.sets.length; j++) {
         if (entry.sets[j].done || entry.sets[j].type === 'd') continue;
@@ -3500,6 +3755,7 @@ document.addEventListener('change', (e) => {
   if (a === 'pk-muscle') { picker.muscle = el.value; renderPickerList(); return; }
   if (a === 'b-mgoal') { const mg = (ui.b.draft.muscleGoals ||= {}); if (el.value) mg[el.dataset.g] = el.value; else delete mg[el.dataset.g]; return; }
   if (a === 'b-main') { (ui.b.draft.mainLift ||= {})[el.dataset.k] = el.value; render(); return; }
+  if (a === 'b-second') { const m = (ui.b.draft.secondLift ||= {}); if (el.value) m[el.dataset.k] = el.value; else delete m[el.dataset.k]; render(); return; }
   if (a === 'pe-ex') { $('#pe-new').hidden = el.value !== '__new'; fillMeta(el.value); return; }
   if (a === 'plan-name') { db.plan[ui.planDay].name = el.value.trim() || db.plan[ui.planDay].name; persist(); return; }
   if (a === 'def-inc') { const v = fromDisp(parseFloat(el.value)); if (v > 0) { db.settings.defaultIncrements[el.dataset.k] = v; persist(); } return; }
@@ -3507,6 +3763,7 @@ document.addEventListener('change', (e) => {
 });
 
 document.addEventListener('input', (e) => {
+  if (eventUi.onInput(e)) return;
   if (people.onInput(e)) return;
   // Search boxes on lists: hide rows that don't match, and headings left with nothing under them.
   if (e.target.matches?.('.list-filter')) {
@@ -3541,6 +3798,7 @@ $('#sheet').addEventListener('click', (e) => { if (e.target.id === 'sheet') clos
 $('#rest-minus').addEventListener('click', () => adjustRest(-15));
 $('#rest-plus').addEventListener('click', () => adjustRest(15));
 $('#rest-skip').addEventListener('click', stopRest);
+$('#rest-pause').addEventListener('click', toggleRestPause);
 document.addEventListener('pointerdown', unlockAudio, { once: true });
 // Exercise photos that fail to load (offline, first time) fall back to a muscle icon.
 document.addEventListener('error', (e) => {
@@ -3551,7 +3809,11 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) rend
 matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', applyTheme);
 // Typing on a phone: the keyboard would lift the pinned rest timer over the fields, so it steps aside.
 document.addEventListener('focusin', (e) => { if (e.target.matches?.('input, textarea')) document.body.classList.add('typing'); });
-document.addEventListener('focusout', () => setTimeout(() => { if (!document.activeElement?.matches?.('input, textarea')) document.body.classList.remove('typing'); }, 50));
+document.addEventListener('focusout', () => setTimeout(() => {
+  if (document.activeElement?.matches?.('input, textarea')) return;
+  document.body.classList.remove('typing');
+  if (ui.dialStale) { ui.dialStale = false; if (ui.tab === 'exercise' && $('#sheet').hidden) render(); }
+}, 50));
 
 // Ask iOS to keep our storage (helps avoid eviction where supported).
 document.addEventListener('visibilitychange', () => { if (!document.hidden) keepAwake(); });
@@ -3587,7 +3849,7 @@ actions.reload = () => location.reload();
 actions['recovery-download'] = () => recoveryRaw && download(`lift-recovery-${todayStr()}.json`, recoveryRaw, 'application/json');
 
 (async () => {
-  try { db = await loadDb(); setWeekStart(db.settings.weekStart || 'mon'); setUnit(db.settings.units); setTimeout(prefetchImages, 0); } catch (e) {
+  try { db = await loadDb(); seedFromHistory(db); migrateRunGoal(db); setWeekStart(db.settings.weekStart || 'mon'); setUnit(db.settings.units); setTimeout(prefetchImages, 0); } catch (e) {
     if (!(e instanceof LoadError)) throw e;
     recoveryScreen(e);
     return;

@@ -1,7 +1,7 @@
 // Minimal SVG line chart: one y-axis, up to 2 series, crosshair + tooltip on touch/hover.
 // points: [{ x: 'YYYY-MM-DD', values: [v1, v2] }]; series: [{ name, cls }]
 
-import { trendLine, dayNum } from './lift-metrics.js';
+import { stepTrend, dayNum } from './lift-metrics.js';
 
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
@@ -94,7 +94,7 @@ export function lineChart(el, { points, series, unit = 'lb', height = 200 }) {
 
 // Workouts as points, with the average trend as the line. The x-axis is real time, so gaps show.
 // points: [{ x: 'YYYY-MM-DD', v, ... }]. compact: no scrubbing. onPick(point): the selected point.
-export function trendChart(el, { points, name = '', fmt = (v) => String(Math.round(v)), height = 200, compact = false, onPick = null }) {
+export function trendChart(el, { points, name = '', fmt = (v) => String(Math.round(v)), height = 200, compact = false, onPick = null, trend = 'median' }) {
   const pts = points.filter((p) => Number.isFinite(p.v) && p.v > 0).map((p) => ({ ...p, t: dayNum(p.x) }));
   if (!pts.length) { el.innerHTML = '<p class="muted small">No data in this range.</p>'; return; }
   const W = 360; const H = height;
@@ -107,15 +107,23 @@ export function trendChart(el, { points, name = '', fmt = (v) => String(Math.rou
   const grid = ticks.map((t) => `<line class="grid" x1="${pad.l}" x2="${W - pad.r}" y1="${Y(t)}" y2="${Y(t)}"/><text class="axis" x="${pad.l - 6}" y="${Y(t) + 4}" text-anchor="end">${esc(fmt(t))}</text>`).join('');
   const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const dateLabel = (t) => { const [yy, m, d] = new Date(t * 864e5).toISOString().slice(0, 10).split('-'); return span > 300 ? `${MON[m - 1]} '${yy.slice(2)}` : `${MON[m - 1]} ${Number(d)}`; };
-  const marks = span ? [t0, t0 + span / 2, t1] : [t0]; // evenly spaced in time
-  const xLabels = marks.map((t, i) => `<text class="axis" x="${X(t)}" y="${H - 6}" text-anchor="${marks.length > 1 && i === 0 ? 'start' : marks.length > 1 && i === 2 ? 'end' : 'middle'}">${dateLabel(t)}</text>`).join('');
-  let d = ''; let pen = false;
-  for (const p of trendLine(pts)) { if (p.v == null) { pen = false; continue; } d += `${pen ? 'L' : 'M'}${X(p.t).toFixed(1)},${Y(p.v).toFixed(1)}`; pen = true; }
+  const ticksX = span ? [t0, t0 + span / 2, t1] : [t0]; // evenly spaced in time
+  const xLabels = ticksX.map((t, i) => `<text class="axis" x="${X(t)}" y="${H - 6}" text-anchor="${ticksX.length > 1 && i === 0 ? 'start' : ticksX.length > 1 && i === 2 ? 'end' : 'middle'}">${dateLabel(t)}</text>`).join('');
+  // Straight steps between periods; a period with no training in between is bridged with a dashed line.
+  const steps = stepTrend(pts, trend);
+  let d = ''; let gaps = '';
+  steps.forEach((p, i) => {
+    const at = `${X(p.t).toFixed(1)},${Y(p.v).toFixed(1)}`;
+    if (!i) { d += `M${at}`; return; }
+    const prev = steps[i - 1];
+    if (p.gap) { gaps += `M${X(prev.t).toFixed(1)},${Y(prev.v).toFixed(1)}L${at}`; d += `M${at}`; } else d += `L${at}`;
+  });
+  const marks = steps.map((p) => `<circle class="trend-pt" cx="${X(p.t).toFixed(1)}" cy="${Y(p.v).toFixed(1)}" r="2.6"/>`).join('');
   const r = pts.length > 150 ? 1.7 : pts.length > 60 ? 2.3 : 3.2;
   const dots = pts.map((p) => `<circle class="pt" cx="${X(p.t).toFixed(1)}" cy="${Y(p.v).toFixed(1)}" r="${r}"/>`).join('');
-  el.innerHTML = `${compact ? '' : '<div class="legend trend-legend"><span><i class="lg-pt"></i>Workouts</span><span><i class="lg-line"></i>Average trend</span></div>'}
-    <div class="chart-wrap"><svg viewBox="0 0 ${W} ${H}" class="chart trend-chart" role="img" aria-label="${esc(name)}: ${pts.length} workouts with an average trend line">
-      ${grid}${xLabels}${dots}${d ? `<path class="trend" d="${d}"/>` : ''}
+  el.innerHTML = `${compact ? '' : `<div class="legend trend-legend"><span><i class="lg-pt"></i>Workouts</span><span><i class="lg-line"></i>${trend === 'best' ? 'Trend · best efforts' : 'Trend'}</span></div>`}
+    <div class="chart-wrap"><svg viewBox="0 0 ${W} ${H}" class="chart trend-chart" role="img" aria-label="${esc(name)}: ${pts.length} workouts with a trend line">
+      ${grid}${xLabels}${dots}${gaps ? `<path class="trend gap" d="${gaps}"/>` : ''}${d ? `<path class="trend" d="${d}"/>${marks}` : ''}
       ${compact ? '' : `<line class="crosshair" y1="${pad.t}" y2="${H - pad.b}" x1="0" x2="0" style="display:none"/><circle class="pt-on" r="5.5" style="display:none"/><rect class="hit" x="${pad.l}" y="0" width="${W - pad.l - pad.r}" height="${H}" fill="transparent"/>`}
     </svg></div>`;
   if (compact) return;

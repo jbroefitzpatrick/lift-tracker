@@ -39,7 +39,7 @@ export function createPlanScreens(A) {
 
   // Plan opens on the week as seven rows; a day, the program and goals are one tap deeper.
   function screenPlan() {
-    if (A.ui.planView === 'year') return subHeader('Goals and year', 'plan-back') + A.train.runCard() + A.year.view();
+    if (A.ui.planView === 'year') return subHeader('Goals and year', 'plan-back') + A.eventUi.card() + A.year.view();
     if (A.ui.planView === 'program') return planProgram();
     if (A.ui.planView !== 'day') return planWeek();
     return planDay();
@@ -91,11 +91,12 @@ export function createPlanScreens(A) {
       ${!ahead && adjusted ? '<p class="muted small week-note">Adjusted for this week only.</p>' : ''}
       ${Object.keys(A.db.plan || {}).length ? '' : '<div class="notice-card"><b>No plan yet</b><p class="small">Answer three questions and ProFitz (working title) builds your week, or tap a day below to set it up yourself.</p><div class="row"><button class="btn primary" data-a="quick-build">Build my plan</button></div></div>'}
       ${ahead ? futureWeek(ahead) : `<div class="list-group">${rows}</div>`}
+      ${ahead ? '' : A.eventUi.card()}
       <h2 class="group-title">Program</h2>
       <div class="list-group">
         <button class="list-row" data-a="plan-view" data-v="program"><span class="grow"><b>Block ${b.index} · week ${b.weekInBlock} of ${b.n}</b><span class="pick-sub">Focus lifts, deloads, progression</span></span>${icon('right', 'chev')}</button>
         <button class="list-row" data-a="rv-open"><span class="grow"><b>Last week</b><span class="pick-sub">${rv.sessions ? (nSug ? (nSug > 3 ? `Top 3 of ${nSug} suggestions` : `${nSug} suggestion${nSug === 1 ? '' : 's'}`) : 'Nothing to change') : 'No workouts logged'}</span></span>${icon('right', 'chev')}</button>
-        <button class="list-row" data-a="plan-view" data-v="year"><span class="grow"><b>Goals and year</b><span class="pick-sub">Running goal, training phases</span></span>${icon('right', 'chev')}</button>
+        <button class="list-row" data-a="plan-view" data-v="year"><span class="grow"><b>Goals and year</b><span class="pick-sub">Race or meet plan, training phases</span></span>${icon('right', 'chev')}</button>
         <button class="list-row" data-a="plan-change"><span class="grow"><b>Change plan</b><span class="pick-sub">Rebuild from goals or start a known program</span></span>${icon('right', 'chev')}</button>
       </div>`;
   }

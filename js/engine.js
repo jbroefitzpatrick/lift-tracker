@@ -6,6 +6,7 @@ import { activeGym, isAvailable } from './gym.js';
 import { similarExercises } from './bank.js';
 import { wt } from './units.js';
 import { maxOverride } from './maxes.js';
+import { meetOverride, eventLiftAdjust, eventActive } from './event-plan.js';
 
 export const DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 export const DAY_NAMES = { mon: 'Mon', tue: 'Tue', wed: 'Wed', thu: 'Thu', fri: 'Fri', sat: 'Sat', sun: 'Sun' };
@@ -40,7 +41,7 @@ export function weekInfo(db, date = todayStr()) {
   const days = daysBetween(db.settings.programStart, date);
   const week = Math.max(1, Math.floor(days / 7) + 1);
   const cyclePos = ((week - 1) % n) + 1;
-  return { week, cyclePos, cycleLen: n, isDeload: cyclePos === n && !db.settings.deloadOff };
+  return { week, cyclePos, cycleLen: n, isDeload: cyclePos === n && !db.settings.deloadOff && !eventActive(db) }; // an event plan has its own easier weeks
 }
 
 // True during the week right after a deload, until the user answers the prompt.
@@ -130,12 +131,11 @@ export function resolveDay(db, day, opts = {}) {
       item.sets -= 1;
       item.note = item.note || 'One set lighter this week to help recovery';
     }
-    // Running goal with lifting at maintenance: accessories drop to 2–3 sets (bickel2011).
-    if (db.runGoal?.liftMaintenance && item.ex.category === 'accessory' && item.sets > 2) item.sets -= 1;
     out.push(item);
   }
   for (const r of runs) { const ex = db.exercises[r.exerciseId]; if (ex) out.push({ ...r, ex }); }
-  return out;
+  // Close to a race or meet, lifting eases off (and the meet week keeps only what it needs).
+  return opts.template ? out : eventLiftAdjust(db, day, out);
 }
 
 // ---------- Targets ----------
@@ -283,7 +283,8 @@ export function targetsFor(db, item, isDeload) {
   const scheme = schemeFor(db, item.exerciseId);
   const base = { scheme, total: null, stalled: false, painWarning: painWarning(st), st };
   // A max test or a peaking week replaces the usual progression.
-  const mo = maxOverride(db, item, isDeload);
+  // A meet plan sets its lifts' weights week by week.
+  const mo = maxOverride(db, item, isDeload) || meetOverride(db, item);
   if (mo) return { ...base, ...mo };
   if (CYCLES[scheme]) {
     const w = cycleFor(db, scheme, st);
@@ -321,10 +322,16 @@ export function targetsFor(db, item, isDeload) {
   const dose = isDeload ? deloadDose(db, item) : { sets: item.sets, load: 1 };
   const sets = dose.sets;
   const repMax = scheme === 'linear' ? item.repMin : item.repMax;
-  const reps = Math.min(Math.max(st.targetReps ?? item.repMin, item.repMin), repMax);
+  let reps = Math.min(Math.max(st.targetReps ?? item.repMin, item.repMin), repMax);
+  // A deload never goes up: it starts from what you lifted last time, not the raised target.
+  let from = st.targetWeight;
+  if (isDeload && from != null && st.last?.weight != null) {
+    from = Math.min(from, st.last.weight);
+    if (st.last.reps?.length) reps = Math.min(reps, Math.max(item.repMin, Math.min(...st.last.reps)));
+  }
   return {
     ...base,
-    weight: st.targetWeight == null ? st.targetWeight : st.targetWeight * dose.load, // null = TBD
+    weight: from == null ? from : from * dose.load, // null = TBD
     reps,
     sets,
     total: isDeload ? null : st.targetTotal,
@@ -334,6 +341,29 @@ export function targetsFor(db, item, isDeload) {
 }
 
 const lastOf = (session, done) => ({ date: session.date, weight: Math.max(...done.map((s) => s.weight)), weights: done.map((s) => s.weight), reps: done.map((s) => s.reps), totalReps: done.reduce((a, s) => a + s.reps, 0) });
+
+// Exercises with logged history but no target yet (imported workouts, say) start from their most
+// recent workout: its top working set becomes the target, and its sets fill "Previous". Targets the
+// app already set are never changed.
+export function seedFromHistory(db) {
+  const latest = {};
+  for (const s of db.sessions || []) for (const e of s.entries || []) {
+    const done = (e.sets || []).filter((x) => x.done !== false && !x.pain && x.type !== 'w' && x.reps > 0);
+    if (done.length && (!latest[e.exerciseId] || s.date >= latest[e.exerciseId].s.date)) latest[e.exerciseId] = { s, done };
+  }
+  let n = 0;
+  db.state ||= {};
+  for (const [id, { s, done }] of Object.entries(latest)) {
+    const ex = db.exercises[id];
+    const st = db.state[id];
+    if (!ex || (st && (st.last || st.targetWeight != null))) continue;
+    const sets = done.map((x) => ({ ...x, weight: Number(x.weight) || 0 }));
+    const top = sets.reduce((a, x) => (x.weight > a.weight ? x : a));
+    db.state[id] = { ...(st || {}), last: lastOf(s, sets), ...(ex.noLoad || ex.category === 'conditioning' ? {} : { targetWeight: top.weight, targetReps: top.reps }) };
+    n++;
+  }
+  return n;
+}
 
 // Percentage cycles: judge the session, move the training max at the end of each cycle.
 function evaluateCycle(db, scheme, entry, session, ex, st) {

@@ -143,6 +143,7 @@ export function prescription(p) {
   const preferLowImpact = bc.cls === 'higher' || (p.limits || []).includes('knee') || age >= 60;
   let superset = blend('superset');
   if ((+p.sessionMin || 60) <= 45) superset += 0.4;
+  if ((+p.liftDays || 3) <= 2) superset += 0.4;
   const weightGoal = p.weightGoal || suggestedWeightGoal(p);
   const rate = weightGoal === 'gain' ? (exp === 'advanced' ? [0.25, 0.35] : [0.25, 0.5]) : weightGoal === 'lose' ? [0.5, 1] : [-0.25, 0.25];
 
@@ -150,7 +151,7 @@ export function prescription(p) {
     weights: w, main, comp, iso, mainSets, sets, isoSets,
     restMain: r15(blend('restMain')), rest: r15(blend('rest')), restIso: r15(blend('restIso')),
     rir: `${rirLo}–${rirLo + 2}`, rirLo, weekly, deloadEvery, cardioMin, easyShare: 0.8,
-    pairIso: superset >= 0.4, includePhysique: w.physique >= 0.15 || g.physique >= 3,
+    pairIso: superset >= 0.4, includePhysique: w.physique >= 0.15 || g.physique >= 3, armsOptional: w.endurance >= 0.35 && w.endurance >= Math.max(...Object.values(w)),
     preferLowImpact, bodyClass: bc, weightGoal, rate, why,
   };
 
@@ -162,6 +163,10 @@ export function prescription(p) {
     { k: 'Rest', t: `About ${fmtSec(rx.restMain)} on focus lifts, ${fmtSec(rx.rest)} on other compounds, ${fmtSec(rx.restIso)} on isolation${rx.pairIso ? ' (paired into supersets to save time)' : ''}. Longer rests on big lifts keep performance — and results — higher.`, refs: ['schoenfeld2016rest', 'grgic2018rest', 'nsca2016'] },
     { k: 'Effort', t: `End most sets with ${rx.rir} reps in reserve. Going all the way to failure adds little and costs more recovery.`, refs: ['refalo2023'] },
   );
+  const focus = goalFocus(rx);
+  if ((+p.liftDays || 3) <= 2) why.push({ k: 'Two days', t: 'Two full-body days cover every major muscle with the big lifts, and accessories are paired to fit more in. Arms, calves and delts will sit below the weekly target; a third day closes most of that gap.', refs: ['schoenfeld2016freq', 'pelland2026'] });
+  if (focus.strength) why.push({ k: 'Strength', t: 'Bench, squat and overhead press each come up twice a week: heavy on one day, a lighter variation on the other. Strength is specific to the lift, and practising it more often builds it faster.', refs: ['grgic2018freq', 'nsca2016'] });
+  if (focus.endurance) why.push({ k: 'For endurance', t: 'Lifting stays heavy and low in volume, centred on the legs, with a few jumps at the start of leg days. Heavy and explosive strength work improves running and cycling economy; extra arm work doesn\'t help and adds fatigue.', refs: ['ronnestad2014'] });
   const cardioRefs = ['who2020', 'seiler2010', 'schumann2022'];
   let cardioText = `${cardioMin} min of cardio a week, about 80% easy (conversational) and 20% hard.`;
   if (g.fatLoss >= 3) { cardioText += ' For fat loss, more than 250 min/week gives the clearest results.'; cardioRefs.push('donnelly2009', 'willis2012'); }
@@ -276,6 +281,12 @@ const SLOTS = {
   tri: { patterns: ['elbow-extension'], prefer: ['cable-pushdown', 'skullcrusher', 'overhead-cable-ext', 'db-overhead-ext'] },
   tri2: { patterns: ['elbow-extension'], prefer: ['overhead-cable-ext', 'db-overhead-ext', 'skullcrusher', 'cable-tri-ext', 'db-kickback'] },
   shrug: { patterns: ['shrug'], prefer: ['db-shrug', 'bb-shrug'] },
+  // Strength focus: each main lift practiced twice a week (a second, lighter variation on the other day).
+  vPushS: { patterns: ['vertical-push'], prefer: ['ohp', 'db-shoulder-press', 'machine-shoulder-press'] },
+  hPushS: { patterns: ['horizontal-push'], prefer: ['close-grip-bench', 'bench-press', 'db-bench', 'machine-chest-press'] },
+  squatS: { patterns: ['squat'], prefer: ['front-squat', 'safety-bar-squat', 'back-squat', 'hack-squat', 'leg-press'] },
+  // Endurance focus: a few low-volume jumps, done fresh at the start of a leg day.
+  plyo: { patterns: ['plyo'], prefer: ['box-jump', 'squat-jump', 'broad-jump', 'lateral-bound', 'pogo-hop'] },
   abs: { patterns: ['core-flexion', 'hip-flexion', 'anti-extension'], prefer: ['cable-crunch', 'hanging-leg-raise', 'ab-wheel', 'ab-crunch-machine', 'decline-situp', 'leg-raise'] },
   core2: { patterns: ['anti-rotation', 'hip-flexion', 'rotation'], prefer: ['pallof-press', 'hanging-leg-raise', 'cable-woodchop', 'vertical-leg-raise'] },
 };
@@ -286,7 +297,7 @@ const TEMPLATES = {
   fbB: { name: 'Full body B', legs: true, slots: [['hinge', 'main', 1], ['vPush', 'comp', 1], ['vPull', 'comp', 1], ['lunge', 'comp', 2], ['rear', 'iso', 2], ['fly', 'iso', 3], ['tri2', 'iso', 3], ['curl2', 'iso', 3], ['lat', 'iso', 'p']] },
   fbC: { name: 'Full body C', legs: true, slots: [['squat2', 'main', 1], ['iPush', 'comp', 1], ['hPull2', 'comp', 1], ['kneeFlex', 'iso', 2], ['lat', 'iso', 2], ['curl', 'iso', 3], ['tri', 'iso', 3], ['calf', 'iso', 3]] },
   upperA: { name: 'Upper A', slots: [['hPush', 'main', 1], ['hPull', 'comp', 1], ['vPush', 'comp', 2], ['vPull2', 'comp', 1], ['lat', 'iso', 2], ['curl', 'iso', 2], ['tri', 'iso', 2], ['rear', 'iso', 'p']] },
-  upperB: { name: 'Upper B', slots: [['iPush', 'main', 1], ['vPull', 'comp', 1], ['hPull2', 'comp', 1], ['fly', 'iso', 2], ['rear', 'iso', 2], ['curl2', 'iso', 2], ['tri2', 'iso', 2], ['lat', 'iso', 'p']] },
+  upperB: { name: 'Upper B', slots: [['iPush', 'main', 1], ['vPull', 'comp', 1], ['hPull2', 'comp', 1], ['fly', 'iso', 2], ['lat', 'iso', 2], ['rear', 'iso', 2], ['curl2', 'iso', 2], ['tri2', 'iso', 2]] },
   lowerA: { name: 'Lower A', legs: true, slots: [['squat', 'main', 1], ['rdl', 'comp', 1], ['kneeExt', 'iso', 2], ['kneeFlex', 'iso', 2], ['calf', 'iso', 2], ['abs', 'iso', 3], ['abd', 'iso', 'p']] },
   lowerB: { name: 'Lower B', legs: true, slots: [['hinge', 'main', 1], ['squat2', 'comp', 1], ['hipExt', 'comp', 2], ['lunge', 'comp', 3], ['kneeFlex', 'iso', 2], ['calf', 'iso', 2], ['core2', 'iso', 3]] },
   push: { name: 'Push', slots: [['hPush', 'main', 1], ['vPush', 'comp', 1], ['iPush', 'comp', 2], ['fly', 'iso', 2], ['lat', 'iso', 1], ['tri', 'iso', 2], ['tri2', 'iso', 3]] },
@@ -326,6 +337,7 @@ function pickExercise(db, p, slotKey, variant, usedToday, role) {
 }
 
 function roleRx(rx, role) {
+  if (role === 'plyo') return { sets: 3, repMin: 5, repMax: 5, restSec: 75 };
   if (role === 'main') return { sets: rx.mainSets, repMin: rx.main[0], repMax: rx.main[1], restSec: rx.restMain };
   if (role === 'comp') return { sets: rx.sets, repMin: rx.comp[0], repMax: rx.comp[1], restSec: rx.rest };
   return { sets: rx.isoSets, repMin: rx.iso[0], repMax: rx.iso[1], restSec: rx.restIso };
@@ -345,7 +357,7 @@ export function weeklySets(db, plan) {
   for (const day of Object.values(plan)) {
     for (const it of day.items) {
       const ex = db.exercises[it.exerciseId];
-      if (!ex) continue;
+      if (!ex || ex.category === 'conditioning') continue; // jumps, carries and drills aren't hard sets
       for (const m of ex.primary) out[m] = (out[m] || 0) + it.sets;
       for (const m of ex.secondary) out[m] = (out[m] || 0) + it.sets * 0.5;
     }
@@ -357,6 +369,7 @@ export function volumeTarget(rx, m) {
   const [lo, hi] = rx.weekly;
   const SHARE = { 'front-delts': 0.4, traps: 0.5, obliques: 0.4, forearms: 0.4, 'lower-back': 0.3, adductors: 0.3, abductors: 0.3 };
   if (SHARE[m]) return [Math.max(2, Math.round(lo * SHARE[m])), m === 'lower-back' ? Math.round(hi * 0.75) : hi];
+  if (rx.armsOptional && ['biceps', 'triceps', 'chest'].includes(m)) return [Math.round(lo * 0.5), hi];
   if (m === 'abs' || m === 'calves' || m === 'rear-delts') return [Math.round(lo * 0.6), hi];
   if (rx.includePhysique && ['side-delts', 'biceps', 'triceps', 'calves', 'rear-delts'].includes(m)) return [Math.round(lo * 1.1), Math.round(hi * 1.1)];
   return [lo, hi];
@@ -377,6 +390,7 @@ function addFiller(db, p, plan, rx, m) {
   const days = Object.values(plan).filter((d) => d.items.some((it) => region(it.exerciseId)))
     .sort((a, b) => a.items.length - b.items.length);
   for (const d of days) {
+    if (d.items.some((it) => SLOTS[slotKey].patterns.includes(db.exercises[it.exerciseId].pattern))) continue;
     const used = new Set(d.items.map((it) => it.exerciseId));
     const ex = pickExercise(db, p, slotKey, 0, used, 'iso');
     if (!ex) continue;
@@ -412,9 +426,24 @@ function balanceVolume(db, plan, rx, p) {
     const over = VOLUME_MUSCLES.map((m) => ({ m, extra: (ws[m] || 0) - volumeTarget(rx, m)[1] * 1.2 }))
       .filter((x) => x.extra > 0).sort((a, b) => b.extra - a.extra);
     for (const { m } of over) {
-      const it = items.filter((x) => x.role !== 'main' && x.sets > 2 && db.exercises[x.exerciseId].primary.includes(m))
+      const it = items.filter((x) => x.role !== 'main' && x.role !== 'plyo' && x.sets > 2 && db.exercises[x.exerciseId].primary.includes(m))
         .sort((a, b) => (a.role === 'iso' ? -1 : 1) - (b.role === 'iso' ? -1 : 1) || b.sets - a.sets)[0];
       if (it) { it.sets -= 1; changed = true; break; }
+      // Still over by 3+ sets: drop the lowest-priority extra exercise for it, if nothing it trains
+      // falls below its own minimum.
+      if ((ws[m] || 0) - volumeTarget(rx, m)[1] < 3) continue;
+      for (const d of Object.values(plan)) {
+        const drop = d.items.filter((y) => y.role !== 'main' && y.role !== 'plyo' && !y.focus2 && (y.prio === 3 || y.prio === 'p' || y.role === 'iso' || (y.role === 'comp' && (ws[m] || 0) - volumeTarget(rx, m)[1] >= 5)) && db.exercises[y.exerciseId].primary.includes(m))
+          .sort((a, b) => (b.prio === 3) - (a.prio === 3))[0];
+        if (!drop) continue;
+        const after = weeklySets(db, { x: { items: Object.values(plan).flatMap((dd) => dd.items).filter((y) => y !== drop) } });
+        if (db.exercises[drop.exerciseId].primary.concat(db.exercises[drop.exerciseId].secondary).some((mm) => VOLUME_MUSCLES.includes(mm) && (after[mm] || 0) < volumeTarget(rx, mm)[0])) continue;
+        d.items = d.items.filter((y) => y !== drop);
+        items = Object.values(plan).flatMap((dd) => dd.items);
+        changed = true;
+        break;
+      }
+      if (changed) break;
     }
     if (!changed) break;
   }
@@ -514,7 +543,36 @@ export function mainLiftOptions(db, p, key) {
     .sort((a, b) => (b.id === first?.id) - (a.id === first?.id) || slot.patterns.includes(b.pattern) - slot.patterns.includes(a.pattern) || a.name.localeCompare(b.name));
 }
 
+// Choices for a day's second focus lift: compounds for the day's other big movements.
+export function secondLiftOptions(db, p, key) {
+  const t = TEMPLATES[key.replace(/2$/, '')];
+  if (!t) return [];
+  const patterns = new Set(t.slots.filter(([, role]) => role === 'comp').flatMap(([s]) => SLOTS[s]?.patterns || []));
+  const equip = p.equipment?.length ? p.equipment : Object.keys(EQUIPMENT);
+  const blocked = new Set((p.limits || []).flatMap((l) => JOINT_STRESS[l] || []));
+  const gym = db.gyms?.find((g) => g.id === db.settings?.activeGym);
+  return Object.values(db.exercises)
+    .filter((e) => e.category === 'compound' && patterns.has(e.pattern) && equip.includes(equipOf(e.type)) && hasGear(gym, e.needs) && !blocked.has(e.id))
+    .sort((a, b) => rankOf(db, a) - rankOf(db, b) || a.name.localeCompare(b.name));
+}
+
 // ---------- Generate ----------
+
+// Slot changes for a clear goal focus. Strength: the bench, overhead press and squat each come up
+// twice a week, the second time as a lighter variation (lift-specific practice drives strength).
+// Endurance: heavy lower-body lifts and a few jumps, little arm isolation (strength work improves
+// running and cycling economy when it is heavy and explosive, not when it is bodybuilding volume).
+const STRENGTH_SLOTS = {
+  upperB: { iPush: ['vPushS', 'main'], fly: ['hPushS', 'comp'] },
+  lowerB: { squat2: ['squatS', 'comp'] },
+  fbC: { squat2: ['squatS', 'main'], iPush: ['hPushS', 'comp'] },
+};
+const ENDURANCE_SKIP = ['curl', 'curl2', 'tri', 'tri2', 'fly', 'shrug', 'pullover'];
+export function goalFocus(rx) {
+  const w = rx.weights || {};
+  const top = Object.entries(w).sort((a, b) => b[1] - a[1])[0]?.[0];
+  return { strength: (w.strength || 0) >= 0.35 && top === 'strength', endurance: (w.endurance || 0) >= 0.35 && top === 'endurance' };
+}
 
 export function generatePlan(db, p, rx, liftDays, cardioDays, splitId) {
   const base = LAYOUT[liftDays]?.[splitId];
@@ -536,22 +594,38 @@ export function generatePlan(db, p, rx, liftDays, cardioDays, splitId) {
     if (t.legs) legDays.push(day);
     const used = new Set();
     const items = [];
-    for (const [slotKey, role, prio] of t.slots) {
+    const focus = goalFocus(rx);
+    const tKey = key.replace(/2$/, '');
+    const slots = t.slots.map(([s, r, pr]) => { const sw = focus.strength && STRENGTH_SLOTS[tKey]?.[s]; return sw ? [sw[0], sw[1], pr === 'p' ? 2 : pr] : [s, r, pr]; })
+      .filter(([s]) => !(focus.endurance && ENDURANCE_SKIP.includes(s)));
+    if (focus.endurance && t.legs) slots.unshift(['plyo', 'plyo', 1]);
+    for (const [slotKey, role, prio] of slots) {
       if (slotKey === 'abs' || slotKey === 'core2') continue; // core is placed by core.js
       if (prio === 'p' && !rx.includePhysique) continue;
       if (prio === 3 && p.experience === 'beginner') continue;
-      const wanted = role === 'main' ? db.exercises[p.mainLift?.[key]] : null; // the lifter's chosen main lift for this day
-      const ex = wanted && !used.has(wanted.id) ? wanted : pickExercise(db, p, slotKey, variant, used, role);
+      const second = db.exercises[p.secondLift?.[key]];
+      const isSecond = second && role === 'comp' && !used.has(second.id) && (SLOTS[slotKey]?.patterns || []).includes(second.pattern) && !items.some((i) => i.focus2);
+      const wanted = role === 'main' ? db.exercises[p.mainLift?.[key]] : isSecond ? second : null; // the lifter's chosen focus lifts for this day
+      const ex = wanted && !used.has(wanted.id) ? wanted : pickExercise(db, p, slotKey, focus.strength && role === 'main' ? 0 : variant, used, role);
       if (!ex) continue;
       used.add(ex.id);
-      items.push({ slotKey, role, prio, exerciseId: ex.id, ...roleRx(rx, role) });
+      items.push({ slotKey, role, prio, exerciseId: ex.id, ...roleRx(rx, role), ...(isSecond && ex === second ? { focus2: true, prio: 1 } : {}) });
     }
+    // A second focus lift with no matching slot goes in right after the main lift.
+    const second = db.exercises[p.secondLift?.[key]];
+    if (second && !items.some((i) => i.exerciseId === second.id)) items.splice(items.findIndex((i) => i.role === 'main') + 1, 0, { slotKey: 'second', role: 'comp', prio: 1, exerciseId: second.id, ...roleRx(rx, 'comp'), focus2: true });
+    // The second focus sits right after the main lift.
+    const f2 = items.findIndex((i) => i.focus2);
+    if (f2 > 1) items.splice(1, 0, ...items.splice(f2, 1));
     let name = VARIANT_NAMES[key] || t.name;
     if (splitId === 'ppl' && liftDays === 6 && !variant) name += ' A';
     plan[day] = { name, items };
   });
 
   balanceVolume(db, plan, rx, p);
+  const ORDER = { plyo: 0, main: 1, comp: 2, iso: 3 };
+  const rankIt = (it) => (it.focus2 ? 1.5 : ORDER[it.role]);
+  for (const d of Object.values(plan)) d.items = d.items.map((it, i) => ({ it, i })).sort((a, b) => rankIt(a.it) - rankIt(b.it) || a.i - b.i).map((x) => x.it);
   const minutes = {};
   for (const [day, d] of Object.entries(plan)) {
     const grouped = fitTime(d.items, rx, +p.sessionMin || 60);
@@ -564,7 +638,7 @@ export function generatePlan(db, p, rx, liftDays, cardioDays, splitId) {
       repMin: it.repMin,
       repMax: it.repMax,
       restSec: it.restSec,
-      note: [it.role === 'main' ? 'Focus lift' : '', easier && DEMANDING.includes(it.exerciseId) ? 'Use a band or slow negatives if needed' : ''].filter(Boolean).join(' · '),
+      note: [it.role === 'main' ? 'Focus lift' : it.focus2 ? 'Second focus lift' : '', it.role === 'plyo' ? 'Jump fast, land softly, full rest between sets' : '', easier && DEMANDING.includes(it.exerciseId) ? 'Use a band or slow negatives if needed' : ''].filter(Boolean).join(' · '),
     }));
   }
   const dayModes = placeCardio(days, legDays, cardioDays);

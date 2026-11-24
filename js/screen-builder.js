@@ -2,7 +2,7 @@
 // Split out of app.js. App state and the helpers this needs come from A: live getters (and
 // setters for variables), so db and the rest stay shared with app.js.
 import { DAY_KEYS, DAY_NAMES, PROGRESSIONS, e1rm, recommendScheme, roundTo } from './engine.js';
-import { EQUIPMENT, EXPERIENCE, GOALS, LIMITS, VOLUME_MUSCLES, WEEK_LAYOUT, WEIGHT_GOALS, defaultProfile, fmtSec, generatePlan, goalWeights, mainLiftOptions, prescription, splitOptions, splitTemplates, suggestDays, suggestedWeightGoal, volumeTarget } from './builder.js';
+import { EQUIPMENT, EXPERIENCE, GOALS, LIMITS, VOLUME_MUSCLES, WEEK_LAYOUT, WEIGHT_GOALS, defaultProfile, fmtSec, generatePlan, goalWeights, mainLiftOptions, secondLiftOptions, prescription, splitOptions, splitTemplates, suggestDays, suggestedWeightGoal, volumeTarget } from './builder.js';
 import { activeGym } from './gym.js';
 import { REFS } from './science.js';
 import { fromDisp, toDisp, wUnit } from './units.js';
@@ -35,16 +35,13 @@ export function createBuilderScreens(A) {
     return [...seen.values()];
   }
 
-  // Focus defaults to each day's first compound (the main lifts), up to three.
+  // Focus lifts: each day's main lift, plus any second focus lift chosen for a day.
   function builderFocus(p, out) {
-    const valid = builderCompounds(out).map((e) => e.id);
-    if (p.focus?.length) return p.focus.filter((id) => valid.includes(id));
-    const firsts = [];
+    const ids = [];
     for (const d of Object.values(out?.plan || {})) {
-      const it = d.items.find((x) => A.db.exercises[x.exerciseId]?.category === 'compound');
-      if (it && !firsts.includes(it.exerciseId)) firsts.push(it.exerciseId);
+      for (const it of d.items) if (/Focus lift|Second focus lift/.test(it.note || '') && !ids.includes(it.exerciseId)) ids.push(it.exerciseId);
     }
-    return firsts.slice(0, 3);
+    return ids;
   }
 
   const B_STEPS = ['About you', 'Goals', 'Schedule', 'Split', 'Review'];
@@ -131,6 +128,7 @@ export function createBuilderScreens(A) {
       const mix = Object.entries(w).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1])
         .map(([g, v]) => `${Math.round(v * 100)}% ${GOALS[g].label.toLowerCase()}`).join(', ');
       body = `
+        <button class="card ev-card ev-empty" data-a="ev-choose"><span class="grow"><b>${A.db.event ? 'Your event plan' : 'Training for something specific?'}</b><span class="muted small">${A.db.event ? 'A race or meet is set. Tap to change it.' : 'A race (running, cycling, triathlon) or a powerlifting meet: set a date and a target'}</span></span></button>
         <div class="card">
           <p class="muted small">Rate how much each goal matters to you (0 = not at all, 5 = top priority). The mix sets your reps, sets, rest and cardio.</p>
           ${Object.entries(GOALS).map(([g, v]) => `<div class="goal-row">
@@ -184,13 +182,14 @@ export function createBuilderScreens(A) {
         ${(() => {
           const base = splitTemplates(p.liftDays, p.split);
           const order = p.dayOrder?.length === base.length ? p.dayOrder : base;
-          return `<div class="card"><h3>Your week ${helpBtn()}</h3><p class="help-text" hidden>Use the arrows to change the order of the days, and pick the focus lift each day is built around. Everything else is filled in to match.</p>
+          return `<div class="card"><h3>Your week ${helpBtn()}</h3><p class="help-text" hidden>Use the arrows to change the order of the days. Each day is built around its main lift, with an optional second focus lift after it. Focus lifts get your progression method and are reviewed at each deload; everything else is filled in to match.</p>
             ${order.map((t, i) => {
               const optsM = mainLiftOptions(A.db, p, t);
               const cur = p.mainLift?.[t] || optsM[0]?.id;
               return `<div class="order-row"><b class="order-day">${DAY_NAMES[days[i]]}</b>
                 <div class="grow"><span class="order-name">${splitDayName(t)}</span>
-                  <select data-a="b-main" data-k="${t}" aria-label="Focus lift for ${splitDayName(t)}">${optsM.map((e) => `<option value="${e.id}" ${e.id === cur ? 'selected' : ''}>${A.esc(e.name)}</option>`).join('')}</select></div>
+                  <label class="focus-pick"><span>Main lift</span><select data-a="b-main" data-k="${t}" aria-label="Main lift for ${splitDayName(t)}">${optsM.map((e) => `<option value="${e.id}" ${e.id === cur ? 'selected' : ''}>${A.esc(e.name)}</option>`).join('')}</select></label>
+                  <label class="focus-pick"><span>Second focus</span><select data-a="b-second" data-k="${t}" aria-label="Second focus lift for ${splitDayName(t)}"><option value="">None</option>${secondLiftOptions(A.db, p, t).filter((e) => e.id !== cur).map((e) => `<option value="${e.id}" ${p.secondLift?.[t] === e.id ? 'selected' : ''}>${A.esc(e.name)}</option>`).join('')}</select></label></div>
                 <button class="icon-btn" data-a="b-order" data-i="${i}" data-v="-1" aria-label="Move ${splitDayName(t)} earlier" ${i === 0 ? 'disabled' : ''}>${icon('up')}</button>
                 <button class="icon-btn" data-a="b-order" data-i="${i}" data-v="1" aria-label="Move ${splitDayName(t)} later" ${i === order.length - 1 ? 'disabled' : ''}>${icon('arrowDown')}</button></div>`;
             }).join('')}</div>`;
@@ -252,12 +251,9 @@ export function createBuilderScreens(A) {
       </div>
       <div class="card"><h3>Your week</h3>${week}<p class="muted small">You can swap any exercise or edit sets and reps after applying.</p>
         ${countManual(A.db.plan) ? `<label class="toggle"><input type="checkbox" data-a="b-keep" ${p.keepManual !== false ? 'checked' : ''}><span>Keep ${countManual(A.db.plan)} exercise${countManual(A.db.plan) === 1 ? '' : 's'} I chose</span></label>` : ''}</div>
-      <div class="card"><h3>Focus lifts for your first block</h3>
-        <p class="muted small">The compounds you want to push before the first deload. Their progress is tracked each block and reviewed at every deload.</p>
-        <div class="chips wrap" role="group" aria-label="Focus lifts">${builderCompounds(out).map((ex) => {
-          const on = builderFocus(p, out).includes(ex.id);
-          return `<button class="chip ${on ? 'on' : ''}" data-a="b-focus" data-id="${ex.id}" aria-pressed="${on}">${A.esc(ex.name)}</button>`;
-        }).join('')}</div></div>
+      <div class="card"><h3>Focus lifts</h3>
+        <p class="small">${builderFocus(p, out).map((id) => A.esc(A.db.exercises[id]?.name || id)).join(', ') || 'None yet'}</p>
+        <p class="muted small">Each day's main lift and second focus, set on the Split step. They get your progression method and are reviewed at every deload.</p></div>
       <div class="card"><h3>Weekly sets per muscle</h3>
         <div class="vol-row head"><span>Muscle</span><span>Planned</span><span>Target</span><span></span></div>${vol}
         <p class="muted small">A set counts ½ for muscles that only assist ${refLinks(['pelland2026'])}. Some low counts are a trade-off for your workout length.</p></div>

@@ -159,6 +159,31 @@ export const REFS = {
     finding: 'Stretching improves range of motion; long static holds right before maximal efforts can blunt performance slightly, so stretch after training or on rest days.',
     url: search('Acute effects of muscle stretching on physical performance, range of motion, and injury incidence in healthy active individuals'),
   },
+  bosquet2007: {
+    cite: 'Bosquet L, et al. (2007). Effects of tapering on performance: a meta-analysis. Med Sci Sports Exerc 39(8):1358–1365.',
+    finding: 'A taper of about two weeks, cutting training volume by roughly 40–60% while keeping intensity and frequency, gave the best performance gains.',
+    url: 'https://pubmed.ncbi.nlm.nih.gov/17762369/',
+  },
+  allen2010: {
+    cite: 'Allen H, Coggan A (2010). Training and Racing with a Power Meter, 2nd ed. VeloPress.',
+    finding: 'Cycling intensities set as percentages of functional threshold power (FTP): endurance 56–75%, tempo 76–90%, threshold 91–105%, VO2 max 106–120%.',
+    url: 'https://www.velopress.com/books/training-and-racing-with-a-power-meter/',
+  },
+  wakayoshi1992: {
+    cite: 'Wakayoshi K, et al. (1992). Determination and validity of critical velocity as an index of swimming performance in the competitive swimmer. Eur J Appl Physiol 64(2):153–157.',
+    finding: 'Critical swim speed, worked out from two timed swims, closely tracks the pace a swimmer can sustain at threshold, so it is a practical way to set interval paces.',
+    url: 'https://pubmed.ncbi.nlm.nih.gov/1555562/',
+  },
+  blagrove2018: {
+    cite: 'Blagrove RC, Howatson G, Hayes PR (2018). Effects of strength training on the physiological determinants of middle- and long-distance running performance: a systematic review. Sports Med 48(5):1117–1149.',
+    finding: 'Adding strength training, especially heavy and plyometric work two or three times a week, improved running economy and time-trial performance without adding body mass.',
+    url: 'https://pubmed.ncbi.nlm.nih.gov/29249083/',
+  },
+  pritchard2015: {
+    cite: 'Pritchard H, et al. (2015). Tapering practices of New Zealand\'s elite raw powerlifters. J Strength Cond Res 30(7):1796–1804.',
+    finding: 'Elite powerlifters tapered for about 2–3 weeks, cutting volume while keeping intensity high, with the last heavy session several days to a week before the meet and deadlifts tapered first.',
+    url: 'https://pubmed.ncbi.nlm.nih.gov/26670993/',
+  },
   daniels2014: {
     cite: 'Daniels J (2014). Daniels\' Running Formula, 3rd ed. Human Kinetics.',
     finding: 'Training paces set from a recent race time: easy runs well slower than race pace, threshold (tempo) runs around 1-hour race pace, intervals near 3–5k pace.',

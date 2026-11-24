@@ -14,7 +14,7 @@ import { muscleIcon } from './body.js';
 import { DAY_NAMES, dayKeyOf, e1rm, weekInfo } from './engine.js';
 import { loadNote } from './bank.js';
 import { lineChart, trendChart } from './chart.js';
-import { CHART_METRICS, CHART_RANGES, chartStats, defaultMetric, inRange, liftSeries, metricsFor, trendLine } from './lift-metrics.js';
+import { CHART_METRICS, CHART_RANGES, chartStats, defaultMetric, inRange, liftSeries, metricsFor, stepTrend, dayNum } from './lift-metrics.js';
 import { strengthAreas, LEVELS } from './standards.js';
 
 const LV_COLORS = ['#f4f4f1', '#1d8a4e', '#f2c21b', '#1f5fbf', '#d3232e'];
@@ -187,12 +187,13 @@ export function createProgressScreens(A) {
     if (rows.length < 2) return '';
     const vals = rows.map((x) => x.best1rm);
     const lo = Math.min(...vals); const hi = Math.max(...vals); const span = hi - lo || 1;
-    const px = (i) => (i / (rows.length - 1)) * 96 + 2;
+    const t0 = dayNum(rows[0].date); const tspan = dayNum(rows[rows.length - 1].date) - t0 || 1;
+    const px = (t) => ((t - t0) / tspan) * 96 + 2;
     const py = (v) => 26 - ((v - lo) / span) * 22;
-    // Points for each workout, the line for the average (evenly spaced, so it reads at this size).
-    const curve = trendLine(rows.map((r, i) => ({ t: i * 7, v: r.best1rm })), 24).filter((p) => p.v != null);
-    const line = curve.map((p) => `${px(p.t / 7).toFixed(1)},${py(p.v).toFixed(1)}`).join(' ');
-    const dots = rows.map((r, i) => `M${px(i).toFixed(1)} ${py(r.best1rm).toFixed(1)}h0`).join('');
+    // Points for each workout, the line for the stepped trend of best efforts.
+    const curve = stepTrend(rows.map((r) => ({ x: r.date, v: r.best1rm })), 'best');
+    const line = curve.map((p) => `${px(p.t).toFixed(1)},${py(p.v).toFixed(1)}`).join(' ');
+    const dots = rows.map((r) => `M${px(dayNum(r.date)).toFixed(1)} ${py(r.best1rm).toFixed(1)}h0`).join('');
     return `<svg class="${cls}" viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true"><path class="sp-pts" d="${dots}"/><polyline points="${line}"/></svg>`;
   }
   // A small chart inside a row or tile: tapping it opens the full chart.
@@ -491,7 +492,7 @@ export function createProgressScreens(A) {
       const el = A.$('#cd-chart');
       if (!el || !rows.length) return;
       trendChart(el, {
-        name: `${ex.name} ${CHART_METRICS[key].name}`, height: 250, fmt: chartAxis(key),
+        name: `${ex.name} ${CHART_METRICS[key].name}`, height: 250, fmt: chartAxis(key), trend: 'best',
         points: rows.map((r) => ({ x: r.date, v: chartValue(key, r[key]), row: r })),
         onPick: (p) => {
           const out = A.$('#cd-read'); if (!out) return;
@@ -508,8 +509,8 @@ export function createProgressScreens(A) {
         <div class="segmented small-seg" role="radiogroup" aria-label="Range">${CHART_RANGES.map(([k, l]) => `<button class="${k === range ? 'on' : ''}" data-a="chart-range" data-v="${k}" role="radio" aria-checked="${k === range}">${l}</button>`).join('')}</div>
       </div>
       ${st ? `<div class="cd-stats">${stat(chartText(key, st.latest), 'Latest')}${stat(chartText(key, st.best), 'Best in range')}${stat(changeText, 'Trend change', !flat && st.count > 1 ? (ch > 0 ? 'up' : 'down') : '')}${stat(String(st.count), st.count === 1 ? 'Workout' : 'Workouts')}</div>
-      ${st.perMonth != null && !flat ? `<p class="muted small pad">The average is moving about ${st.perMonth > 0 ? 'up' : 'down'} ${chartText(key, Math.abs(st.perMonth))} a month in this range.</p>` : ''}` : ''}
-      <p class="muted small pad">Each point is a workout. The line is the average trend, so one great or rough day doesn't swing it. Warm-ups and deloads aren't counted.</p>`;
+      ${st.perMonth != null && !flat ? `<p class="muted small pad">Your trend is moving about ${st.perMonth > 0 ? 'up' : 'down'} ${chartText(key, Math.abs(st.perMonth))} a month in this range.</p>` : ''}` : ''}
+      <p class="muted small pad">Each dot is a workout. The line steps through your best efforts in each ${rows.length && dayNum(rows[rows.length - 1].date) - dayNum(rows[0].date) > 400 ? 'two months' : rows.length && dayNum(rows[rows.length - 1].date) - dayNum(rows[0].date) > 120 ? 'month' : 'two weeks'}, so light days don't pull it down. A dashed stretch is time off. Warm-ups and deloads aren't counted.</p>`;
   }
 
   // ---------- Bodyweight ----------

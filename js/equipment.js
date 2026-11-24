@@ -3,7 +3,7 @@
 
 import { platesFor, weightStep } from './gym.js';
 import { PLATE_PER_SIDE } from './bank.js';
-import { toDisp } from './units.js';
+import { toDisp, smithBar } from './units.js';
 
 // Machines loaded with plates by hand; every other machine has a pin stack.
 const LOADED = /plate|leverage|iso-|hack|leg press|t-bar|landmine|belt squat|pendulum|v-squat/i;
@@ -47,10 +47,11 @@ function plateLook(lb) {
   return { c: '#c3c7cc', ink: '#141518', h: 32, w: 6 };
 }
 const svg = (inner, label) => `<svg class="load-art" viewBox="0 0 320 112" role="img" aria-label="${label}">${inner}</svg>`;
-const T = (x, y, s, o = {}) => `<text x="${x}" y="${y}" text-anchor="${o.a || 'middle'}" fill="${o.f || 'var(--text)'}" font-size="${o.z || 12}" font-weight="${o.w || 700}"${o.tr ? ` transform="${o.tr}"` : ''}>${s}</text>`;
+const T = (x, y, s, o = {}) => `<text${o.c ? ` class="${o.c}"` : ''} x="${x}" y="${y}" text-anchor="${o.a || 'middle'}" fill="${o.f || 'var(--text)'}" font-size="${o.z || 12}" font-weight="${o.w || 700}"${o.tr ? ` transform="${o.tr}"` : ''}>${s}</text>`;
 function plate(x, lb, cy = 56) {
   const { c, ink, h, w } = plateLook(lb); const top = cy - h / 2;
-  return `<g><rect x="${x}" y="${top}" width="${w}" height="${h}" rx="3" fill="${c}" stroke="var(--edge)" stroke-width="1.3"/><rect x="${x + 2}" y="${top + 4}" width="2.2" height="${h - 8}" rx="1" fill="#fff" opacity=".28"/><rect x="${x}" y="${cy - 10}" width="${w}" height="20" fill="#000" opacity=".16"/>${w >= 9 ? T(x + w / 2 + 3.6, top + 15, toDisp(lb), { z: w >= 14 ? 10.5 : 8.5, f: ink, w: 800, tr: `rotate(-90 ${x + w / 2} ${top + 13})` }) : ''}</g>`;
+  const dark = c === '#2b2d31';
+  return `<g class="pl${dark ? ' pl-dark' : ''}" style="--pc:${c}"><rect class="pf" x="${x}" y="${top}" width="${w}" height="${h}" rx="3" fill="${c}" stroke="var(--edge)" stroke-width="1.3"/><rect class="pb" x="${x}" y="${top + h * 0.28}" width="${w}" height="5" fill="${c}"/><rect class="pb" x="${x}" y="${top + h * 0.72 - 5}" width="${w}" height="5" fill="${c}"/><rect class="ps" x="${x + 2}" y="${top + 4}" width="2.2" height="${h - 8}" rx="1" fill="#fff" opacity=".28"/><rect class="pshade" x="${x}" y="${cy - 10}" width="${w}" height="20" fill="#000" opacity=".16"/>${w >= 9 ? T(x + w / 2 + 3.6, top + 15, toDisp(lb), { c: 'pt', z: w >= 14 ? 10.5 : 8.5, f: ink, w: 800, tr: `rotate(-90 ${x + w / 2} ${top + 13})` }) : ''}</g>`;
 }
 function run(x, list) { let out = ''; for (const p of list) { out += plate(x, p); x += plateLook(p).w + 1; } return { out, x }; }
 const sleeve = (x) => `<rect x="${x}" y="49" width="${316 - x}" height="14" rx="2" fill="var(--steel)" stroke="var(--edge)"/><rect x="${x}" y="51" width="${316 - x}" height="2" fill="#fff" opacity=".35"/>`;
@@ -73,18 +74,18 @@ function drawDumbbell(lb) {
   const v = toDisp(lb); const hh = Math.min(100, 50 + lb * 0.46); const hw = Math.min(62, 30 + lb * 0.3); const cx = 160; const g = 44;
   const head = (x, d) => { const c = hh * .24; const n = x + d * hw; return `<polygon points="${x},${56 - hh / 2 + c} ${x + d * 5},${56 - hh / 2} ${n - d * 5},${56 - hh / 2} ${n},${56 - hh / 2 + c} ${n},${56 + hh / 2 - c} ${n - d * 5},${56 + hh / 2} ${x + d * 5},${56 + hh / 2} ${x},${56 + hh / 2 - c}" fill="var(--iron)" stroke="var(--edge)" stroke-width="1.3"/><path d="M${x + d * 5} ${56 - hh / 2 + c}H${n - d * 5}M${x + d * 5} ${56 + hh / 2 - c}H${n - d * 5}" stroke="var(--iron2)" stroke-width="1.6"/>`; };
   let k = ''; for (let i = cx - 28; i < cx + 28; i += 3.4) k += `<path d="M${i} 50l3.4 12M${i + 3.4} 50l-3.4 12" stroke="var(--edge)" stroke-width=".5" opacity=".6"/>`;
-  return svg(`<rect x="${cx - g}" y="50" width="${g * 2}" height="12" fill="var(--steel)" stroke="var(--edge)"/>${k}${head(cx - g, -1)}${head(cx + g, 1)}${T(cx - g - hw / 2, 62, v, { z: 17, f: '#f4f4f1', w: 900 })}${T(cx + g + hw / 2, 62, v, { z: 17, f: '#f4f4f1', w: 900 })}`, `A pair of ${v} dumbbells`);
+  return svg(`<rect x="${cx - g}" y="50" width="${g * 2}" height="12" fill="var(--steel)" stroke="var(--edge)"/>${k}${head(cx - g, -1)}${head(cx + g, 1)}${T(cx - g - hw / 2, 62, v, { c: 'ink-on-iron', z: 17, f: '#f4f4f1', w: 900 })}${T(cx + g + hw / 2, 62, v, { c: 'ink-on-iron', z: 17, f: '#f4f4f1', w: 900 })}`, `A pair of ${v} dumbbells`);
 }
 function drawBell(lb) {
   const v = toDisp(lb); const r = Math.min(40, 27 + lb * 0.15); const cy = 110 - r;
   const h = `M${160 - r * .62} ${cy - r * .68}C${160 - r * .95} 6 ${160 + r * .95} 6 ${160 + r * .62} ${cy - r * .68}`;
-  return svg(`<path d="${h}" fill="none" stroke="var(--edge)" stroke-width="11"/><path d="${h}" fill="none" stroke="var(--steel)" stroke-width="7.5"/><path d="M${160 - r} ${cy}a${r} ${r} 0 1 1 ${r * 2} 0c0 ${r * .62} -${r * .42} ${r} -${r * .62} ${r}h-${r * .76}c-${r * .2} 0 -${r * .62} -${r * .38} -${r * .62} -${r}z" fill="var(--iron)" stroke="var(--edge)" stroke-width="1.3"/>${T(160, cy + 7, v, { z: 20, f: '#f4f4f1', w: 900 })}`, `A ${v} kettlebell`);
+  return svg(`<path d="${h}" fill="none" stroke="var(--edge)" stroke-width="11"/><path d="${h}" fill="none" stroke="var(--steel)" stroke-width="7.5"/><path d="M${160 - r} ${cy}a${r} ${r} 0 1 1 ${r * 2} 0c0 ${r * .62} -${r * .42} ${r} -${r * .62} ${r}h-${r * .76}c-${r * .2} 0 -${r * .62} -${r * .38} -${r * .62} -${r}z" fill="var(--iron)" stroke="var(--edge)" stroke-width="1.3"/>${T(160, cy + 7, v, { c: 'ink-on-iron', z: 20, f: '#f4f4f1', w: 900 })}`, `A ${v} kettlebell`);
 }
 function drawStack(lb, step, cable) {
   const stepD = step || 10; const n = Math.max(1, Math.round(lb / stepD)); const first = Math.max(1, n - 5); const x = cable ? 34 : 86; const W = 126; let out = '';
   for (let i = 0; i < 9; i++) {
     const k = first + i; const y = 7 + i * 11; const on = k <= n;
-    out += `<rect x="${x}" y="${y}" width="${W}" height="10" rx="1" fill="${on ? '#1f5fbf' : 'var(--surface-3)'}" stroke="var(--edge)" stroke-width=".9"/><circle cx="${x + W / 2}" cy="${y + 5}" r="2" fill="var(--edge)"/>${T(x + W - 7, y + 8.3, Math.round(toDisp(k * stepD)), { a: 'end', z: 8.5, f: on ? '#fff' : 'var(--text)' })}`;
+    out += `<rect class="${on ? 'stk-on' : 'stk'}" x="${x}" y="${y}" width="${W}" height="10" rx="1" fill="${on ? '#1f5fbf' : 'var(--surface-3)'}" stroke="var(--edge)" stroke-width=".9"/><circle cx="${x + W / 2}" cy="${y + 5}" r="2" fill="var(--edge)"/>${T(x + W - 7, y + 8.3, Math.round(toDisp(k * stepD)), { c: on ? 'stk-on-t' : '', a: 'end', z: 8.5, f: on ? '#fff' : 'var(--text)' })}`;
     if (k === n) out += `<rect x="${x + W}" y="${y + 3.4}" width="16" height="3.2" fill="#d3232e"/><circle cx="${x + W + 21}" cy="${y + 5}" r="7" fill="#d3232e" stroke="var(--edge)"/><circle cx="${x + W + 21}" cy="${y + 5}" r="2.4" fill="#fff"/>`;
   }
   const rods = `<rect x="${x + 14}" y="1" width="3" height="110" fill="var(--steel)"/><rect x="${x + W - 17}" y="1" width="3" height="110" fill="var(--steel)"/>`;
@@ -94,7 +95,7 @@ function drawStack(lb, step, cable) {
 function drawBelt(lb) {
   const list = beltPlates(lb).slice(0, 3); const big = plateLook(list[0] || 25);
   let chain = ''; for (let i = 0; i < 4; i++) chain += `<rect x="156" y="${27 + i * 5}" width="8" height="7" rx="3.5" fill="none" stroke="var(--steel)" stroke-width="1.8"/>`;
-  const discs = list.map((p, i) => ({ p, i })).reverse().map(({ p, i }) => { const l = plateLook(p); return `<circle cx="${160 + i * 8}" cy="74" r="${l.h / 2.75}" fill="${l.c}" stroke="var(--edge)" stroke-width="1.3"/>`; }).join('');
+  const discs = list.map((p, i) => ({ p, i })).reverse().map(({ p, i }) => { const l = plateLook(p); return `<circle class="belt-plate" style="--pc:${l.c}" cx="${160 + i * 8}" cy="74" r="${l.h / 2.75}" fill="${l.c}" stroke="var(--edge)" stroke-width="1.3"/>`; }).join('');
   return svg(`<path d="M92 6c14 28 122 28 136 0" fill="none" stroke="var(--iron)" stroke-width="11" stroke-linecap="round"/><rect x="149" y="18" width="22" height="10" rx="2" fill="var(--steel)" stroke="var(--edge)"/>${chain}${discs}<circle cx="160" cy="74" r="4" fill="var(--steel)" stroke="var(--edge)"/>${T(160, 74 - big.h / 2.75 + 13, toDisp(lb), { z: 11, f: big.ink, w: 800 })}`, `Belt with ${toDisp(lb)} added`);
 }
 function beltPlates(lb) { const out = []; let left = lb; for (const p of [45, 35, 25, 10, 5, 2.5]) while (left >= p - 1e-9 && out.length < 6) { out.push(p); left -= p; } return out; }
@@ -102,7 +103,8 @@ function beltPlates(lb) { const out = []; let left = lb; for (const p of [45, 35
 // Plates per side for anything loaded by hand. Machines carry no bar in the count.
 function sides(kind, lb, gym, perSide = false) {
   if (kind === 'peg') return platesFor((perSide ? lb * 2 : lb) + gym.barWeight, gym).perSide;
-  return lb > gym.barWeight ? platesFor(lb, gym).perSide : [];
+  const g = kind === 'smith' ? { ...gym, barWeight: smithBar(gym) } : gym;
+  return lb > g.barWeight ? platesFor(lb, g).perSide : [];
 }
 
 // The drawing and, when it adds something the number doesn't, a line about how to load it.

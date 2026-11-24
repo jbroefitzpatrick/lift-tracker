@@ -58,6 +58,18 @@ export const EXTRA_RAW = [
   ['handstand-hold', 'Handstand hold', 'X', 'bodyweight', 'isometric', 'front-delts', 'triceps abs', 'time', 4],
   ['stomach-vacuum', 'Stomach vacuum', 'X', 'bodyweight', 'isometric', 'abs', '', 'time', 4],
   ['jump-lunge', 'Jumping lunge', 'X', 'bodyweight', 'plyo', 'quads glutes', 'calves', 'reps', 3],
+  // ---- Race training ----
+  ['run-hills', 'Hill repeats', 'X', 'bodyweight', 'run', 'calves glutes', 'quads hamstrings', 'time', 3],
+  ['run-race-pace', 'Race-pace run', 'X', 'bodyweight', 'run', 'quads calves', 'hamstrings glutes', 'distance', 3],
+  ['brick-run', 'Brick run (off the bike)', 'X', 'bodyweight', 'run', 'quads calves', 'hamstrings glutes', 'time', 4],
+  ['ride-endurance', 'Endurance ride', 'X', 'bodyweight', 'ride', 'quads glutes', 'hamstrings calves', 'time', 3],
+  ['ride-long', 'Long ride', 'X', 'bodyweight', 'ride', 'quads glutes', 'hamstrings calves', 'time', 3],
+  ['ride-intervals', 'Ride intervals', 'X', 'bodyweight', 'ride', 'quads glutes', 'hamstrings calves', 'time', 3],
+  ['swim-technique', 'Swim technique', 'X', 'bodyweight', 'swim', 'lats', 'front-delts triceps', 'distance', 3],
+  ['swim-intervals', 'Swim intervals', 'X', 'bodyweight', 'swim', 'lats', 'front-delts triceps', 'distance', 3],
+  ['swim-endurance', 'Endurance swim', 'X', 'bodyweight', 'swim', 'lats', 'front-delts triceps', 'distance', 3],
+  ['race-day', 'Race', 'X', 'bodyweight', 'run', 'quads calves', 'hamstrings glutes', 'distance', 4],
+  ['mobility-session', 'Mobility routine', 'X', 'bodyweight', 'mobility', 'hamstrings', 'glutes upper-back', 'time', 3],
   // ---- Warm-ups ----
   ['chest-expansion', 'Chest expansion', 'X', 'bodyweight', 'prehab', 'chest front-delts', 'upper-back', 'time', 2],
   ['scap-squeeze', 'Shoulder blade squeeze', 'X', 'bodyweight', 'prehab', 'upper-back rear-delts', 'traps', 'reps', 2],
