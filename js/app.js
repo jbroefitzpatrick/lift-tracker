@@ -90,6 +90,7 @@ const A = {
   get liftTemplatesFor() { return liftTemplates; },
   todayStrNow: () => todayStr(),
   get peopleOn() { return peopleOn; },
+  get people() { return people; },
   latestBodyweight: () => { const l = [...(db.bodyweight || [])].sort((a, b) => a.date.localeCompare(b.date)); return l.length ? l[l.length - 1].weight : null; },
   get bodyRegion() { return bodyRegion; },
   get cardioHistory() { return cardioHistory; },
@@ -2253,6 +2254,19 @@ const ctx = {
     stopRest();
   },
   swapEntry(uid, newId) { swapInSession(uid, newId); render(); toast(`Swapped to ${db.exercises[newId].name}.`); },
+  tryWorkout(ids, when, name) {
+    if (when === 'now') {
+      if (db.activeSession) return toast('Finish or discard the current workout first.');
+      ui.day = defaultDay(); startSession(ui.day, true);
+      for (const id of ids) addToSession(id);
+      db.activeSession.name = name;
+      persist(); ui.tab = 'today'; window.scrollTo(0, 0); render();
+      return toast(`Started ${name}.`);
+    }
+    ids.forEach((id, n) => addToDraft(when, id, n));
+    persist(); render();
+    toast(`Added ${ids.length} exercises to this ${FULL_DAY[when]}.`);
+  },
   sessionFor: (day) => sessionFor(day),
   focus: () => focusFor(db, blockInfo(db).index) || [],
   helpBtn: () => helpBtn(),

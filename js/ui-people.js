@@ -12,6 +12,10 @@ import { APP_URL } from './ui-train.js';
 import { CONTEST_KINDS, SCORED_KINDS, metricValue } from './big-goal.js';
 import { loadArt } from './equipment.js';
 import { activeGym } from './gym.js';
+import { qrSvg } from './qr.js';
+import { trophyCase, TROPHY, LINES, TIER_WORDS } from './trophies.js';
+import { trophySvg } from './trophy-art.js';
+import { streakInfo } from './streak.js';
 import { accomplishments, activities, activityItems, buildHighlight, highlightHtml, highlightPayload, modesFor, runFields } from './post-highlight.js';
 
 const CACHE = 'lift.social';
@@ -120,7 +124,11 @@ export function createPeople(ctx) {
   }
   const avatar = (id, size = '') => avatarOf(id, id === me() ? myName() : nameOf(id), profOf(id)?.photo, size);
   const cardOf = (id) => data?.cards?.[id] || null;
+  const trainedOn = (id, date) => (id === me() ? (ctx.db.sessions || []).some((s) => s.date === date) : (cardOf(id)?.days || []).includes(date) || (cardOf(id)?.workouts || []).some((w) => w.date === date));
   const fmtPct = (p) => (p == null ? '—' : `${p > 0 ? '+' : ''}${p.toFixed(1)}%`);
+  // A lift on a card: its change over the last 8 weeks (percent) and latest best estimated max.
+  const liftPct = (card, id) => { const pts = card?.lifts?.[id]?.pts || []; const since = addDays(todayStr(), -56); const p = pts.filter(([d]) => d >= since); return p.length >= 2 && p[0][1] ? Math.round((p.at(-1)[1] / p[0][1] - 1) * 1000) / 10 : null; };
+  const liftNow = (card, id) => card?.lifts?.[id]?.pts?.at(-1)?.[1] || null;
   const ago = (d) => { const n = Math.round((Date.parse(todayStr()) - Date.parse(d)) / 86400000); return n <= 0 ? 'today' : n === 1 ? 'yesterday' : `${n} days ago`; };
   const unread = (link) => {
     const seen = ls.get(SEEN, {})[link.id] || 0;
@@ -136,7 +144,7 @@ export function createPeople(ctx) {
     if (v.client && v.edit) return planEditor(v.client);
     if (v.client) return clientScreen(v.client);
     if (!data && !lastError) { refresh(); }
-    const head = `<header class="top">${data ? `<button class="ppl-me" data-a="ppl-friend" data-id="${me()}" aria-label="Your profile">${avatar(me(), 'md')}</button>` : ''}<div class="grow"><h1>People</h1></div><button class="icon-btn" data-a="ppl-invite" aria-label="Add friends">${icon('plus')}</button></header>`;
+    const head = `<header class="top">${data ? `<button class="ppl-me" data-a="ppl-friend" data-id="${me()}" aria-label="Your profile">${avatar(me(), 'md')}</button>` : ''}<div class="grow"><h1>People</h1></div><button class="icon-btn" data-a="ppl-plus" aria-label="Add friends or start a challenge">${icon('plus')}</button></header>`;
     if (!data) return `${head}<p class="muted small pad">${lastError ? esc(lastError) : 'Loading…'}</p>`;
     if (!links().length) {
       return `${head}
@@ -157,7 +165,11 @@ export function createPeople(ctx) {
     return `${head}
       ${todo()}
       ${coachCards()}
-      ${friends().length ? `<div class="ppl-actions"><button class="btn" data-a="ppl-compose">${icon('plus')}Post</button><button class="btn" data-a="ppl-challenge-pick">${icon('up')}Challenge</button></div>` : '<div class="ppl-actions one"><button class="btn" data-a="ppl-compose">${icon(\'plus\')}Post</button></div>'}
+      <button class="compose-row" data-a="ppl-compose">${avatar(me())}<span class="grow">Share a lift, run or photo…</span>${icon('plus')}</button>
+      ${todayStrip()}
+      ${recapCard()}
+      ${togetherList()}
+      ${nudges()}
       ${board()}
       ${contests()}
       ${feed()}
@@ -179,6 +191,15 @@ export function createPeople(ctx) {
       out.push(`<div class="notice-card"><b>${esc(nameOf(c.a))} challenged you</b><p class="small">${esc(contestLabel(c))} over ${c.days === 7 ? 'a week' : `${c.days / 7} weeks`}, starting when you accept.</p>
         <div class="row"><button class="btn primary" data-a="ppl-contest-answer" data-id="${c.id}" data-v="1">Accept</button><button class="btn" data-a="ppl-contest-answer" data-id="${c.id}" data-v="0">Not now</button></div></div>`);
     }
+    for (const c of (data.contests || []).filter((x) => x.b === 'group' && x.status === 'active' && x.members?.some((m) => m.id === me() && m.status === 'pending'))) {
+      const others = c.members.filter((m) => m.id !== me()).map((m) => esc(m.id === c.a ? nameOf(c.a) || m.name : m.name.split(' ')[0]));
+      out.push(`<div class="notice-card"><b>${esc(nameOf(c.a))} started a group challenge</b><p class="small">${esc(contestLabel(c))} over ${c.days === 7 ? 'a week' : `${c.days / 7} weeks`}, with ${others.join(', ')}.</p>
+        <div class="row"><button class="btn primary" data-a="ppl-contest-answer" data-id="${c.id}" data-v="1">Join</button><button class="btn" data-a="ppl-contest-answer" data-id="${c.id}" data-v="0">Not this time</button></div></div>`);
+    }
+    for (const t of (data.together || []).filter((x) => x.status === 'pending' && x.b === me())) {
+      out.push(`<div class="notice-card"><div class="row">${avatar(t.a, 'md')}<div class="grow"><b>${esc(nameOf(t.a))} wants to train together</b><span class="pick-sub">${esc(t.title || 'Training')} · ${esc(ctx.fmtDate(t.date))}${t.time ? ` · ${fmtTime(t.time)}` : ''}${t.place ? ` · ${esc(t.place)}` : ''}</span></div></div>
+        <div class="row"><button class="btn primary" data-a="ppl-tg-answer" data-id="${t.id}" data-v="1">I'm in</button><button class="btn" data-a="ppl-tg-answer" data-id="${t.id}" data-v="0">Can't make it</button></div></div>`);
+    }
     for (const p of (data.proposals || []).filter((x) => x.status === 'pending' && x.client === me())) {
       out.push(`<div class="notice-card"><b>${esc(nameOf(p.coach))} suggested plan changes</b><p class="small">${Object.keys(p.data.days || {}).length} ${Object.keys(p.data.days || {}).length === 1 ? 'day' : 'days'}${p.note ? `: “${esc(p.note.slice(0, 120))}”` : ''}</p>
         <div class="row"><button class="btn primary" data-a="ppl-review" data-id="${p.id}">Review</button></div></div>`);
@@ -194,6 +215,12 @@ export function createPeople(ctx) {
     }).join('');
   }
 
+  function podium(weekly) {
+    const top = weekly.slice(0, 3);
+    const order = [top[1], top[0], top[2]].filter(Boolean);
+    const h = { 1: 86, 2: 62, 3: 46 };
+    return `<div class="podium" aria-label="Top of the week">${order.map((r) => { const n = top.indexOf(r) + 1; return `<div class="pod p${n}">${avatar(r.id, n === 1 ? 'md' : '')}<span class="pod-name">${r.id === me() ? 'You' : esc(nameOf(r.id).split(' ')[0])}</span><span class="pod-pts">${r.pts} pts</span><span class="pod-blk" style="height:${h[n]}px">${n}</span></div>`; }).join('')}</div>`;
+  }
   function board() {
     if (!friends().length) return `<div class="card"><h3>Leaderboard</h3><p class="small muted">Invite a friend to compare weeks and progress.</p><button class="btn block" data-a="ppl-new" data-v="friend">Invite a friend</button></div>`;
     const mode = pv().board;
@@ -216,7 +243,8 @@ export function createPeople(ctx) {
         <button class="${mode !== 'progress' ? 'on' : ''}" data-a="ppl-board" data-v="week" role="tab" aria-selected="${mode !== 'progress'}">This week</button>
         <button class="${mode === 'progress' ? 'on' : ''}" data-a="ppl-board" data-v="progress" role="tab" aria-selected="${mode === 'progress'}">Progress</button>
       </div>
-      <div class="ppl-rows">${rows.join('')}</div>
+      ${mode !== 'progress' && weekly.length >= 2 ? podium(weekly) : ''}
+      <div class="ppl-rows">${rows.slice(mode !== 'progress' && weekly.length >= 2 ? Math.min(3, weekly.length) : 0).join('')}</div>
       <p class="muted small">${mode === 'progress' ? 'Change in estimated strength over about four weeks, so it\'s fair at any level.' : 'Points for workouts, hard sets and cardio. Resets each week. <button class="text-link small-link" data-a="ppl-points">How points work</button>'}</p>
     </section>`;
   }
@@ -231,6 +259,7 @@ export function createPeople(ctx) {
   // Minutes, miles and weight lifted: my own total is worked out here; theirs comes from their phone.
   const myScore = (c, today) => metricValue(ctx.db, c.kind, c.start, [contestEnd(c), today].sort()[0]);
   const scoreOf = (c, id, today) => {
+    if (c.b === 'group' && id !== me()) return c.scores?.[id] ?? 0;
     if (!scored(c)) return contestScore(cardOf(id), c, today)?.value ?? null;
     return id === me() ? myScore(c, today) : (c.scores?.[id] ?? 0);
   };
@@ -240,22 +269,33 @@ export function createPeople(ctx) {
     if (c.kind === 'minutes') return `${Math.round(v).toLocaleString()} min`;
     if (c.kind === 'miles') return `${(Math.round(v * 10) / 10).toLocaleString()} mi`;
     if (c.kind === 'volume') return `${Math.round(toDisp(v)).toLocaleString()} ${wUnit()}`;
+    if (c.kind === 'sets') return `${Math.round(v)} sets`;
+    if (c.kind === 'days') return `${Math.round(v)} ${Math.round(v) === 1 ? 'day' : 'days'}`;
+    if (c.kind === 'cardio') return `${Math.round(v)} min`;
     return fmtPct(v);
   };
   // Report my totals for running challenges, only when they change.
   async function publishScores() {
     if (!on() || !navigator.onLine || !data?.contests) return;
     const today = todayStr(); const scores = {};
-    for (const c of data.contests) if (c.status === 'active' && c.start && scored(c) && addDays(contestEnd(c), 7) >= today) scores[c.id] = myScore(c, today);
+    for (const c of data.contests) if (c.status === 'active' && c.start && addDays(contestEnd(c), 7) >= today) { const v = scored(c) ? myScore(c, today) : contestScore(cardOf(me()), c, today)?.value; if (v != null) scores[c.id] = v; }
     const key = JSON.stringify(scores);
     if (key === '{}' || ls.get('lift.contest.sent', '') === key) return;
     try { await api('/v2/social/contest/score', { scores }, { auth: true }); ls.set('lift.contest.sent', key); } catch {}
   }
   function contests() {
     const today = todayStr();
-    const list = (data.contests || []).filter((c) => (c.status === 'active' && addDays(contestEnd(c), 7) >= today) || (c.status === 'pending' && c.a === me()));
+    const list = (data.contests || []).filter((c) => ((c.status === 'active' && addDays(contestEnd(c), 7) >= today) || (c.status === 'pending' && c.a === me())) && !(c.b === 'group' && c.members?.some((m) => m.id === me() && m.status !== 'in')));
     if (!list.length) return '';
     return `<section class="challenges">${list.map((c) => {
+      if (c.b === 'group') {
+        const end = contestEnd(c); const done = today > end; const left = Math.round((Date.parse(end) - Date.parse(today)) / 86400000) + 1;
+        const ranked = c.members.filter((m) => m.status === 'in').map((m) => ({ ...m, v: scoreOf(c, m.id, today) ?? 0 })).sort((a, b) => b.v - a.v);
+        const top = Math.max(1, ...ranked.map((m) => m.v));
+        return `<div class="contest group"><div class="row between"><b>${esc(contestLabel(c))} · group</b><span class="muted small">${done ? (ranked[0]?.v > 0 ? `${ranked[0].id === me() ? 'You' : esc(ranked[0].name.split(' ')[0])} won` : 'No result') : `${left} ${left === 1 ? 'day' : 'days'} left`}</span></div>
+          <ol class="grp-rank">${ranked.map((m, i) => `<li class="${m.id === me() ? 'me' : ''}"><span class="gr-n">${i + 1}</span><span class="gr-name">${m.id === me() ? 'You' : esc(m.name.split(' ')[0])}</span><span class="gr-bar"><i style="width:${Math.round((m.v / top) * 100)}%"></i></span><b class="num">${esc(fmtScore(c, m.v))}</b></li>`).join('')}</ol>
+          ${c.members.some((m) => m.status === 'pending') ? `<p class="muted small">Waiting on ${c.members.filter((m) => m.status === 'pending').map((m) => esc(m.name.split(' ')[0])).join(', ')}</p>` : ''}</div>`;
+      }
       const other = c.a === me() ? c.b : c.a;
       if (c.status === 'pending') return `<div class="contest"><div class="row between"><b>${esc(contestLabel(c))} · ${esc(nameOf(other))}</b><button class="mini" data-a="ppl-contest-cancel" data-id="${c.id}">Cancel</button></div><p class="muted small">Waiting for ${esc(nameOf(other))} to accept.</p></div>`;
       const end = contestEnd(c);
@@ -264,8 +304,8 @@ export function createPeople(ctx) {
             const fmt = (v) => fmtScore(c, v);
       const left = Math.round((Date.parse(end) - Date.parse(today)) / 86400000) + 1;
       const verdict = done ? (av == null && bv == null ? 'No result' : (av ?? -1e9) > (bv ?? -1e9) ? 'You won' : (av ?? -1e9) < (bv ?? -1e9) ? `${esc(nameOf(other))} won` : 'A tie') : c.start > today ? 'Starts tomorrow' : `${left} ${left === 1 ? 'day' : 'days'} left`;
-      const ax = Math.max(0, av || 0); const bx = Math.max(0, bv || 0); const share = ax + bx > 0 ? Math.round((ax / (ax + bx)) * 100) : 50;
-      return `<div class="contest"><div class="row between"><b>${esc(contestLabel(c))}</b><span class="muted small">${verdict}</span></div><div class="vs-names"><span>You <b class="num">${fmt(av)}</b></span><span><b class="num">${fmt(bv)}</b> ${esc(nameOf(other))}</span></div><div class="vs-bar" role="img" aria-label="You ${fmt(av)}, ${esc(nameOf(other))} ${fmt(bv)}"><i style="width:${share}%"></i></div></div>`;
+      const ax = Math.max(0, av || 0); const bx = Math.max(0, bv || 0); const share = ax + bx > 0 ? Math.round((ax / (ax + bx)) * 100) : 50; const idle = ax + bx === 0;
+      return `<div class="contest${idle ? ' idle' : ''}"><div class="row between"><b>${esc(contestLabel(c))}</b><span class="muted small">${verdict}</span></div><div class="vs-names"><span>You <b class="num">${fmt(av)}</b></span><span><b class="num">${fmt(bv)}</b> ${esc(nameOf(other))}</span></div><div class="vs-bar" role="img" aria-label="You ${fmt(av)}, ${esc(nameOf(other))} ${fmt(bv)}"><i style="width:${share}%"></i></div></div>`;
     }).join('')}</section>`;
   }
 
@@ -303,6 +343,10 @@ export function createPeople(ctx) {
       }
       if (MILESTONES.includes(c.streak) && c.week?.start >= since) items.push({ owner: id, key: `m:${c.week.start}:${c.streak}`, sort: Date.parse(`${c.week.start}T08:00:00`), milestone: c.streak });
     }
+    for (const t of (data.together || []).filter((x) => x.status === 'accepted' && x.date >= since && x.date <= todayStr())) {
+      const both = [t.a, t.b].every((id) => trainedOn(id, t.date));
+      if (both) items.push({ owner: t.a, key: `t:${t.id}`, sort: Date.parse(`${t.date}T21:00:00`), together: t });
+    }
     return items.sort((x, y) => y.sort - x.sort);
   }
   const hlHtml = (hl) => highlightHtml(hl, { esc, wt, wtEst, toDisp, fmtDate: ctx.fmtDate, art: (id, w) => (ctx.db.exercises?.[id] ? loadArt(ctx.db.exercises[id], w, activeGym(ctx.db)) : '') });
@@ -317,10 +361,30 @@ export function createPeople(ctx) {
     const media = (p.media || []).map((m) => (m.kind === 'video'
       ? `<video class="post-media" src="${mediaUrl(p.user.id, m)}" controls playsinline preload="metadata"></video>`
       : `<img class="post-media" src="${mediaUrl(p.user.id, m)}" alt="Photo from ${esc(p.user.name)}" loading="lazy">`)).join('');
+    if (media && (p.media || [])[0]?.kind !== 'video') {
+      const first = p.media[0];
+      const title = p.kind === 'record' ? `${d.name || ''} ${d.weight ? `${wt(d.weight)} × ${d.reps}` : d.pct ? `+${d.pct}%` : ''}` : d.hl?.name || d.name || '';
+      const tag = p.kind === 'record' ? 'New best' : p.kind === 'progress' ? `${d.pct > 0 ? '+' : ''}${d.pct}%` : '';
+      const rest = (p.media || []).slice(1).map((m) => `<img class="post-media" src="${mediaUrl(p.user.id, m)}" alt="Photo from ${esc(p.user.name)}" loading="lazy">`).join('');
+      return `<div class="photo-first"><img src="${mediaUrl(p.user.id, first)}" alt="Photo from ${esc(p.user.name)}" loading="lazy">${title.trim() ? `<div class="pf-over"><b>${esc(title.trim())}</b>${tag ? `<span class="pf-tag">${esc(tag)}</span>` : ''}</div>` : ''}</div>${p.text ? `<p class="post-text">${esc(p.text)}</p>` : ''}${rest ? `<div class="post-media-wrap n${p.media.length - 1}">${rest}</div>` : ''}${p.kind === 'workout' && d.hl ? metric : ''}`;
+    }
     return `${p.text ? `<p class="post-text">${esc(p.text)}</p>` : ''}${metric}${media ? `<div class="post-media-wrap n${(p.media || []).length}">${media}</div>` : ''}`;
   }
-  function workoutBody(w) {
+  // One exercise as a line: weights if they share them, otherwise sets and reps.
+  const exLine = (e, weights) => {
+    const top = e.w ? e.w.reduce((bi, wv, i) => (wv * (1 + e.reps[i] / 30) > e.w[bi] * (1 + e.reps[bi] / 30) ? i : bi), 0) : -1;
+    const what = e.w && e.w[top] ? `${wt(e.w[top])} × ${e.reps[top]}` : `${e.n} × ${Math.max(...e.reps)}`;
+    return `<li><span class="wl-name">${esc(e.name)}</span><span class="wl-val num">${what}${e.best ? ' <b class="wl-best">new best</b>' : ''}</span></li>`;
+  };
+  function workoutBody(w, key, owner) {
     const stats = [w.sets ? [w.sets, w.sets === 1 ? 'set' : 'sets'] : null, w.minutes ? [w.minutes, 'min'] : null, w.bests?.length ? [w.bests.length, w.bests.length === 1 ? 'new best' : 'new bests'] : null].filter(Boolean);
+    if (w.ex?.length) {
+      const lines = [...w.ex].sort((a, b) => (b.best ? 1 : 0) - (a.best ? 1 : 0)).slice(0, 3);
+      return `<button class="post-metric fa-work tap" data-a="ppl-workout" data-o="${owner}" data-i="${esc(key)}"><b>${esc(w.name || 'Workout')}</b>
+        ${stats.length ? `<div class="hl-stats">${stats.map(([v, l]) => `<div><b class="num">${esc(v)}</b><span>${l}</span></div>`).join('')}</div>` : ''}
+        <ul class="work-lines">${lines.map((e) => exLine(e)).join('')}</ul>
+        <span class="work-more">${w.ex.length > 3 ? `${w.ex.length} exercises · see all` : 'See the workout'}${icon('right', 'chev')}</span></button>`;
+    }
     return `<div class="post-metric fa-work"><b>${esc(w.name || 'Workout')}</b>
       ${stats.length ? `<div class="hl-stats">${stats.map(([v, l]) => `<div><b class="num">${esc(v)}</b><span>${l}</span></div>`).join('')}</div>` : ''}
       ${w.bests?.length ? `<div class="fa-bests">${w.bests.slice(0, 3).map((r) => `<span>${esc(r.ex)}${r.pct ? ` <b>+${esc(r.pct)}%</b>` : ''}</span>`).join('')}${w.bests.length > 3 ? `<span>+${w.bests.length - 3} more</span>` : ''}</div>` : ''}
@@ -330,24 +394,27 @@ export function createPeople(ctx) {
     const names = [...who].sort((a, b) => (b.id === me()) - (a.id === me())).map((x) => (x.id === me() ? 'You' : x.name.split(' ')[0]));
     return names.length === 1 ? names[0] : names.length === 2 ? `${names[0]} and ${names[1]}` : `${names[0]} and ${names.length - 1} others`;
   };
-  function feedItem(it) {
+  function feedItem(it, compact = false) {
+    if (compact && it.milestone) return `<p class="fp-mile-line">${icon('up')} ${it.owner === me() ? 'You' : esc(nameOf(it.owner).split(' ')[0])} hit ${[8, 11, 18].includes(it.milestone) || String(it.milestone).startsWith('8') ? 'an' : 'a'} ${it.milestone}-week streak</p>`;
     const who = data.cheers?.[`${it.owner}:${it.key}`] || [];
     const liked = who.some((x) => x.id === me());
     const notes = (data.comments || []).filter((c) => c.owner === it.owner && c.item === it.key);
     const last = notes[notes.length - 1];
     const p = it.post;
     const to = p?.audience === 'one' ? (p.user.id === me() ? ` · to ${esc(nameOf(p.to))}` : ' · to you') : '';
-    const body = p ? postBody(p) : it.workout ? workoutBody(it.workout)
+    const body = p ? postBody(p) : it.workout ? workoutBody(it.workout, it.key, it.owner)
+      : it.together ? `<div class="post-metric fa-together"><span class="pm-label">Trained together</span><b>${esc([it.together.a, it.together.b].map((id) => (id === me() ? 'You' : nameOf(id).split(' ')[0])).join(' and '))}</b><span class="pm-sub">${esc(it.together.title || 'Training')}${it.together.place ? ` · ${esc(it.together.place)}` : ''}</span></div>`
       : it.milestone ? `<div class="post-metric fa-mile"><span class="pm-label">Streak</span><b class="num">${it.milestone} weeks</b><span class="pm-sub">Hit the weekly goal ${it.milestone} weeks in a row</span></div>` : '';
     const attrs = `data-o="${it.owner}" data-i="${esc(it.key)}"`;
-    return `<article class="feed-post" ${attrs}>
-      <div class="fp-head">${avatar(it.owner)}<div class="grow"><b>${esc(it.owner === me() ? 'You' : nameOf(it.owner))}</b><span class="pick-sub">${p ? when(p.created) : when(todayStr(new Date(it.sort)))}${to}</span></div>
+    return `<article class="feed-post${compact ? ' compact' : ''}" ${attrs}>
+      ${compact ? `<p class="fp-date">${p ? when(p.created) : when(todayStr(new Date(it.sort)))}</p>` : ''}<div class="fp-head"${compact ? ' hidden' : ''}>${avatar(it.owner)}<div class="grow fp-line"><b>${esc(it.owner === me() ? 'You' : nameOf(it.owner))}</b><button class="fp-time" data-a="ppl-when" data-t="${p ? p.created : it.sort}">${p ? when(p.created) : when(todayStr(new Date(it.sort)))}</button>${to ? `<span class="fp-time">${to.replace(/^ · /, '')}</span>` : ''}</div>
         ${it.owner !== me() ? `<button class="fp-more" data-a="ppl-person-menu" data-id="${it.owner}" ${p ? `data-post="${p.id}"` : ''} aria-label="More options">${icon('more')}</button>` : p ? `<button class="fp-more" data-a="ppl-post-del" data-id="${p.id}" aria-label="Delete post">${icon('trash')}</button>` : ''}</div>
       ${body}
       ${who.length ? `<button class="fp-who" data-a="ppl-who" ${attrs}><span class="fp-faces" aria-hidden="true">${who.slice(0, 3).map((x) => avatar(x.id)).join('')}</span><span>${esc(whoText(who))} gave big ups</span></button>` : ''}
       ${last ? `<button class="fp-last" data-a="ppl-comments" ${attrs}><b>${esc(last.user.id === me() ? 'You' : last.user.name.split(' ')[0])}</b> ${esc(last.text.slice(0, 90))}${notes.length > 1 ? `<span>View all ${notes.length}</span>` : ''}</button>` : ''}
+      ${!compact && it.owner !== me() && !notes.some((n) => n.user.id === me()) ? `<div class="fp-quick" role="group" aria-label="Quick reply">${(it.workout?.bests?.length || p?.kind === 'record' ? ['Huge PR', 'Strong', 'Let\'s go'] : ['Strong', 'Let\'s go', 'Nice work']).map((q) => `<button data-a="ppl-quick-feed" ${attrs} data-v="${q}">${q}</button>`).join('')}</div>` : ''}
       <div class="fp-actions">
-        <button class="fp-btn ${liked ? 'on' : ''}" data-a="ppl-cheer" ${attrs} aria-pressed="${liked}">${icon('up')}${liked ? 'Big ups given' : 'Big ups'}</button>
+        ${it.owner === me() ? '' : `<button class="fp-btn ${liked ? 'on' : ''}${pv().burst === `${it.owner}:${it.key}` ? ' burst' : ''}" data-a="ppl-cheer" ${attrs} aria-pressed="${liked}">${icon('up')}${liked ? 'Big ups given' : 'Big ups'}${who.length ? ` · ${who.length}` : ''}</button>`}
         <button class="fp-btn" data-a="ppl-comments" ${attrs}>${icon('note')}Comment${notes.length ? ` · ${notes.length}` : ''}</button>
       </div>
     </article>`;
@@ -379,6 +446,117 @@ export function createPeople(ctx) {
     const names = people.length === 1 ? people[0].name.split(' ')[0] : people.length === 2 ? `${people[0].name.split(' ')[0]} and ${people[1].name.split(' ')[0]}` : `${people[0].name.split(' ')[0]} and ${people.length - 1} others`;
     return `<button class="fp-digest" data-a="ppl-digest"><span class="fp-faces" aria-hidden="true">${people.slice(0, 3).map((u) => avatar(u.id)).join('')}</span><span class="grow"><b>${esc(names)}</b> cheered you on</span>${icon('right', 'chev')}</button>`;
   }
+  // Who trained today: everyone's week as a ring (planned days done), a check if they trained today.
+  function todayStrip() {
+    const today = todayStr();
+    const ids = [me(), ...friends().map((l) => l.user.id)];
+    if (ids.length < 2) return '';
+    const rows = ids.map((id) => {
+      const c = cardOf(id); const w = weekOf(c);
+      const planned = w.planned || 4; const done = Math.min(planned, w.done ?? w.workouts ?? 0);
+      const trained = trainedOn(id, today);
+      return { id, p: done / planned, trained };
+    }).sort((a, b) => (b.trained - a.trained) || (b.p - a.p));
+    return `<div class="today-strip" aria-label="Who trained today">${rows.map((r) => `<button class="ts-one${r.trained ? ' done' : ''}" data-a="ppl-friend" data-id="${r.id}" aria-label="${esc(r.id === me() ? 'You' : nameOf(r.id))}: ${Math.round(r.p * 100)}% of the week${r.trained ? ', trained today' : ''}">
+      <span class="ts-ring"><svg viewBox="0 0 52 52" aria-hidden="true"><circle cx="26" cy="26" r="23.5" fill="none" stroke="var(--line)" stroke-width="3.5"/><circle cx="26" cy="26" r="23.5" fill="none" stroke="${r.p >= 1 ? 'var(--good)' : 'var(--ember)'}" stroke-width="3.5" stroke-linecap="round" stroke-dasharray="147.6" stroke-dashoffset="${(147.6 * (1 - r.p)).toFixed(1)}" transform="rotate(-90 26 26)"/></svg>${avatar(r.id)}</span>
+      <span class="ts-name">${r.id === me() ? 'You' : esc(nameOf(r.id).split(' ')[0])}</span><span class="ts-tag">${r.trained ? 'Today' : ''}</span></button>`).join('')}</div>`;
+  }
+
+  // Monday to Wednesday: last week in one card, ranked among friends, shareable as an image.
+  function lastWeekRank() {
+    const ids = [me(), ...friends().map((l) => l.user.id)];
+    const pts = ids.map((id) => { const p = cardOf(id)?.prev; return { id, v: p ? weekPoints({ workouts: p.workouts, sets: p.sets, cardioMin: p.cardioMin }).total : 0 }; }).sort((a, b) => b.v - a.v);
+    return { place: pts.findIndex((p) => p.id === me()) + 1, of: ids.length };
+  }
+  function recapCard() {
+    const p = cardOf(me())?.prev;
+    const dow = (new Date().getDay() + 6) % 7;
+    if (!p || !p.workouts || dow > 2 || ls.get('lift.recapSeen', '') === p.start) return '';
+    const r = lastWeekRank();
+    const nth = (n) => `${n}${['th', 'st', 'nd', 'rd'][n % 10 > 3 || [11, 12, 13].includes(n % 100) ? 0 : n % 10]}`;
+    const range = `${ctx.fmtDate(p.start).replace(/^\w+,\s*/, '')} to ${ctx.fmtDate(addDays(p.start, 6)).replace(/^\w+,\s*/, '')}`;
+    return `<section class="recap-card"><button class="rc-x" data-a="ppl-recap-hide" data-v="${p.start}" aria-label="Hide">${icon('x')}</button>
+      <span class="rc-label">Your week · ${esc(range)}</span><b class="rc-big">${p.workouts} ${p.workouts === 1 ? 'workout' : 'workouts'}</b>
+      <div class="rc-row"><div><b>${p.sets}</b><span>hard sets</span></div><div><b>${Math.floor(p.minutes / 60)}h ${p.minutes % 60}m</b><span>training</span></div>${r.of > 1 ? `<div><b>${nth(r.place)}</b><span>of ${r.of} friends</span></div>` : ''}</div>
+      ${p.best ? `<p class="rc-best">Best: <b>${esc(p.best.ex)}</b>${p.best.pct ? `, new best +${esc(p.best.pct)}%` : ''}</p>` : ''}
+      <button class="btn block rc-share" data-a="ppl-recap-share">Share as an image</button></section>`;
+  }
+  // The recap as a 1080 × 1350 image, for Instagram, Messages and the like.
+  async function recapImage() {
+    const p = cardOf(me())?.prev; if (!p) return null;
+    const r = lastWeekRank();
+    const c = document.createElement('canvas'); c.width = 1080; c.height = 1350;
+    const g = c.getContext('2d');
+    const grad = g.createLinearGradient(0, 0, 1080, 1350); grad.addColorStop(0, '#1f5fbf'); grad.addColorStop(0.6, '#14306a'); grad.addColorStop(1, '#1a1b1e');
+    g.fillStyle = grad; g.fillRect(0, 0, 1080, 1350);
+    try { await document.fonts?.load('900 120px Archivo'); } catch {}
+    const font = (w, s) => `${w} ${s}px Archivo, Arial, sans-serif`;
+    g.fillStyle = '#c9d6ee'; g.font = font(800, 40); g.fillText(`MY WEEK · ${p.start}`, 90, 170);
+    g.fillStyle = '#ffffff'; g.font = font(900, 170); g.fillText(`${p.workouts}`, 90, 380); g.font = font(800, 70); g.fillText(p.workouts === 1 ? 'workout' : 'workouts', 90, 470);
+    const stat = (x, v, l) => { g.fillStyle = '#ffffff'; g.font = font(900, 84); g.fillText(v, x, 700); g.fillStyle = '#c9d6ee'; g.font = font(700, 36); g.fillText(l, x, 750); };
+    stat(90, String(p.sets), 'hard sets'); stat(430, `${Math.floor(p.minutes / 60)}h ${p.minutes % 60}m`, 'training'); if (r.of > 1) stat(790, `#${r.place}`, `of ${r.of} friends`);
+    if (p.best) { g.fillStyle = 'rgba(0,0,0,0.28)'; g.fillRect(90, 860, 900, 170); g.fillStyle = '#c9d6ee'; g.font = font(700, 36); g.fillText('BEST LIFT', 130, 920); g.fillStyle = '#ffffff'; g.font = font(900, 60); g.fillText(`${p.best.ex}${p.best.pct ? `  +${p.best.pct}%` : ''}`.slice(0, 26), 130, 995); }
+    g.fillStyle = '#f2c21b'; g.fillRect(90, 1180, 120, 10); g.fillStyle = '#ffffff'; g.font = font(900, 48); g.fillText('ProFitz', 90, 1260);
+    return new Promise((res) => c.toBlob((b) => res(b), 'image/png'));
+  }
+
+  // Training together: plans with friends, and invitations to answer.
+  function togetherList() {
+    const today = todayStr();
+    const list = (data.together || []).filter((t) => t.date >= today && (t.status === 'accepted' || t.a === me()));
+    if (!list.length) return '';
+    return `<div class="list-group together">${list.map((t) => { const other = t.a === me() ? t.b : t.a; return `<div class="list-row">${avatar(other)}<span class="grow"><b>${esc(t.title || 'Training')} with ${esc(nameOf(other).split(' ')[0])}</b><span class="pick-sub">${esc(ctx.fmtDate(t.date))}${t.time ? ` · ${fmtTime(t.time)}` : ''}${t.place ? ` · ${esc(t.place)}` : ''} · ${t.status === 'accepted' ? 'Confirmed' : 'Waiting'}</span></span><button class="mini" data-a="ppl-tg-cancel" data-id="${t.id}">${t.a === me() && t.status === 'pending' ? 'Cancel' : "Can't make it"}</button></div>`; }).join('')}</div>`;
+  }
+  const fmtTime = (hm) => { const [h, m] = hm.split(':').map(Number); return new Date(2000, 0, 1, h, m).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }); };
+  function togetherSheet(id) {
+    const tg = pv().tg ||= { id, date: addDays(todayStr(), 1), time: '18:00', title: '', place: activeGym(ctx.db)?.name || '' };
+    tg.id = id;
+    const days = Array.from({ length: 10 }, (_, i) => addDays(todayStr(), i));
+    const titles = [...new Set(Object.values(ctx.db.plan || {}).map((p) => p?.name).filter(Boolean))].slice(0, 6);
+    ctx.openSheet(`<h2>Train together</h2><p class="muted small">Invite ${esc(nameOf(id).split(' ')[0])} to a session. It shows on both your Train screens.</p>
+      <div class="field"><span>Day</span><div class="chips wrap">${days.map((d) => `<button class="chip ${tg.date === d ? 'on' : ''}" data-a="ppl-tg-set" data-k="date" data-v="${d}">${d === todayStr() ? 'Today' : ctx.fmtDate(d).replace(/,.*$/, '').slice(0, 3)} ${Number(d.slice(8))}</button>`).join('')}</div></div>
+      <label class="field"><span>Time</span><input id="tg-time" type="time" value="${esc(tg.time)}"></label>
+      <div class="field"><span>What</span><div class="chips wrap">${['', ...titles].map((t) => `<button class="chip ${tg.title === t ? 'on' : ''}" data-a="ppl-tg-set" data-k="title" data-v="${esc(t)}">${t ? esc(t) : 'Anything'}</button>`).join('')}</div></div>
+      <label class="field"><span>Where</span><input id="tg-place" type="text" maxlength="60" value="${esc(tg.place)}" placeholder="Optional"></label>
+      <button class="btn primary block" data-a="ppl-tg-send">Send invite</button>`);
+  }
+  // On Train: a plan for that day.
+  function togetherBanner(date) {
+    const t = (data?.together || []).find((x) => x.date === date && x.status === 'accepted');
+    if (!t) return '';
+    const other = t.a === me() ? t.b : t.a;
+    return `<div class="slim-banner together-banner">${avatar(other)}<span class="grow">Training with <b>${esc(nameOf(other).split(' ')[0])}</b>${t.time ? ` at ${fmtTime(t.time)}` : ''}${t.place ? ` · ${esc(t.place)}` : ''}</span></div>`;
+  }
+
+  function nudges() {
+    const since = addDays(todayStr(), -3);
+    const out = [];
+    for (const l of friends()) {
+      const c = cardOf(l.user.id);
+      for (const r of (c?.records || []).filter((r) => r.date >= since).slice(0, 1)) {
+        const w = (c.workouts || []).find((x) => String(r.id).startsWith(`${x.id}:`));
+        const key = w ? `w:${w.id}` : `r:${r.id}`;
+        if ((data.cheers?.[`${l.user.id}:${key}`] || []).some((u) => u.id === me())) continue;
+        out.push(`<div class="fp-nudge">${avatar(l.user.id)}<span class="grow"><b>${esc(l.user.name.split(' ')[0])}</b> hit a new best on ${esc(r.ex)}${r.pct ? ` <span class="up">+${esc(r.pct)}%</span>` : ''}</span><button class="btn sm" data-a="ppl-cheer" data-o="${l.user.id}" data-i="${esc(key)}" aria-pressed="false">${icon('up')}Big ups</button></div>`);
+      }
+    }
+    return out.slice(0, 2).join('');
+  }
+
+  // A friend's workout in full, with a way to do it yourself.
+  function workoutSheet(owner, key) {
+    const w = (cardOf(owner)?.workouts || []).find((x) => `w:${x.id}` === key);
+    if (!w) return;
+    const rows = (w.ex || []).map((e) => `<div class="past-ex open"><b>${esc(e.name)}${e.best ? ' <span class="wl-best">new best</span>' : ''}</b><ol class="past-sets">${e.reps.map((r, i) => `<li><span class="ps-no">${i + 1}</span><span class="ps-val tnum">${e.w ? `${wt(e.w[i])} × ${r}` : `${r} reps`}</span><span class="ps-note"></span></li>`).join('')}</ol></div>`).join('');
+    const known = (w.ex || []).filter((e) => ctx.db.exercises[e.id]);
+    ctx.openSheet(`<h2>${esc(w.name || 'Workout')}</h2><p class="muted small">${owner === me() ? 'You' : esc(nameOf(owner))} · ${ctx.fmtDate(w.date)}${w.minutes ? ` · ${w.minutes} min` : ''}${w.sets ? ` · ${w.sets} sets` : ''}</p>
+      ${rows}
+      ${owner !== me() && known.length ? `<h3 class="sheet-h">Try this workout</h3>
+        <button class="btn primary block" data-a="ppl-try" data-o="${owner}" data-i="${esc(key)}" data-v="now">Start it now</button>
+        <div class="field"><span>Or add it to a day this week</span><div class="chips wrap">${weekOrder().map((d) => `<button class="chip" data-a="ppl-try" data-o="${owner}" data-i="${esc(key)}" data-v="${d}">${d.slice(0, 1).toUpperCase() + d.slice(1, 3)}</button>`).join('')}</div></div>
+        <p class="muted small">Your own targets set the weights.</p>` : ''}`);
+  }
+
   function feed() {
     const items = feedItems();
     const n = pv().feedN || 8;
@@ -386,13 +564,109 @@ export function createPeople(ctx) {
     const today = todayStr();
     const label = (t) => { const d = Math.round((Date.parse(today) - Date.parse(todayStr(new Date(t)))) / 86400000); return d <= 0 ? 'Today' : d === 1 ? 'Yesterday' : d < 7 ? 'This week' : 'Earlier'; };
     let last = '';
-    const rows = shown.map((it) => { const l = label(it.sort); const head = l !== last ? `<h3 class="feed-day">${l}</h3>` : ''; last = l; return head + feedItem(it); }).join('');
+    // Streak milestones in a day group fold into one line, with big ups for each person.
+    const miles = {};
+    for (const it of shown) if (it.milestone) (miles[label(it.sort)] ||= []).push(it);
+    const milesLine = (list) => `<div class="fp-miles">${icon('up')}<span class="grow">${list.map((it) => { const cheered = (data.cheers?.[`${it.owner}:${it.key}`] || []).some((u) => u.id === me()); return `<span class="fm-one"><b>${it.owner === me() ? 'You' : esc(nameOf(it.owner).split(' ')[0])}</b> hit ${[8, 11, 18].includes(it.milestone) || String(it.milestone).startsWith('8') ? 'an' : 'a'} ${it.milestone}-week streak${it.owner === me() ? '' : ` <button class="fm-up ${cheered ? 'on' : ''}" data-a="ppl-cheer" data-o="${it.owner}" data-i="${esc(it.key)}" aria-pressed="${cheered}" aria-label="Big ups to ${esc(nameOf(it.owner))}">${cheered ? 'Big ups given' : 'Big ups'}</button>`}</span>`; }).join('')}</span></div>`;
+    const rows = shown.map((it) => {
+      const l = label(it.sort);
+      const head = l !== last ? `<h3 class="feed-day">${l}</h3>${miles[l] ? milesLine(miles[l]) : ''}` : '';
+      last = l;
+      return head + (it.milestone ? '' : feedItem(it));
+    }).join('');
     return `${digestRow()}<section class="feed-card flat">
       ${items.length ? rows : '<div class="feed-empty"><p class="muted small">Nothing yet. Share a lift, a run or a photo to get things going.</p><button class="btn" data-a="ppl-compose">Share something</button></div>'}
       ${items.length > n ? '<button class="btn plain block" data-a="ppl-more">Show earlier</button>' : items.length ? '<p class="feed-end">You\'re all caught up</p>' : ''}</section>`;
   }
 
   // ---------- A person's profile: their week, strength, records and posts ----------
+  // Head to head: progress on lifts you both do (percent, so it's fair at any level; weights too if
+  // you both share them), the last four weeks' workouts, and your challenge record together.
+  function headToHead(id) {
+    const a = cardOf(me()); const b = cardOf(id);
+    if (!a || !b) return '';
+    const both = Object.keys(a.lifts || {}).filter((k) => b.lifts?.[k]).map((k) => ({ k, name: a.lifts[k].name, pa: liftPct(a, k), pb: liftPct(b, k), na: liftNow(a, k), nb: liftNow(b, k) }))
+      .filter((r) => r.pa != null || r.pb != null).sort((x, y) => (y.na || 0) - (x.na || 0)).slice(0, 4);
+    const weights = a.weights && b.weights;
+    const since = addDays(todayStr(), -28);
+    const wa = new Set((a.days || []).filter((d) => d >= since)).size; const wb = new Set((b.days || []).filter((d) => d >= since)).size;
+    let won = 0; let lost = 0; let tied = 0;
+    const today = todayStr();
+    for (const c of (data.contests || []).filter((x) => x.b !== 'group' && ((x.a === me() && x.b === id) || (x.b === me() && x.a === id)) && x.start && contestEnd(x) < today)) {
+      const av = scoreOf(c, me(), today); const bv = scoreOf(c, id, today);
+      if (av == null && bv == null) continue;
+      if ((av ?? -1e9) > (bv ?? -1e9)) won++; else if ((av ?? -1e9) < (bv ?? -1e9)) lost++; else tied++;
+    }
+    const first = esc(nameOf(id).split(' ')[0]);
+    const cell = (v, other, f) => `<b class="num ${v != null && (other == null || v > other) ? 'lead' : ''}">${f(v)}</b>`;
+    const pct = (v) => (v == null ? '—' : `${v > 0 ? '+' : ''}${v}%`);
+    return `<section class="card h2h"><div class="row between"><h3>You vs ${first}</h3>${won + lost + tied ? `<span class="h2h-rec">Challenges ${won}–${lost}${tied ? `–${tied}` : ''}</span>` : ''}</div>
+      <div class="h2h-row head"><span></span><span>You</span><span>${first}</span></div>
+      <div class="h2h-row"><span>Workouts, 4 weeks</span>${cell(wa, wb, String)}${cell(wb, wa, String)}</div>
+      <div class="h2h-row"><span>Week streak</span>${cell(a.streak || 0, b.streak || 0, String)}${cell(b.streak || 0, a.streak || 0, String)}</div>
+      ${both.map((r) => `<div class="h2h-row"><span>${esc(r.name)}${weights && r.na && r.nb ? `<small>${wtEst(r.na)} vs ${wtEst(r.nb)}</small>` : '<small>change in 8 weeks</small>'}</span>${cell(r.pa, r.pb, pct)}${cell(r.pb, r.pa, pct)}</div>`).join('')}
+      ${both.length ? '' : '<p class="muted small">Log a lift you both do and it shows up here.</p>'}
+      <div class="row"><button class="btn grow" data-a="ppl-challenge" data-id="${id}">Challenge ${first}</button><button class="btn grow" data-a="ppl-tg" data-id="${id}">Train together</button></div></section>`;
+  }
+  // Trophies: a laurel for the streak, plates for strength and workouts, medals for runs and races.
+  // The shelf shows the best of each line; the sheet shows every step, locked ones dimmed.
+  const trophiesOf = (id) => (id === me() ? trophyCase(ctx.db).got : (cardOf(id)?.trophies || [])).filter((t) => TROPHY[t.id]);
+  const artOf = (g, size) => `<span class="tro-wrap${g.date && g.date >= addDays(todayStr(), -3) ? ' fresh' : ''}">${trophySvg(TROPHY[g.id], size)}</span>`;
+  function trophyShelf(id) {
+    const got = trophiesOf(id);
+    const mine = id === me();
+    if (!got.length && !mine) return '';
+    // The top step reached in each line.
+    const top = {};
+    for (const g of got) { const t = TROPHY[g.id]; if (!top[t.line] || t.at > TROPHY[top[t.line].id].at) top[t.line] = g; }
+    const of = (shape) => Object.values(top).filter((g) => TROPHY[g.id].shape === shape).sort((p, q) => TROPHY[q.id].tier - TROPHY[p.id].tier || q.date.localeCompare(p.date));
+    const laurel = of('laurel')[0];
+    const plates = of('plate'); const medals = of('medal');
+    const now = mine ? streakInfo(ctx.db).current : cardOf(id)?.streak || 0;
+    const item = (g) => `<button class="tro" data-a="ppl-trophies" data-id="${id}">${artOf(g, 54)}<span>${esc(TROPHY[g.id].name)}</span></button>`;
+    const next = mine ? Object.values(trophyCase(ctx.db).next).sort((p, q) => q.pct - p.pct)[0] : null;
+    return `<section class="card trophy-shelf"><div class="row between"><h3>Trophies</h3><button class="link-btn" data-a="ppl-trophies" data-id="${id}">${got.length ? `All ${got.length}` : 'See them'}</button></div>
+      ${laurel ? `<button class="tro-streak" data-a="ppl-trophies" data-id="${id}">${artOf(laurel, 64)}<span class="grow"><b>${esc(TROPHY[laurel.id].name)}</b><span class="pick-sub">${now >= TROPHY[laurel.id].at ? `Holding it · ${now} weeks now` : `Earned ${esc(ctx.fmtDate(laurel.date))}`}</span></span></button>` : ''}
+      ${plates.length ? `<div class="tro-group"><span class="tro-label">Strength and workouts</span><div class="tro-rack">${plates.map(item).join('')}</div></div>` : ''}
+      ${medals.length ? `<div class="tro-group"><span class="tro-label">Runs and races</span><div class="tro-row">${medals.map(item).join('')}</div></div>` : ''}
+      ${!got.length ? '<p class="muted small">Your first workout earns the first one.</p>' : ''}
+      ${next ? `<div class="tro-next"><span class="grow">Next: <b>${esc(next.name)}</b></span><span class="muted small">${(Math.round(next.now * 10) / 10).toLocaleString()} of ${next.at.toLocaleString()}</span></div><div class="tro-bar"><i style="width:${Math.round(next.pct * 100)}%"></i></div>` : ''}</section>`;
+  }
+  function trophySheet(id) {
+    const mine = id === me();
+    const got = new Map(trophiesOf(id).map((g) => [g.id, g.date]));
+    const tc = mine ? trophyCase(ctx.db) : null;
+    ctx.openSheet(`<h2>Trophies${mine ? '' : ` · ${esc(nameOf(id).split(' ')[0])}`}</h2>${Object.entries(LINES).map(([line, L]) => {
+      const steps = L.steps.filter(([sid]) => mine || got.has(sid));
+      if (!steps.length) return '';
+      return `<h3 class="sheet-h">${esc(L.name)}</h3><div class="tro-grid">${steps.map(([sid]) => { const t = TROPHY[sid]; const d = got.get(sid); return `<div class="tro-cell${d ? '' : ' locked'}">${artOf({ id: sid, date: d }, 52)}<b>${esc(t.name)}</b><span>${d ? ctx.fmtDate(d) : `${(Math.round((tc?.progress[line] || 0) * 10) / 10).toLocaleString()} of ${t.at.toLocaleString()}`}</span></div>`; }).join('')}</div>`;
+    }).join('')}
+    <h3 class="sheet-h">How the colors work</h3>
+    <div class="tro-key">${[1, 2, 3, 4, 5].map((n) => `<div>${trophySvg({ shape: 'plate', tier: n, label: '', unit: '' }, 30)}${trophySvg({ shape: 'medal', tier: n, label: '', unit: '' }, 30)}<span>${TIER_WORDS[n]}</span></div>`).join('')}</div>
+    <p class="muted small">The harder a trophy is to earn, the higher its color, on one scale for every kind. Plates go white, green, yellow, blue, red, like competition plates. Medals and wreaths go bronze, silver, gold, platinum, then gold with red for the rarest.</p>`);
+  }
+  // Strength at a glance: the biggest movers and latest records, shown when there are any.
+  function strengthBlock(c) {
+    const lifts = Object.keys(c?.lifts || {}).map((k) => ({ name: c.lifts[k].name, pct: liftPct(c, k), now: liftNow(c, k) })).filter((l) => l.pct != null).sort((x, y) => (y.now || 0) - (x.now || 0)).slice(0, 3);
+    const recs = (c?.records || []).slice(0, 3);
+    if (!lifts.length && !recs.length) return '';
+    return `<section class="card strength-glance"><h3>Strength</h3>
+      ${lifts.map((l) => `<div class="kv"><span>${esc(l.name)}</span><b class="${l.pct >= 0 ? 'up' : 'down'}">${l.pct > 0 ? '+' : ''}${l.pct}%<small> in 8 weeks</small></b></div>`).join('')}
+      ${recs.length ? `<p class="small sg-recs"><b>Recent bests:</b> ${recs.map((r) => `${esc(r.ex)}${r.pct ? ` +${esc(r.pct)}%` : ''}`).join(' · ')}</p>` : ''}</section>`;
+  }
+  // Activity on a profile, grouped by week, without repeating the person on every card.
+  function byWeek(items) {
+    const mon = mondayOf(todayStr());
+    let last = '';
+    return items.map((it) => {
+      const d = it.post ? todayStr(new Date(it.post.created)) : todayStr(new Date(it.sort));
+      const l = d >= mon ? 'This week' : d >= addDays(mon, -7) ? 'Last week' : 'Earlier';
+      const head = l !== last ? `<h3 class="feed-day">${l}</h3>` : '';
+      last = l;
+      return head + feedItem(it, true);
+    }).join('');
+  }
+
   function profileScreen(id) {
     const mine = id === me();
     const l = friends().find((x) => x.user.id === id);
@@ -407,19 +681,21 @@ export function createPeople(ctx) {
         ${meta ? `<p class="muted small">${meta}</p>` : ''}
       </div></section>
       ${mine ? `<div class="row profile-actions"><button class="btn grow" data-a="ppl-edit-profile">Edit profile</button>${pr?.handle ? '<button class="btn grow" data-a="ppl-share-profile">Share profile</button>' : ''}</div>
-        ${pr?.handle ? '' : '<p class="muted small">Add a photo and a username so friends can find you.</p>'}` : ''}`;
+        ${pr?.handle && pr?.photo ? '' : `<p class="muted small">${pr?.handle ? 'Add a photo so friends recognize you.' : 'Add a photo and a username so friends can find you.'}</p>`}` : ''}`;
     const c = cardOf(id); const w = weekOf(c); const pts = weekPoints(w); const p = progressOf(c);
     const items = feedItems().filter((it) => it.owner === id);
     const records = (c?.records || []).slice(0, 6);
     return `${head}
       ${intro}
-      <div class="pstats"><div><b class="num">${w.workouts ?? w.done}</b><small>This week</small></div><div><b class="num">${c?.streak || 0}</b><small>Week streak</small></div><div><b class="num">${pts.total}</b><small>Points</small></div></div>
-      ${records[0] ? `<div class="post-metric"><span class="pm-label">Latest best · ${ctx.fmtDate(records[0].date)}</span><b>${esc(records[0].ex)}</b>${records[0].pct ? `<span class="pm-sub">Up ${records[0].pct}%</span>` : ''}</div>` : ''}
-      ${mine ? '<button class="btn primary block" data-a="ppl-compose">Share something</button>' : `<button class="btn primary block" data-a="ppl-challenge" data-id="${id}">Challenge ${esc(nameOf(id))}</button>`}
-      <details class="profile-more"><summary>Strength and records</summary>
+      <div class="pstats"><div><b class="num">${w.workouts ?? w.done}</b><small>This week</small></div><div><b class="num">${c?.month ?? (c?.days || []).filter((d) => d.slice(0, 7) === todayStr().slice(0, 7)).length}</b><small>This month</small></div><div><b class="num">${c?.streak || 0}</b><small>Week streak</small></div></div>
+      ${mine ? '<button class="btn primary block" data-a="ppl-compose">Share something</button>' : cardOf(me()) && c ? '' : `<button class="btn primary block" data-a="ppl-challenge" data-id="${id}">Challenge ${esc(nameOf(id))}</button>`}
+      ${mine ? '' : headToHead(id)}
+      ${strengthBlock(c)}
+      ${trophyShelf(id)}
+      <details class="profile-more" hidden><summary>Strength and records</summary>
         <div class="kv-list"><div class="kv"><span>Strength change, 4 weeks</span><b class="${(p.pct ?? 0) >= 0 ? 'up' : 'down'}">${fmtPct(p.pct)}</b></div>${w.cardioMin ? `<div class="kv"><span>Cardio this week</span><b>${w.cardioMin} min</b></div>` : ''}<div class="kv"><span>Hard sets this week</span><b>${w.sets}</b></div>${p.lifts.slice(0, 6).map((x) => `<div class="kv"><span>${esc(x.name)}</span><b>${fmtPct(x.pct)}</b></div>`).join('')}${records.map((r) => `<div class="kv"><span>${esc(r.ex)} · ${ctx.fmtDate(r.date)}</span><b>${r.pct ? `+${r.pct}%` : 'New'}</b></div>`).join('')}</div>
       </details>
-      <h2 class="group-title">Posts and activity</h2><section class="feed-card flat">${items.length ? items.slice(0, 20).map(feedItem).join('') : '<p class="muted small">Nothing in the last two weeks.</p>'}</section>
+      <h2 class="group-title">Activity</h2><section class="feed-card flat">${items.length ? byWeek(items.slice(0, 20)) : '<p class="muted small">Nothing in the last two weeks.</p>'}</section>
       ${mine ? '' : `<button class="btn plain block" data-a="ppl-person-menu" data-id="${id}">More</button>`}
       ${mine && data.blocked?.length ? `<div class="list-group"><button class="list-row" data-a="ppl-blocked"><span class="grow"><b>Blocked people</b><span class="pick-sub">${data.blocked.length}</span></span>${icon('right', 'chev')}</button></div>` : ''}`;
   }
@@ -445,6 +721,7 @@ export function createPeople(ctx) {
     const list = (data.cheers[key] ||= []);
     if (on === list.some((x) => x.id === me())) return;
     if (on) list.push({ id: me(), name: 'You' }); else data.cheers[key] = list.filter((x) => x.id !== me());
+    if (on) { pv().burst = key; setTimeout(() => { if (pv().burst === key) pv().burst = null; }, 900); }
     ctx.haptic(); ctx.render();
     try { await api('/v2/social/cheer', { owner, item, on }, { auth: true }); } catch (e) { ctx.toast(e.message); refresh(); }
   }
@@ -657,12 +934,14 @@ export function createPeople(ctx) {
       <label class="field"><span>Gym</span><input id="pp-gym" type="text" maxlength="40" value="${esc(e.gym)}" placeholder="Optional"></label>
       <div class="field"><span>Training for</span><div class="chips wrap">${['', ...Object.keys(GOAL_LABELS)].map((k) => `<button class="chip ${e.goal === k ? 'on' : ''}" data-a="ppl-pp-goal" data-v="${k}">${k ? GOAL_LABELS[k] : 'Not shown'}</button>`).join('')}</div></div>
       <label class="toggle"><input type="checkbox" id="pp-find" ${e.findable !== false ? 'checked' : ''}><span>Let people find me by username</span></label>
+      <label class="toggle"><input type="checkbox" id="pp-weights" ${ctx.db.settings.shareWeights ? 'checked' : ''}><span>Show my weights to friends<span class="pick-sub">Off: friends see sets, reps and progress in percent. On: they see the weights too, and head-to-head compares estimated maxes.</span></span></label>
       ${err ? `<p class="notice bad">${esc(err)}</p>` : ''}
       <button class="btn primary block" data-a="ppl-pp-save">Save</button>`);
   }
   function readProfileForm() {
     const e = pv().pedit; const v = (id) => document.getElementById(id);
     if (!v('pp-name')) return e;
+    ctx.db.settings.shareWeights = !!v('pp-weights')?.checked;
     Object.assign(e, { name: v('pp-name').value, handle: v('pp-handle').value.trim().replace(/^@/, '').toLowerCase(), bio: v('pp-bio').value, gym: v('pp-gym').value, findable: v('pp-find').checked });
     return e;
   }
@@ -681,7 +960,9 @@ export function createPeople(ctx) {
       const what = { friend: 'Send this to your friend.', coach: 'Send this to your coach.', client: 'Send this to the person you\'ll coach. They choose what to share.' }[kind];
       ctx.openSheet(`<h2>Invite code</h2><p class="small">${what} It works once and expires in 7 days.</p>
         <p class="code-big">${esc(r.code)}</p>
-        <button class="btn primary block" data-a="ppl-share" data-v="${esc(r.code)}">Share invite</button>
+        <div class="qr-wrap">${qrSvg(`${APP_URL}?invite=${r.code}`)}<p class="muted small">Or have them scan this with their phone's camera.</p></div>
+        <button class="btn primary block" data-a="ppl-share" data-v="${esc(r.code)}">Share invite link</button>
+        <button class="btn block" data-a="ppl-copy-link" data-v="${esc(r.code)}">Copy link</button>
         <button class="btn block" data-a="close-sheet">Done</button>`);
       refresh();
     } catch (e) { ctx.toast(e.message); }
@@ -699,6 +980,14 @@ export function createPeople(ctx) {
     } catch (e) { ctx.toast(e.message); }
   }
 
+  function groupSheet() {
+    const g = pv().group ||= { ids: [], kind: 'workouts', days: 7 };
+    ctx.openSheet(`<h2>Group challenge</h2><p class="muted small">Two or more friends. It starts today; friends join when they see it.</p>
+      <div class="field"><span>Who's in</span><div class="chips wrap">${friends().map((l) => `<button class="chip ${g.ids.includes(l.user.id) ? 'on' : ''}" data-a="ppl-group-pick" data-id="${l.user.id}" aria-pressed="${g.ids.includes(l.user.id)}">${esc(l.user.name.split(' ')[0])}</button>`).join('')}</div></div>
+      <div class="field"><span>Compete on</span><div class="chips wrap">${Object.entries(CONTEST_KINDS).filter(([k]) => k !== 'lift').map(([k, v]) => `<button class="chip ${g.kind === k ? 'on' : ''}" data-a="ppl-group-set" data-k="kind" data-v="${k}">${v.name}</button>`).join('')}</div><p class="muted small">${esc(CONTEST_KINDS[g.kind].desc)}</p></div>
+      <div class="field"><span>How long</span><div class="segmented small-seg">${[[7, '1 week'], [14, '2 weeks'], [28, '4 weeks']].map(([d, l]) => `<button class="${g.days === d ? 'on' : ''}" data-a="ppl-group-set" data-k="days" data-v="${d}">${l}</button>`).join('')}</div></div>
+      <button class="btn primary block" data-a="ppl-group-send" ${g.ids.length >= 2 ? '' : 'disabled'}>${g.ids.length >= 2 ? `Start with ${g.ids.length} friends` : 'Pick at least two friends'}</button>`);
+  }
   function challengeSheet(id, kind = 'workouts', days = 7) {
     const mine = cardOf(me())?.lifts || {}; const theirs = cardOf(id)?.lifts || {};
     const both = Object.keys(mine).filter((k) => theirs[k]).map((k) => ({ id: k, name: mine[k].name }));
@@ -944,6 +1233,7 @@ export function createPeople(ctx) {
         const r = await api('/v2/social/profile', { name: e.name.trim(), handle: e.handle || null, bio: e.bio, gym: e.gym, goal: e.goal, findable: e.findable, photo }, { auth: true });
         if (e.file) { URL.revokeObjectURL(e.file.url); e.file = null; }
         data.me = { ...data.me, name: r.name }; (data.profiles ||= {})[me()] = r.profile; ls.set(CACHE, data);
+        ctx.persist(); publish();
         setAccountName(r.name);
         ctx.closeSheet(); ctx.render(); ctx.toast('Profile saved.');
         publish();
@@ -994,9 +1284,50 @@ export function createPeople(ctx) {
     'ppl-challenge-pick': () => {
       const list = friends();
       if (list.length === 1) return challengeSheet(list[0].user.id);
-      ctx.openSheet(`<h2>Challenge a friend</h2><p class="muted small">Workouts, minutes, miles, weight lifted or strength gained, head to head. They accept before it starts.</p><div class="list-group">${list.map((l) => `<button class="list-row" data-a="ppl-challenge" data-id="${l.user.id}">${avatar(l.user.id, 'md')}<span class="grow"><b>${esc(l.user.name)}</b></span>${icon('right', 'chev')}</button>`).join('')}</div>`);
+      ctx.openSheet(`<h2>Challenge a friend</h2><p class="muted small">Workouts, sets, minutes, miles, active days or strength gained, head to head. They accept before it starts.</p><div class="list-group">${list.map((l) => `<button class="list-row" data-a="ppl-challenge" data-id="${l.user.id}">${avatar(l.user.id, 'md')}<span class="grow"><b>${esc(l.user.name)}</b></span>${icon('right', 'chev')}</button>`).join('')}</div>`);
     },
     'ppl-challenge': (d) => challengeSheet(d.id, d.k || 'workouts', +(d.d || 7)),
+    'ppl-plus': () => ctx.openSheet(`<h2>People</h2><div class="list-group">
+      <button class="list-row" data-a="ppl-invite"><span class="grow"><b>Find or invite friends</b><span class="pick-sub">By username, link or QR code</span></span>${icon('right', 'chev')}</button>
+      ${friends().length ? `<button class="list-row" data-a="ppl-challenge-pick"><span class="grow"><b>Challenge a friend</b><span class="pick-sub">Head to head</span></span>${icon('right', 'chev')}</button>` : ''}
+      ${friends().length >= 2 ? `<button class="list-row" data-a="ppl-group"><span class="grow"><b>Group challenge</b><span class="pick-sub">Three or more of you</span></span>${icon('right', 'chev')}</button>` : ''}
+      <button class="list-row" data-a="ppl-code"><span class="grow"><b>Enter an invite code</b></span>${icon('right', 'chev')}</button></div>`),
+    'ppl-group': () => { pv().group = { ids: [], kind: 'workouts', days: 7 }; groupSheet(); },
+    'ppl-group-pick': (d) => { const g = pv().group; g.ids = g.ids.includes(d.id) ? g.ids.filter((x) => x !== d.id) : [...g.ids, d.id]; groupSheet(); },
+    'ppl-group-set': (d) => { const g = pv().group; g[d.k] = d.k === 'days' ? +d.v : d.v; groupSheet(); },
+    'ppl-group-send': async () => {
+      const g = pv().group;
+      try { await api('/v2/social/contest', { to: g.ids, kind: g.kind, days: g.days, today: todayStr() }, { auth: true }); ctx.closeSheet(); await refresh(); ctx.toast('Group challenge started.'); } catch (e) { ctx.toast(e.message); }
+    },
+    'ppl-workout': (d) => workoutSheet(d.o, d.i),
+    'ppl-when': (d) => { const t = +d.t || Date.parse(d.t); if (t) ctx.toast(new Date(t).toLocaleString(undefined, { weekday: 'long', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })); },
+    'ppl-quick-feed': async (d, el) => { el.disabled = true; try { await api('/v2/social/comment', { owner: d.o, item: d.i, text: d.v }, { auth: true }); ctx.haptic(); await refresh(); ctx.render(); } catch (e) { ctx.toast(e.message); el.disabled = false; } },
+    'ppl-recap-hide': (d) => { ls.set('lift.recapSeen', d.v); ctx.render(); },
+    'ppl-recap-share': async () => {
+      const blob = await recapImage(); if (!blob) return;
+      const file = new File([blob], 'my-week.png', { type: 'image/png' });
+      try {
+        if (navigator.canShare?.({ files: [file] })) await navigator.share({ files: [file], title: 'My week' });
+        else { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'my-week.png'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); }
+      } catch {}
+    },
+    'ppl-trophies': (d) => trophySheet(d.id),
+    'ppl-tg': (d) => { pv().tg = null; togetherSheet(d.id); },
+    'ppl-tg-set': (d) => { const tg = pv().tg; tg.time = document.getElementById('tg-time')?.value || tg.time; tg.place = document.getElementById('tg-place')?.value ?? tg.place; tg[d.k] = d.v; togetherSheet(tg.id); },
+    'ppl-tg-send': async () => {
+      const tg = pv().tg; tg.time = document.getElementById('tg-time')?.value || ''; tg.place = document.getElementById('tg-place')?.value || '';
+      try { await api('/v2/social/together', { to: tg.id, date: tg.date, time: tg.time, title: tg.title, place: tg.place }, { auth: true }); ctx.closeSheet(); await refresh(); ctx.toast(`Invite sent to ${nameOf(tg.id).split(' ')[0]}.`); } catch (e) { ctx.toast(e.message); }
+    },
+    'ppl-tg-answer': async (d) => { try { await api('/v2/social/together/respond', { id: d.id, accept: d.v === '1' }, { auth: true }); await refresh(); ctx.toast(d.v === '1' ? "You're in." : 'Sent.'); } catch (e) { ctx.toast(e.message); } },
+    'ppl-tg-cancel': async (d) => { try { await api('/v2/social/together/respond', { id: d.id, cancel: true }, { auth: true }); await refresh(); } catch (e) { ctx.toast(e.message); } },
+    'ppl-try': (d) => {
+      const w = (cardOf(d.o)?.workouts || []).find((x) => `w:${x.id}` === d.i);
+      const ids = (w?.ex || []).map((e) => e.id).filter((id) => ctx.db.exercises[id]);
+      if (!ids.length) return;
+      ctx.closeSheet();
+      ctx.tryWorkout(ids, d.v, `${nameOf(d.o).split(' ')[0]}'s ${w.name || 'workout'}`);
+    },
+    'ppl-copy-link': async (d) => { try { await navigator.clipboard.writeText(`${APP_URL}?invite=${d.v}`); ctx.toast('Link copied.'); } catch { ctx.toast(`${APP_URL}?invite=${d.v}`); } },
     'ppl-challenge-send': async (d) => {
       const ex = d.k === 'lift' ? document.getElementById('ppl-lift')?.value : null;
       const exName = ex ? cardOf(me())?.lifts?.[ex]?.name : null;
@@ -1195,9 +1526,10 @@ export function createPeople(ctx) {
   function pendingCount() {
     if (!data) return 0;
     return (data.requests?.in || []).length + (data.contests || []).filter((c) => c.status === 'pending' && c.b === me()).length
+      + (data.together || []).filter((t) => t.status === 'pending' && t.b === me()).length
       + (data.proposals || []).filter((p) => p.status === 'pending' && p.client === me()).length
       + coaches().concat(myClients()).reduce((a, l) => a + unread(l), 0);
   }
 
-  return { screen, actions, onInput, refresh, publish, schedule, start, reset, pendingCount, maybeInvite };
+  return { screen, actions, onInput, refresh, publish, schedule, start, reset, pendingCount, maybeInvite, togetherBanner: (date) => (data ? togetherBanner(date) : '') };
 }

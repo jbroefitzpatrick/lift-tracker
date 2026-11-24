@@ -286,6 +286,8 @@ export async function handleV2(req, env, url, json, allowedOrigins, accessOk) {
         env.DB.prepare('DELETE FROM cheers WHERE owner = ? OR from_user = ?').bind(id, id),
         env.DB.prepare('DELETE FROM contest_scores WHERE user_id = ? OR contest_id IN (SELECT id FROM contests WHERE a = ? OR b = ?)').bind(id, id, id),
         env.DB.prepare('DELETE FROM contests WHERE a = ? OR b = ?').bind(id, id),
+        env.DB.prepare('DELETE FROM contest_members WHERE user_id = ?').bind(id),
+        env.DB.prepare('DELETE FROM together WHERE a = ? OR b = ?').bind(id, id),
         env.DB.prepare('DELETE FROM proposals WHERE coach = ? OR client = ?').bind(id, id),
         env.DB.prepare('DELETE FROM invites WHERE user_id = ?').bind(id),
         ...(links.results || []).map((l) => env.DB.prepare('DELETE FROM messages WHERE link_id = ?').bind(l.id)),

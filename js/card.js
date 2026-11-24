@@ -10,6 +10,7 @@ import { todayStr, addDays, mondayOf } from './store.js';
 import { e1rm } from './engine.js';
 import { liftTemplates, doneTemplates } from './week.js';
 import { streakInfo } from './streak.js';
+import { cardTrophies } from './trophies.js';
 
 const goodSets = (e) => (e.sets || []).filter((x) => x.done !== false && !x.pain && x.type !== 'w' && x.reps > 0);
 
@@ -49,15 +50,32 @@ export function buildCard(db, name) {
       if (last && last[0] === wk) last[1] = Math.max(last[1], Math.round(top * 100) / 100); else L.pts.push([wk, Math.round(top * 100) / 100]);
     }
   }
+  // Weights go out only if the person chose to share them (Settings in their profile).
+  const showW = !!db.settings?.shareWeights;
+  const exOf = (s) => s.entries.filter((e) => goodSets(e).length && db.exercises?.[e.exerciseId]?.category !== 'conditioning').slice(0, 12).map((e) => {
+    const ex = db.exercises?.[e.exerciseId]; const g = goodSets(e);
+    return { id: e.exerciseId, name: ex?.name || e.name, n: g.length, reps: g.map((x) => x.reps).slice(0, 8), ...(showW && !ex?.noLoad ? { w: g.map((x) => x.weight || 0).slice(0, 8) } : {}), ...((s.prs || []).some((p) => p.exerciseId === e.exerciseId) ? { best: true } : {}) };
+  });
   const workouts = sessions.slice(-10).reverse().map((s) => ({
-    id: s.id, date: s.date,
+    id: s.id, date: s.date, ex: exOf(s),
     name: s.freestyle ? 'Workout' : db.plan?.[s.day]?.name || 'Workout',
     sets: s.entries.reduce((a, e) => a + goodSets(e).length, 0),
     prs: s.prs?.length || 0,
     minutes: s.finishedAt && s.startedAt ? Math.round(Math.max(0, Math.min(240, (s.finishedAt - s.startedAt - (s.pausedMs || 0)) / 60000))) : null,
   }));
   return {
-    v: 1, name, today,
+    v: 1, name, today, weights: showW,
+    // Last week, for the Monday recap and its ranking among friends.
+    prev: (() => {
+      const ps = addDays(start, -7); const pe = addDays(start, -1);
+      const wk = sessions.filter((s) => s.date >= ps && s.date <= pe);
+      const best = records.filter((r) => r.date >= ps && r.date <= pe).sort((a, b) => (b.pct || 0) - (a.pct || 0))[0] || null;
+      return { start: ps, workouts: wk.length, sets: wk.reduce((a, s) => a + s.entries.reduce((b, e) => b + goodSets(e).length, 0), 0),
+        minutes: Math.round(wk.reduce((a, x) => a + Math.max(0, Math.min(240, ((x.finishedAt || 0) - (x.startedAt || 0) - (x.pausedMs || 0)) / 60000)), 0)),
+        cardioMin: (db.cardio || []).filter((c) => c.date >= ps && c.date <= pe && c.cardioId !== 'mobility').reduce((a, c) => a + (c.minutes || 0), 0), best };
+    })(),
+    trophies: cardTrophies(db),
+    month: sessions.filter((s) => s.date.slice(0, 7) === today.slice(0, 7)).length,
     // workouts: every workout this week (not just planned ones); minutes: time training.
     week: { start, end, done, planned, sets, cardioMin, workouts: inWeek.length, minutes: Math.round(inWeek.reduce((a, x) => a + Math.max(0, Math.min(240, ((x.finishedAt || 0) - (x.startedAt || 0) - (x.pausedMs || 0)) / 60000)), 0)) },
     streak,

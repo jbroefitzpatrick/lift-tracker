@@ -219,3 +219,32 @@ CREATE TABLE IF NOT EXISTS contest_scores ( -- each person's running total in a 
   updated INTEGER NOT NULL,
   PRIMARY KEY (contest_id, user_id)
 );
+
+-- Group challenges: three or more friends. The challenge row has b = 'group'; members are here.
+CREATE TABLE IF NOT EXISTS contest_members (
+  contest_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  status TEXT NOT NULL,         -- 'pending' | 'in' | 'out'
+  PRIMARY KEY (contest_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS contest_members_user ON contest_members (user_id);
+-- Challenges that already got their "one day left" reminder.
+CREATE TABLE IF NOT EXISTS contest_remind (
+  id TEXT PRIMARY KEY,
+  done INTEGER NOT NULL
+);
+
+-- Training together: one friend invites another to a session on a day and time.
+CREATE TABLE IF NOT EXISTS together (
+  id TEXT PRIMARY KEY,
+  a TEXT NOT NULL,              -- who asked
+  b TEXT NOT NULL,
+  date TEXT NOT NULL,           -- YYYY-MM-DD
+  time TEXT,                    -- HH:MM, optional
+  title TEXT,                   -- what they'll train, optional
+  place TEXT,
+  status TEXT NOT NULL,         -- 'pending' | 'accepted' | 'declined' | 'cancelled'
+  created INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS together_a ON together (a);
+CREATE INDEX IF NOT EXISTS together_b ON together (b);

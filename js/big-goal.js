@@ -157,8 +157,11 @@ export const CONTEST_KINDS = {
   miles: { name: 'Miles', label: 'Most miles run', desc: 'Runs logged with a distance.' },
   volume: { name: 'Weight lifted', label: 'Most weight lifted', desc: 'Weight × reps across working sets.' },
   lift: { name: 'Strength gain', label: 'Biggest gain', desc: 'Percent gain on one lift, so size doesn\'t matter.' },
+  sets: { name: 'Hard sets', label: 'Most hard sets', desc: 'Working sets across every workout.' },
+  days: { name: 'Active days', label: 'Most active days', desc: 'Days with a workout or any cardio.' },
+  cardio: { name: 'Cardio', label: 'Most cardio minutes', desc: 'Runs, rides, swims and other cardio.' },
 };
-export const SCORED_KINDS = ['minutes', 'miles', 'volume'];
+export const SCORED_KINDS = ['minutes', 'miles', 'volume', 'sets', 'days', 'cardio'];
 
 export function metricValue(db, kind, from, to) {
   const inRange = (d) => d >= from && d <= to;
@@ -167,5 +170,8 @@ export function metricValue(db, kind, from, to) {
   if (kind === 'minutes') return Math.round(sessions.reduce((a, s) => a + workoutMinutes(s), 0) + (db.cardio || []).filter((c) => inRange(c.date) && !c.fromWorkout).reduce((a, c) => a + (+c.minutes || 0), 0));
   if (kind === 'miles') return Math.round(runLog(db).filter((r) => inRange(r.date)).reduce((a, r) => a + r.mi, 0) * 100) / 100;
   if (kind === 'volume') return Math.round(sessions.reduce((a, s) => a + s.entries.reduce((b, e) => (db.exercises?.[e.exerciseId]?.category === 'conditioning' || e.metric ? b : b + goodSets(e).reduce((c, x) => c + (x.weight || 0) * x.reps, 0)), 0), 0));
+  if (kind === 'sets') return sessions.reduce((a, s) => a + s.entries.reduce((b, e) => b + (db.exercises?.[e.exerciseId]?.category === 'conditioning' ? 0 : goodSets(e).length), 0), 0);
+  if (kind === 'days') return new Set([...sessions.map((s) => s.date), ...(db.cardio || []).filter((c) => inRange(c.date)).map((c) => c.date)]).size;
+  if (kind === 'cardio') return Math.round((db.cardio || []).filter((c) => inRange(c.date) && c.cardioId !== 'mobility').reduce((a, c) => a + (+c.minutes || 0), 0));
   return 0;
 }

@@ -173,7 +173,7 @@ export function createWorkoutScreens(A) {
     if (!session && day === dayKeyOf(todayStr())) html += A.doneTodayCard(day);
     // The day a plan is made: nothing but the plan (no check-ins, reviews or reminders yet).
     const planDay0 = A.db.settings.planSince === todayStr() && day === dayKeyOf(todayStr());
-    const banner = !session && !planDay0 ? [A.train.recoveryCheck(), A.reviewCard(), A.skippedPrompt(day), A.train.weekPrompt(), A.extras.backupBanner(), A.db.settings.welcomed ? A.train.installHint() : ''].filter(Boolean)[0] || '' : '';
+    const banner = !session && !planDay0 ? [A.peopleOn() ? A.people.togetherBanner(dateOfDay(day)) : '', A.train.recoveryCheck(), A.reviewCard(), A.skippedPrompt(day), A.train.weekPrompt(), A.extras.backupBanner(), A.db.settings.welcomed ? A.train.installHint() : ''].filter(Boolean)[0] || '' : '';
     html += banner;
     html += A.blockCheckinBanner();
     if (needsRotationPrompt(A.db)) {

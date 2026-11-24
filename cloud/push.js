@@ -138,4 +138,39 @@ export async function finishedContests(env, now = Date.now()) {
     await pushTo(env, c.a, { title: `Challenge over: ${what}`, body: `See how you did against ${c.b_name}.`, tag: `contest-${c.id}`, url: './?open=people' });
     await pushTo(env, c.b, { title: `Challenge over: ${what}`, body: `See how you did against ${c.a_name}.`, tag: `contest-${c.id}`, url: './?open=people' });
   }
+  // Group challenges that ended: everyone who joined hears who won.
+  const g = await env.DB.prepare("SELECT * FROM contests WHERE status = 'active' AND b = 'group' AND start IS NOT NULL AND id NOT IN (SELECT id FROM contest_done)").all();
+  for (const c of g.results || []) {
+    const end = new Date(Date.parse(`${c.start}T12:00:00Z`) + (c.days - 1) * 86400000).toISOString().slice(0, 10);
+    if (end >= today) continue;
+    await env.DB.prepare('INSERT OR IGNORE INTO contest_done (id, done) VALUES (?, ?)').bind(c.id, now).run();
+    const ranked = await standings(env, c);
+    const what = CONTEST_WORDS[c.kind] || 'Challenge';
+    for (const m of ranked) await pushTo(env, m.id, { title: `Challenge over: ${what}`, body: ranked[0]?.value > 0 ? (ranked[0].id === m.id ? 'You won. Nicely done.' : `${ranked[0].name} won. You finished ${ordinal(ranked.indexOf(m) + 1)}.`) : 'See how everyone did.', tag: `contest-${c.id}`, url: './?open=people' });
+  }
+  // A day before any challenge ends: where you stand.
+  const tomorrow = new Date(now + 86400000).toISOString().slice(0, 10);
+  const act = await env.DB.prepare("SELECT * FROM contests WHERE status = 'active' AND start IS NOT NULL AND id NOT IN (SELECT id FROM contest_remind)").all();
+  for (const c of act.results || []) {
+    const end = new Date(Date.parse(`${c.start}T12:00:00Z`) + (c.days - 1) * 86400000).toISOString().slice(0, 10);
+    if (end !== tomorrow) continue;
+    await env.DB.prepare('INSERT OR IGNORE INTO contest_remind (id, done) VALUES (?, ?)').bind(c.id, now).run();
+    const ranked = await standings(env, c);
+    const what = CONTEST_WORDS[c.kind] || 'your challenge';
+    for (const m of ranked) {
+      const place = ranked.indexOf(m);
+      const body = !ranked.some((r) => r.value > 0) ? 'One day left. A workout today could decide it.' : place === 0 ? 'One day left and you\'re in front. Hold it.' : `One day left. You're ${ordinal(place + 1)}, behind ${ranked[0].name}.`;
+      await pushTo(env, m.id, { title: `${what}: last day tomorrow`, body, tag: `contest-${c.id}-remind`, url: './?open=people' });
+    }
+  }
+}
+const CONTEST_WORDS = { workouts: 'Most workouts', minutes: 'Most minutes', miles: 'Most miles run', volume: 'Most weight lifted', sets: 'Most hard sets', days: 'Most active days', cardio: 'Most cardio minutes', lift: 'Strength gain' };
+const ordinal = (n) => `${n}${n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th'}`;
+// Everyone in a challenge, best score first (scores each phone reported).
+async function standings(env, c) {
+  const people = c.b === 'group'
+    ? ((await env.DB.prepare("SELECT m.user_id AS id, u.name FROM contest_members m JOIN users u ON u.id = m.user_id WHERE m.contest_id = ? AND m.status = 'in'").bind(c.id).all()).results || [])
+    : ((await env.DB.prepare('SELECT id, name FROM users WHERE id IN (?, ?)').bind(c.a, c.b).all()).results || []);
+  const sc = (await env.DB.prepare('SELECT user_id, value FROM contest_scores WHERE contest_id = ?').bind(c.id).all()).results || [];
+  return people.map((p) => ({ ...p, value: sc.find((s) => s.user_id === p.id)?.value ?? 0 })).sort((a, b) => b.value - a.value);
 }

@@ -249,6 +249,7 @@ export function createEvent(ctx) {
     if (!ev) return;
     if (!finished && !(await ctx.ask(`Remove the plan for ${eventLabel(ev).toLowerCase()}?${ev.prev ? ' Your previous lifting plan comes back.' : ''} Logged workouts stay in your history.`, 'Remove', true))) return;
     if (ev.prev) { db.plan = ev.prev.plan; db.settings.dayModes = ev.prev.dayModes; }
+    if (finished || ev.date < todayStr()) (db.eventHistory ||= []).push({ type: ev.type, label: eventLabel(ev), date: ev.date });
     delete db.event;
     db.week = null;
     ctx.persist(); ctx.closeSheet(); ctx.render();
