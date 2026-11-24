@@ -2,6 +2,8 @@
 import { icon } from './icons.js';
 import { seedFromHistory } from './engine.js';
 import { parseCsv, detectFormat, readWorkouts, planImport, applyImport } from './import-apps.js';
+import { detectActivities, readActivities, planActivities, applyActivities, ACTIVITY_SOURCES } from './import-activities.js';
+import { fmtDur, fmtDist } from './event-plan.js';
 import { account, signOut } from './account.js';
 import { resetSyncState } from './sync.js';
 import { EX_INFO, stepsFor } from './exercise-info.js';
@@ -221,6 +223,7 @@ export function createExtras(ctx) {
       <label class="list-row"><span class="grow">Check a backup file</span>${chev}<input id="check-file" type="file" accept="application/json,.json" hidden></label>
       <label class="list-row"><span class="grow">Import a backup</span>${chev}<input id="import-file" type="file" accept="application/json,.json" hidden></label>
       <label class="list-row"><span class="grow">Import from Strong, Hevy or FitBod<span class="pick-sub">Your workout history from their CSV export</span></span>${chev}<input id="apps-file" type="file" accept=".csv,text/csv" hidden></label>
+      <label class="list-row"><span class="grow">Import runs, rides and swims<span class="pick-sub">Strava, Garmin, Runkeeper, Apple Health, or GPX and TCX files</span></span>${chev}<input id="act-file" type="file" accept=".csv,.gpx,.tcx,.xml,text/csv,application/xml,text/xml" multiple hidden></label>
       <button class="list-row" data-a="snapshots"><span class="grow">Restore an automatic snapshot</span>${chev}</button>
       <button class="list-row" data-a="persist-req"><span class="grow">Keep data permanently</span>${chev}</button>
     </div>
@@ -492,6 +495,25 @@ export function createExtras(ctx) {
       ctx.toast(ok ? 'Done — the phone will keep this data.' : 'The browser declined. Keep it on your Home Screen and back up regularly.');
       ctx.render();
     },
+    'act-unit': (d) => { if (!actImport) return; actImport.unit = d.v; actImportSheet(); },
+    'act-paces': (d, el) => { if (actImport) actImport.usePaces = el.checked; },
+    'act-import': () => {
+      if (!actImport?.plan) return;
+      const db = ctx.db;
+      safetySnapshot(db, 'Before importing activities');
+      const n = applyActivities(db, actImport.plan.fresh);
+      const best = actImport.plan.best;
+      const ev = db.event;
+      let paces = '';
+      if (actImport.usePaces && best && ev?.type === 'race') {
+        ev.vdotNow = best.vdot; ev.vdotGoal = Math.max(ev.vdotGoal || 0, best.vdot);
+        ev.trials = [...(ev.trials || []), { date: best.date, m: Math.round(best.distM), sec: Math.round(best.sec), vdot: Math.round(best.vdot * 10) / 10, imported: true }];
+        paces = ' Race paces updated.';
+      }
+      actImport = null;
+      ctx.persist(); ctx.closeSheet(); ctx.render();
+      ctx.toast(`Imported ${n} ${n === 1 ? 'activity' : 'activities'}.${paces}`);
+    },
     'apps-unit': (d) => { if (!appImport) return; appImport.unit = d.v; appImportSheet(); },
     'apps-import': async () => {
       if (!appImport?.plan) return;
@@ -511,6 +533,49 @@ export function createExtras(ctx) {
       ctx.replaceDb(freshDb());
     },
   };
+
+  // ---------- Import runs, rides and swims ----------
+  let actImport = null; // { files: [{ name, format, text }], unit, usePaces }
+  // Apple Health's export.xml can be hundreds of MB: read it in pieces and keep only workout records.
+  async function readHealthWorkouts(file) {
+    const reader = file.stream().getReader();
+    const dec = new TextDecoder();
+    let buf = ''; const tags = [];
+    for (;;) {
+      const { value, done } = await reader.read();
+      buf += dec.decode(value || new Uint8Array(), { stream: !done });
+      let m; const re = /<Workout\s[^>]*?>/g; let last = 0;
+      while ((m = re.exec(buf))) { tags.push(m[0]); last = re.lastIndex; }
+      const open = buf.lastIndexOf('<Workout ');
+      buf = open > last ? buf.slice(open) : buf.slice(-200);
+      if (done) break;
+    }
+    return tags.join('\n');
+  }
+  function actImportSheet() {
+    const db = ctx.db;
+    const garmin = actImport.files.some((f) => f.format === 'garmin');
+    const list = actImport.files.flatMap((f) => readActivities(f.format, f.text, { unit: actImport.unit, name: f.name }));
+    const plan = planActivities(db, list);
+    actImport.plan = plan;
+    const ev = db.event?.type === 'race' && db.event.sport !== 'bike' ? db.event : null;
+    const better = ev && plan.best && (!ev.vdotNow || plan.best.vdot > ev.vdotNow + 0.3);
+    if (actImport.usePaces == null) actImport.usePaces = !!better;
+    const metric = wUnit() === 'kg';
+    const label = { run: 'Runs', bike: 'Rides', swim: 'Swims', walk: 'Walks and hikes', row: 'Rows' };
+    ctx.openSheet(`<h2>Import activities</h2>
+      <p class="muted small">From ${[...new Set(actImport.files.map((f) => ACTIVITY_SOURCES[f.format]))].join(', ')}.</p>
+      <div class="kv-list">
+        ${Object.entries(plan.counts).map(([k, n]) => `<div class="kv"><span>${label[k] || k}</span><b>${n}</b></div>`).join('') || '<div class="kv"><span>New activities</span><b>0</b></div>'}
+        ${plan.from ? `<div class="kv"><span>Dates</span><b>${monthYear(plan.from)} to ${monthYear(plan.to)}</b></div>` : ''}
+        ${plan.skipped ? `<div class="kv"><span>Already logged</span><b>${plan.skipped}</b></div>` : ''}
+      </div>
+      ${garmin ? `<div class="field"><span>Distances in the Garmin file are in</span><div class="segmented small-seg">${[['mi', 'Miles'], ['km', 'Kilometers']].map(([u, l]) => `<button class="${(actImport.unit || 'mi') === u ? 'on' : ''}" data-a="act-unit" data-v="${u}">${l}</button>`).join('')}</div></div>` : ''}
+      ${plan.best ? `<p class="small">Best recent run: ${fmtDist(plan.best.distM, metric)} in ${fmtDur(plan.best.sec)} on ${ctx.fmtDate(plan.best.date)}.</p>` : ''}
+      ${better ? `<label class="toggle"><input type="checkbox" data-a="act-paces" ${actImport.usePaces ? 'checked' : ''}><span>Use it to update your race paces<span class="pick-sub">Your plan's paces come from your best recent effort.</span></span></label>` : ''}
+      <p class="muted small">Activities go into your cardio log. Race plans count them as done, and calories and recovery include them.</p>
+      <button class="btn primary block big" data-a="act-import" ${plan.fresh.length ? '' : 'disabled'}>Import ${plan.fresh.length} ${plan.fresh.length === 1 ? 'activity' : 'activities'}</button>`);
+  }
 
   // ---------- Import from Strong, Hevy or FitBod ----------
   const APP_NAMES = { strong: 'Strong', hevy: 'Hevy', fitbod: 'FitBod' };
@@ -540,6 +605,21 @@ export function createExtras(ctx) {
 
   async function onChange(e) {
     const el = e.target;
+    if (el.id === 'act-file' && el.files.length) {
+      try {
+        const files = [];
+        for (const f of el.files) {
+          const head = await f.slice(0, 4000).text();
+          const format = detectActivities(f.name, head);
+          if (!format) throw new Error(`${f.name} isn't a file this can read. Use Strava's activities.csv, a Garmin Connect or Runkeeper CSV, Apple Health's export.xml, or GPX and TCX files.`);
+          files.push({ name: f.name, format, text: format === 'health' ? await readHealthWorkouts(f) : await f.text() });
+        }
+        actImport = { files, unit: null, usePaces: null };
+        actImportSheet();
+      } catch (err) { ctx.toast(err.message || 'Could not read that file.'); }
+      el.value = '';
+      return true;
+    }
     if (el.id === 'apps-file' && el.files[0]) {
       try {
         const rows = parseCsv(await el.files[0].text());

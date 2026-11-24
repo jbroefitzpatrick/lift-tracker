@@ -56,7 +56,7 @@ import { GROUPS, PARTS, groupById, groupOfMuscle, groupFreshness, weeklySets as 
 import { hoursToReady } from './fatigue.js';
 import { createTrain } from './ui-train.js';
 import { condScore, condHistory } from './conditioning.js';
-import { recordRun, vdotOf } from './event-plan.js';
+import { recordRun, vdotOf, eventDays, eventItemsFor } from './event-plan.js';
 import { liftTemplates, doneTemplates } from './week.js';
 import { targets as foodTargets, dayTotals } from './nutrition.js';
 import { VARIETY, applyVariety } from './variety.js';
@@ -129,6 +129,7 @@ const A = {
   get saveBlockedBanner() { return saveBlockedBanner; },
   get screenHistory() { return screenHistory; },
   get sessionFor() { return sessionFor; },
+  eventNames: (d) => eventItemsFor(db, d).map((i) => ({ name: db.exercises[i.exerciseId]?.name || 'Session', moved: /^Moved from/.test(i.note || '') })),
   get eventUi() { return eventUi; },
   get openCues() { return openCues; },
   get draftWarm() { return draftWarm; },
@@ -998,7 +999,7 @@ function openDayOptions() {
     session ? go('leave-workout-view', 'Plan, food and progress') : '',
     !session && train.canTakeOff(day) ? go('day-off', `Can't make it ${isToday ? 'today' : `this ${FULL_DAY[day]}`}`, `data-day="${day}"`) : '',
     go('wk-open', 'Adjust week'),
-    go('ev-choose', db.event ? 'Race or meet plan' : 'Add a race or meet'),
+    go('ev-choose', 'Race or meet'),
   ].filter(Boolean).join('');
   openSheet(`<h2>${FULL_DAY[day]}</h2>
     <h3 class="sheet-h">${isToday ? 'Today' : 'This workout'}</h3>
@@ -1313,6 +1314,7 @@ function fatigueSummary(fresh) {
 }
 
 function cardioSection(day, title, defaultOpen = true) {
+  if (eventDays(db, dateOfDay(day)).includes(day)) return '';
   const open = ui.cardioOpen?.[day] ?? defaultOpen;
   const isToday = day === defaultDay();
   const { ctx, list } = suggestCardio(db, day, isToday);
@@ -1786,13 +1788,14 @@ function openPicker(opts) {
       <button class="chip" data-a="pk-scope" data-v="plan">Swap in plan</button>
     </div>` : ''}
     <input id="pk-q" class="search" type="search" placeholder="Search name, muscle or movement" autocomplete="off" enterkeyhint="search">
-    <div class="chips pk-filters">${[['all', 'All'], ['compound', 'Compound'], ['accessory', 'Accessory']].map(([v, l]) =>
-      `<button class="chip ${v === 'all' ? 'on' : ''}" data-a="pk-cat" data-v="${v}">${l}</button>`).join('')}</div>
-    <select id="pk-muscle" class="pk-muscle" data-a="pk-muscle" aria-label="Muscle">
-      <option value="all">All muscles</option>
-      ${Object.entries(MUSCLES).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}
-    </select>
-    <button class="btn block new-ex-btn" data-a="pk-custom">${icon('plus')} New exercise</button>
+    <details class="pk-filter-box"><summary>Filter<span class="pk-filter-on" id="pk-filter-on"></span></summary>
+      <div class="chips pk-filters">${[['all', 'All'], ['compound', 'Compound'], ['accessory', 'Accessory']].map(([v, l]) =>
+        `<button class="chip ${v === 'all' ? 'on' : ''}" data-a="pk-cat" data-v="${v}">${l}</button>`).join('')}</div>
+      <select id="pk-muscle" class="pk-muscle" data-a="pk-muscle" aria-label="Muscle">
+        <option value="all">All muscles</option>
+        ${Object.entries(MUSCLES).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}
+      </select>
+    </details>
     <div id="pk-list"></div>
     ${MULTI.includes(picker.mode) ? '<div class="pk-bar" id="pk-bar" hidden><button class="btn primary block big" data-a="pk-add-sel">Add</button></div>' : ''}`);
   renderPickerList();
@@ -1868,7 +1871,7 @@ function renderPickerList() {
         html += `<h3 class="sect">${l} · ${MUSCLES[m] || 'same muscle'} <span class="muted small">${list.length}</span></h3>${list.slice(0, cap).map((e) => pickRow(e)).join('')}`;
       }
       if (hidden || picker.moreAll) html += `<button class="btn ghost block" data-a="pk-more">${picker.moreAll ? 'Show fewer' : `Show ${hidden} more for ${(MUSCLES[m] || 'this muscle').toLowerCase()}`}</button>`;
-      el.innerHTML = html + '<button class="btn block" data-a="pk-browse">Swap for a different muscle group</button>';
+      el.innerHTML = html + '<button class="btn block" data-a="pk-browse">Swap for a different muscle group</button>' + `<button class="btn ghost block new-ex-btn" data-a="pk-custom">${icon('plus')} Make a new exercise</button>`;
       return;
     }
   }
@@ -1902,6 +1905,9 @@ function renderPickerList() {
   if (rare || picker.showRare) html += `<button class="btn ghost block" data-a="pk-rare">${picker.showRare ? 'Show fewer' : `Show ${rare} more exercises`}</button>`;
   if (hiddenCount && picker.mode !== 'browse') html += `<button class="btn ghost block" data-a="pk-hidden">${picker.showHidden ? 'Hide' : 'Show'} ${hiddenCount} hidden exercises (never / not at this gym)</button>`;
   queueMicrotask(pickerBar);
+  const on = (picker.cat !== 'all') + (picker.muscle !== 'all');
+  const tag = $('#pk-filter-on'); if (tag) tag.textContent = on ? ` · ${on} on` : '';
+  if (html) html += `<button class="btn ghost block new-ex-btn" data-a="pk-custom">${icon('plus')} Make a new exercise</button>`;
   el.innerHTML = html || `<div class="empty small-empty"><p class="muted">No matches${q ? ` for “${esc(picker.q.trim())}”` : ''}.</p>${q ? `<button class="btn primary" data-a="pk-custom" data-name="${esc(picker.q.trim())}">Create “${esc(picker.q.trim())}”</button>` : ''}</div>`;
 }
 
@@ -3719,7 +3725,7 @@ document.addEventListener('click', (e) => {
 document.addEventListener('change', (e) => {
   const el = e.target;
   const a = el.dataset?.a;
-  if (el.id === 'import-file' || el.id === 'photo-file' || el.id === 'check-file' || el.id === 'apps-file') { extras.onChange(e); return; }
+  if (['import-file', 'photo-file', 'check-file', 'apps-file', 'act-file'].includes(el.id)) { extras.onChange(e); return; }
   if (food.onChange(e) || year.onChange(e) || train.onChange(e)) return;
   if (el.dataset?.warm) {
     const [uid, i, k] = el.dataset.warm.split(':');

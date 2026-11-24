@@ -159,6 +159,11 @@ export const REFS = {
     finding: 'Stretching improves range of motion; long static holds right before maximal efforts can blunt performance slightly, so stretch after training or on rest days.',
     url: search('Acute effects of muscle stretching on physical performance, range of motion, and injury incidence in healthy active individuals'),
   },
+  tanaka2001: {
+    cite: 'Tanaka H, Monahan KD, Seals DR (2001). Age-predicted maximal heart rate revisited. J Am Coll Cardiol 37(1):153–156.',
+    finding: 'Maximum heart rate is better estimated as 208 − 0.7 × age than 220 − age, though individuals vary by about ±10 beats a minute.',
+    url: 'https://pubmed.ncbi.nlm.nih.gov/11153730/',
+  },
   bosquet2007: {
     cite: 'Bosquet L, et al. (2007). Effects of tapering on performance: a meta-analysis. Med Sci Sports Exerc 39(8):1358–1365.',
     finding: 'A taper of about two weeks, cutting training volume by roughly 40–60% while keeping intensity and frequency, gave the best performance gains.',

@@ -2,6 +2,7 @@
 // Split out of app.js. App state and the helpers this needs come from A: live getters (and
 // setters for variables), so db and the rest stay shared with app.js.
 import { icon } from './icons.js';
+import { eventItemsFor, eventLiftAdjust, eventWeekNote, eventActive, meetOverride } from './event-plan.js';
 import { DAY_NAMES, PROGRESSIONS, dayKeyOf, deloadDose, deloadText, dayPlan, getState, groupNum, resolveDay, weekOverride } from './engine.js';
 import { addDays, mondayOf, todayStr, weekOrder } from './store.js';
 import { dayMode } from './fatigue.js';
@@ -45,21 +46,27 @@ export function createPlanScreens(A) {
     return planDay();
   }
 
-  // A future week, read only: the plan as it stands, with that week's block and deload.
+  // A future week, read only: the plan as it stands, with that week's block or event phase, and the
+  // event's sessions and lifting changes for that week.
   function futureWeek(off) {
     const start = addDays(mondayOf(todayStr()), off * 7);
     const b = blockInfo(A.db, start);
+    const evNote = eventWeekNote(A.db, start) || eventWeekNote(A.db, addDays(start, 6));
     const rows = weekOrder().map((d) => {
       const mode = A.db.settings.dayModes?.[d] || (A.db.plan[d] ? 'lift' : 'rest');
+      const items = futureDayItems(A, d, start);
+      const liftItems = items.filter((i) => i.ex?.category !== 'conditioning');
+      const evNames = items.filter((i) => i.eventKind).map((i) => A.esc(A.db.exercises[i.exerciseId]?.name || 'Session'));
       const p = A.db.plan[d];
-      const lift = p?.items?.length && (mode === 'lift' || mode === 'both');
-      const name = lift ? A.esc(p.name) : mode === 'cardio' ? 'Cardio' : 'Rest';
-      const sub = lift ? `${p.items.length} exercises · ~${estimateMinutes(p.items)} min${mode === 'both' ? ' + cardio' : ''}` : '';
-      return lift
+      const lift = liftItems.length && (mode === 'lift' || mode === 'both');
+      const name = lift ? A.esc(p.name) : evNames.length ? evNames.join(' + ') : mode === 'cardio' ? 'Cardio' : 'Rest';
+      const sub = lift ? `${liftItems.length} exercises · ~${estimateMinutes(liftItems)} min${evNames.length ? ` + ${evNames.join(' + ').toLowerCase()}` : mode === 'both' ? ' + cardio' : ''}` : '';
+      return lift || evNames.length
         ? `<button class="list-row week-row" data-a="wk-peek" data-day="${d}" data-off="${off}"><span class="wd">${DAY_NAMES[d]}</span><span class="grow"><b>${name}</b><span class="pick-sub">${sub}</span></span>${icon('right', 'chev')}</button>`
         : `<div class="list-row week-row"><span class="wd">${DAY_NAMES[d]}</span><span class="grow"><b>${name}</b></span></div>`;
     }).join('');
-    return `<p class="muted small week-note">Block ${b.index} · week ${b.weekInBlock} of ${b.n}${b.isDeload ? ' · <b>Deload week</b>' : ''}</p><div class="list-group">${rows}</div>`;
+    const deload = b.isDeload && !eventActive(A.db, start);
+    return `<p class="muted small week-note">${evNote ? A.esc(evNote) : `Block ${b.index} · week ${b.weekInBlock} of ${b.n}${deload ? ' · <b>Deload week</b>' : ''}`}</p><div class="list-group">${rows}</div>`;
   }
   const weekLabel = (off) => (off === 0 ? 'This week' : off === 1 ? 'Next week' : `In ${off} weeks`);
   const shortDate = (d) => new Date(`${d}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
@@ -76,9 +83,12 @@ export function createPlanScreens(A) {
       const mode = dayMode(A.db, d);
       const p = dayPlan(A.db, d);
       const lift = p?.items?.length && (mode === 'lift' || mode === 'both');
-      const name = lift ? A.esc(p.name) : mode === 'cardio' ? 'Cardio' : 'Rest';
+      const evs = A.eventNames(d);
+      const evText = evs.map((e) => A.esc(e.name)).join(' + ');
+      const moved = evs.some((e) => e.moved) ? ' · moved here' : '';
+      const name = lift ? A.esc(p.name) : mode === 'cardio' ? evText || 'Cardio' : 'Rest';
       const note = weekOverride(A.db, d)?.note;
-      const sub = lift ? `${p.items.length} exercises · ~${estimateMinutes(p.items)} min${mode === 'both' ? ' + cardio' : ''}` : note ? A.esc(note) : '';
+      const sub = lift ? `${p.items.length} exercises · ~${estimateMinutes(p.items)} min${mode === 'both' ? ` + ${evText ? evText.toLowerCase() : 'cardio'}` : ''}${moved}` : moved ? moved.slice(3) : note ? A.esc(note) : '';
       const off = lift && A.train.canTakeOff(d) ? `data-swipe="day-off" data-swipe-label="Can't make it"` : '';
       return `<button class="list-row week-row ${d === today ? 'is-today' : ''}" data-a="plan-open-day" data-day="${d}" ${off}><span class="wd">${DAY_NAMES[d]}</span><span class="grow"><b>${name}</b>${sub ? `<span class="pick-sub">${sub}</span>` : ''}</span>${icon('right', 'chev')}</button>`;
     }).join('');
@@ -96,7 +106,7 @@ export function createPlanScreens(A) {
       <div class="list-group">
         <button class="list-row" data-a="plan-view" data-v="program"><span class="grow"><b>Block ${b.index} · week ${b.weekInBlock} of ${b.n}</b><span class="pick-sub">Focus lifts, deloads, progression</span></span>${icon('right', 'chev')}</button>
         <button class="list-row" data-a="rv-open"><span class="grow"><b>Last week</b><span class="pick-sub">${rv.sessions ? (nSug ? (nSug > 3 ? `Top 3 of ${nSug} suggestions` : `${nSug} suggestion${nSug === 1 ? '' : 's'}`) : 'Nothing to change') : 'No workouts logged'}</span></span>${icon('right', 'chev')}</button>
-        <button class="list-row" data-a="plan-view" data-v="year"><span class="grow"><b>Goals and year</b><span class="pick-sub">Race or meet plan, training phases</span></span>${icon('right', 'chev')}</button>
+        <button class="list-row" data-a="plan-view" data-v="year"><span class="grow"><b>Goals and year</b><span class="pick-sub">Race or meet, training phases</span></span>${icon('right', 'chev')}</button>
         <button class="list-row" data-a="plan-change"><span class="grow"><b>Change plan</b><span class="pick-sub">Rebuild from goals or start a known program</span></span>${icon('right', 'chev')}</button>
       </div>`;
   }
@@ -317,21 +327,38 @@ export function createPlanScreens(A) {
   return { builderEntry, planViewTabs, subHeader, screenPlan, planWeek, planProgram, planDay, openPlanEdit, muscleChips, chosenMuscles, fillMeta, savePlanEdit };
 }
 
+// A weekday in a future week as it will be: the plan, eased or changed by an event that week, and
+// the event's sessions for that day.
+function futureDayItems(A, day, start) {
+  const date = addDays(start, weekOrder().indexOf(day));
+  const mode = A.db.settings.dayModes?.[day] || (A.db.plan[day] ? 'lift' : 'rest');
+  const lifts = ['lift', 'both'].includes(mode) ? resolveDay(A.db, day, { template: true }).filter((i) => i.ex?.category !== 'conditioning') : [];
+  const adjusted = eventLiftAdjust(A.db, day, lifts, date);
+  const ev = eventItemsFor(A.db, day, date).map((r) => ({ ...r, ex: A.db.exercises[r.exerciseId] })).filter((r) => r.ex);
+  return [...ev.filter((r) => r.eventFirst), ...adjusted, ...ev.filter((r) => !r.eventFirst)];
+}
+
 // One day of a future week, read only.
 export function weekPeek(A, day, off) {
   const start = addDays(mondayOf(todayStr()), off * 7);
   const date = addDays(start, weekOrder().indexOf(day));
   const p = A.db.plan[day];
   const b = blockInfo(A.db, start);
-  const items = resolveDay(A.db, day, { template: true });
+  const evNote = eventWeekNote(A.db, date);
+  const deload = b.isDeload && !eventActive(A.db, date);
+  const items = futureDayItems(A, day, start);
   const rows = items.map((it) => {
     const metric = it.metric || it.ex.metric || 'reps';
-    const n = b.isDeload ? deloadDose(A.db, it).sets : it.sets;
+    // A meet lift shows that week's sets and weights.
+    const mo = it.meet ? meetOverride(A.db, it, date) : null;
+    if (mo?.setWeights?.length) return `<div class="kv"><span>${A.esc(it.ex.name)}</span><b>${mo.sets} × ${mo.setReps[0]}${mo.setReps.some((r) => r !== mo.setReps[0]) ? '+' : ''} · ${A.fmtW(mo.setWeights[0], it.ex)}</b></div>`;
+    const n = deload ? deloadDose(A.db, it).sets : it.sets;
     const dose = metric === 'reps' ? `${n} × ${it.repMin === it.repMax ? it.repMin : `${it.repMin}–${it.repMax}`}` : `${n} × ${fmtTarget(metric, it.target)}`;
-    return `<div class="kv"><span>${A.esc(it.ex.name)}</span><b>${dose}</b></div>`;
+    return `<div class="kv"><span>${A.esc(it.ex.name)}</span><b>${dose}</b></div>${it.eventKind && it.note ? `<p class="small muted peek-note">${A.esc(it.note)}</p>` : ''}`;
   }).join('');
-  return `<h2>${A.esc(p?.name || 'Workout')}</h2>
-    <p class="muted small">${new Date(`${date}T12:00:00`).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })}${b.isDeload ? ` · Deload week: ${A.esc(deloadText(A.db).toLowerCase())}` : ''}</p>
+  return `<h2>${A.esc(p?.name || (items.find((i) => i.eventKind) ? A.db.exercises[items.find((i) => i.eventKind).exerciseId]?.name : '') || 'Workout')}</h2>
+    ${evNote ? `<p class="small">${A.esc(evNote)}</p>` : ''}
+    <p class="muted small">${new Date(`${date}T12:00:00`).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })}${deload ? ` · Deload week: ${A.esc(deloadText(A.db).toLowerCase())}` : ''}</p>
     <div class="kv-list">${rows}</div>
     <p class="muted small">Weights are set from your latest workouts when the day arrives. Changes to your plan show here too.</p>
     <button class="btn block" data-a="close-sheet">Close</button>`;

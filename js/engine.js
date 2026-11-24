@@ -133,7 +133,9 @@ export function resolveDay(db, day, opts = {}) {
     }
     out.push(item);
   }
-  for (const r of runs) { const ex = db.exercises[r.exerciseId]; if (ex) out.push({ ...r, ex }); }
+  const runItems = runs.map((r) => ({ ...r, ex: db.exercises[r.exerciseId] })).filter((r) => r.ex);
+  out.unshift(...runItems.filter((r) => r.eventFirst));
+  out.push(...runItems.filter((r) => !r.eventFirst));
   // Close to a race or meet, lifting eases off (and the meet week keeps only what it needs).
   return opts.template ? out : eventLiftAdjust(db, day, out);
 }

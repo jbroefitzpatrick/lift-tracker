@@ -2,7 +2,7 @@
 // Split out of app.js. App state and the helpers this needs come from A: live getters (and
 // setters for variables), so db and the rest stay shared with app.js.
 import { DAY_KEYS, DAY_NAMES, PROGRESSIONS, e1rm, recommendScheme, roundTo } from './engine.js';
-import { EQUIPMENT, EXPERIENCE, GOALS, LIMITS, VOLUME_MUSCLES, WEEK_LAYOUT, WEIGHT_GOALS, defaultProfile, fmtSec, generatePlan, goalWeights, mainLiftOptions, secondLiftOptions, prescription, splitOptions, splitTemplates, suggestDays, suggestedWeightGoal, volumeTarget } from './builder.js';
+import { EQUIPMENT, EXPERIENCE, GOALS, LIMITS, VOLUME_MUSCLES, WEEK_LAYOUT, WEIGHT_GOALS, defaultProfile, fmtSec, generatePlan, goalWeights, mainLiftOptions, secondLiftOptions, liftChoices, prescription, splitOptions, splitTemplates, suggestDays, suggestedWeightGoal, volumeTarget } from './builder.js';
 import { activeGym } from './gym.js';
 import { REFS } from './science.js';
 import { fromDisp, toDisp, wUnit } from './units.js';
@@ -33,6 +33,12 @@ export function createBuilderScreens(A) {
       if (ex?.category === 'compound' && !seen.has(ex.id)) seen.set(ex.id, ex);
     }
     return [...seen.values()];
+  }
+
+  // A lift list with the recommended few first, then everything else.
+  function groupedOptions({ top, rest }, sel, skip = null) {
+    const opt = (e) => (e.id === skip ? '' : `<option value="${e.id}" ${e.id === sel ? 'selected' : ''}>${A.esc(e.name)}</option>`);
+    return `${top.length ? `<optgroup label="Recommended">${top.map(opt).join('')}</optgroup>` : ''}${rest.length ? `<optgroup label="${top.length ? 'More lifts' : 'Lifts'}">${rest.map(opt).join('')}</optgroup>` : ''}`;
   }
 
   // Focus lifts: each day's main lift, plus any second focus lift chosen for a day.
@@ -128,7 +134,7 @@ export function createBuilderScreens(A) {
       const mix = Object.entries(w).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1])
         .map(([g, v]) => `${Math.round(v * 100)}% ${GOALS[g].label.toLowerCase()}`).join(', ');
       body = `
-        <button class="card ev-card ev-empty" data-a="ev-choose"><span class="grow"><b>${A.db.event ? 'Your event plan' : 'Training for something specific?'}</b><span class="muted small">${A.db.event ? 'A race or meet is set. Tap to change it.' : 'A race (running, cycling, triathlon) or a powerlifting meet: set a date and a target'}</span></span></button>
+        <button class="card ev-card ev-empty" data-a="ev-choose"><span class="grow"><b>${A.db.event ? 'Your race or meet' : 'Training for a race or meet?'}</b><span class="muted small">${A.db.event ? 'One is set. Tap to change it.' : 'Running, cycling, triathlon or powerlifting: set a date and a target'}</span></span></button>
         <div class="card">
           <p class="muted small">Rate how much each goal matters to you (0 = not at all, 5 = top priority). The mix sets your reps, sets, rest and cardio.</p>
           ${Object.entries(GOALS).map(([g, v]) => `<div class="goal-row">
@@ -188,8 +194,8 @@ export function createBuilderScreens(A) {
               const cur = p.mainLift?.[t] || optsM[0]?.id;
               return `<div class="order-row"><b class="order-day">${DAY_NAMES[days[i]]}</b>
                 <div class="grow"><span class="order-name">${splitDayName(t)}</span>
-                  <label class="focus-pick"><span>Main lift</span><select data-a="b-main" data-k="${t}" aria-label="Main lift for ${splitDayName(t)}">${optsM.map((e) => `<option value="${e.id}" ${e.id === cur ? 'selected' : ''}>${A.esc(e.name)}</option>`).join('')}</select></label>
-                  <label class="focus-pick"><span>Second focus</span><select data-a="b-second" data-k="${t}" aria-label="Second focus lift for ${splitDayName(t)}"><option value="">None</option>${secondLiftOptions(A.db, p, t).filter((e) => e.id !== cur).map((e) => `<option value="${e.id}" ${p.secondLift?.[t] === e.id ? 'selected' : ''}>${A.esc(e.name)}</option>`).join('')}</select></label></div>
+                  <label class="focus-pick"><span>Main lift</span><select data-a="b-main" data-k="${t}" aria-label="Main lift for ${splitDayName(t)}">${groupedOptions(liftChoices(A.db, p, t, 'main', prescription(p)), cur)}</select></label>
+                  <label class="focus-pick"><span>Second focus</span><select data-a="b-second" data-k="${t}" aria-label="Second focus lift for ${splitDayName(t)}"><option value="">None</option>${groupedOptions(liftChoices(A.db, p, t, 'second', prescription(p)), p.secondLift?.[t], cur)}</select></label></div>
                 <button class="icon-btn" data-a="b-order" data-i="${i}" data-v="-1" aria-label="Move ${splitDayName(t)} earlier" ${i === 0 ? 'disabled' : ''}>${icon('up')}</button>
                 <button class="icon-btn" data-a="b-order" data-i="${i}" data-v="1" aria-label="Move ${splitDayName(t)} later" ${i === order.length - 1 ? 'disabled' : ''}>${icon('arrowDown')}</button></div>`;
             }).join('')}</div>`;

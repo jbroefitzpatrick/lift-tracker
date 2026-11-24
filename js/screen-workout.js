@@ -707,7 +707,9 @@ export function createWorkoutScreens(A) {
       if (x.cal) parts.push(`${x.cal} cal`);
       return parts.join(' · ') || '—';
     };
-    const rows = s.entries.filter((e) => e.sets?.length).map((e) => {
+    const prepOf = (e) => /^(warmup|cooldown)-/.test(e.uid || '') || ['mobility', 'prehab'].includes(A.db.exercises[e.exerciseId]?.pattern);
+    const prep = s.entries.filter((e) => e.sets?.length && prepOf(e));
+    const rows = s.entries.filter((e) => e.sets?.length && !prepOf(e)).map((e) => {
       const ex = A.db.exercises[e.exerciseId];
       const work = e.sets.filter((x) => x.type !== 'w' && !x.pain);
       const top = work.reduce((m, x) => (!m || (x.weight || 0) * (1 + (x.reps || 0) / 30) > (m.weight || 0) * (1 + (m.reps || 0) / 30) ? x : m), null);
@@ -724,7 +726,8 @@ export function createWorkoutScreens(A) {
       return `<details class="past-ex"><summary><span class="grow"><b>${A.esc(ex?.name || e.name || 'Exercise')}</b><span class="pick-sub">${line}</span></span>${st ? `<span class="pill ${st[2]}">${st[1]}</span>` : ''}${icon('down', 'chev')}</summary>
         <ol class="past-sets">${lines}</ol>${detail}<button class="text-btn small-text" data-a="ex-info" data-id="${e.exerciseId}">History and how-to</button></details>`;
     }).join('');
-    return rows ? `<section class="card past-card"><h3>Exercises</h3>${rows}</section>` : '';
+    const prepRow = prep.length ? `<details class="past-ex"><summary><span class="grow"><b>Warm-up and mobility</b><span class="pick-sub">${prep.length} ${prep.length === 1 ? 'move' : 'moves'}</span></span>${icon('down', 'chev')}</summary><ul class="past-prep">${prep.map((e) => `<li>${A.esc(A.db.exercises[e.exerciseId]?.name || e.name || '')}</li>`).join('')}</ul></details>` : '';
+    return rows || prepRow ? `<section class="card past-card"><h3>Exercises</h3>${rows}${prepRow}</section>` : '';
   }
 
   function screenSummary() {

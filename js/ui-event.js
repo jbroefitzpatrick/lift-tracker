@@ -6,7 +6,7 @@ import { estimatedMax } from './maxes.js';
 import {
   SPORTS, DISTANCES, LIFT_LEVELS, RECOMMENDED_WEEKS, MEET_FORMATS, MEET_LIFTS, TRI_LEGS,
   eventLabel, eventDistance, planWeeks, weekIndex, raceWeeks, raceWeekPlan, vdotOf, predictSec, runPaces,
-  fmtDur, parseDur, fmtPace, fmtDist, raceCheck, meetWeeks, meetDays, attemptsFor, suggestedGoal, goalCheck, enduranceStrengthDays, planLiftDays, fitMeetIntoPlan,
+  fmtDur, parseDur, fmtPace, fmtDist, raceCheck, recoveryDay, recoveryDays, estMaxHr, meetWeeks, meetDays, attemptsFor, suggestedGoal, goalCheck, enduranceStrengthDays, planLiftDays, fitMeetIntoPlan,
 } from './event-plan.js';
 
 const DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
@@ -41,7 +41,7 @@ export function createEvent(ctx) {
     const distance = ev?.distance || 'half';
     return { type, sport, distance, customKm: ev?.customM ? ev.customM / 1000 : '', date: ev?.date || addDays(mondayOf(todayStr()), (RECOMMENDED_WEEKS[distance] || 12) * 7 - 2),
       goal: ev?.goalSec ? fmtDur(ev.goalSec) : '', recentKey: ev?.recentKey || '5k', recent: ev?.recentSec ? fmtDur(ev.recentSec) : '', ftp: ev?.ftp || '', css: ev?.css ? fmtDur(ev.css) : '',
-      weekly: ev?.weeklyInput ?? '', sessions: ev?.sessions || (sport === 'tri' ? 7 : 4), lifting: ev?.lifting || (hasPlan() ? 'hybrid' : 'support'), mobility: ev?.mobility !== false,
+      weekly: ev?.weeklyInput ?? '', maxHr: ev?.maxHr || '', sessions: ev?.sessions || (sport === 'tri' ? 7 : 4), lifting: ev?.lifting || (hasPlan() ? 'hybrid' : 'support'), mobility: ev?.mobility !== false,
       days: ev?.days || DAY_KEYS.filter((d) => d !== 'mon') };
   }
   function toEvent(s) {
@@ -65,6 +65,9 @@ export function createEvent(ctx) {
       ev.vdotGoal = s.sport === 'run' && goalSec ? Math.max(ev.vdotNow, vdotOf(runM, goalSec)) : ev.vdotNow;
     }
     if (+s.ftp > 0) ev.ftp = +s.ftp;
+    if (+s.maxHr > 100 && +s.maxHr < 230) ev.maxHr = +s.maxHr;
+    const age = +ctx.db.profile?.age;
+    if (age) ev.hrEst = estMaxHr(age);
     const css = parseDur(s.css);
     if (css) ev.css = css;
     const w = parseFloat(s.weekly);
@@ -142,7 +145,7 @@ export function createEvent(ctx) {
   function openChooser() {
     st = null;
     const ev = ctx.db.event;
-    ctx.openSheet(`<h2>Training for something specific?</h2>
+    ctx.openSheet(`<h2>Training for a race or meet?</h2>
       <p class="muted small">Set a date and a target, and the plan works back from it.</p>
       <div class="list-group">
         <button class="list-row" data-a="ev-open" data-v="race"><span class="grow"><b>A race</b><span class="pick-sub">Running, cycling or triathlon, from a 5K to an Ironman</span></span></button>
@@ -169,13 +172,14 @@ export function createEvent(ctx) {
       ${s.sport !== 'bike' ? field('A recent race or time trial', chips('recentKey', Object.entries(RECENT).map(([k, [l]]) => [k, l]), s.recentKey) + input('recent', s.recent, 'Time, e.g. 24:30'), 'Sets your training paces. Within the last couple of months is best.') : ''}
       ${s.sport !== 'run' ? field('FTP (watts)', input('ftp', s.ftp, 'Optional', 'num'), 'Your functional threshold power, if you have a power meter or smart trainer.') : ''}
       ${s.sport === 'tri' ? field('Swim pace per 100 m', input('css', s.css, 'm:ss, e.g. 1:55'), 'The pace you can hold for a steady 400 m.') : ''}
+      ${field('Max heart rate', input('maxHr', s.maxHr, 'Optional, e.g. 188', 'num'), 'From your watch or a recent all-out effort. Adds heart-rate zones to each session. Without it, zones are estimated from your age when no pace or power is set.')}
       ${field(s.sport === 'run' ? `Running now, ${u} per week` : 'Training now, hours per week', input('weekly', s.weekly, s.sport === 'run' ? `e.g. ${metric() ? 30 : 18}` : 'e.g. 5', 'num'), 'Volume builds gradually from here.')}
       ${field('Sessions per week', chips('sessions', (s.sport === 'tri' ? [5, 6, 7, 8, 9, 10] : [3, 4, 5, 6, 7]).map((n) => [String(n), String(n)]), String(s.sessions)))}
       ${field('Days you can train', chips('days', DAY_KEYS.map((d) => [d, SHORT[d]]), s.days, true))}
       <div class="field"><span>Lifting alongside</span>${Object.entries(LIFT_LEVELS).map(([k, [l, sub]]) => `<button class="pick-row ${s.lifting === k ? 'picked' : ''}" data-a="ev-set" data-k="lifting" data-v="${k}"><span class="grow"><b>${l}</b><span class="pick-sub">${sub}</span></span><span class="radio" aria-hidden="true"></span></button>`).join('')}</div>
       ${s.lifting === 'none' ? `<label class="toggle"><input type="checkbox" data-a="ev-mobility" ${s.mobility ? 'checked' : ''}><span>Mobility sessions<span class="pick-sub">Two short routines a week for hips, ankles and back</span></span></label>` : ''}
       <div id="ev-preview">${racePreview(toEvent(s))}</div>
-      ${ctx.refChips ? ctx.refChips(['daniels2014', 'seiler2010', 'bosquet2007', 'ronnestad2014', 'blagrove2018', ...(s.sport !== 'run' ? ['allen2010'] : []), ...(s.sport === 'tri' ? ['wakayoshi1992'] : [])]) : ''}
+      ${ctx.refChips ? ctx.refChips(['daniels2014', 'seiler2010', 'bosquet2007', 'ronnestad2014', 'blagrove2018', ...(s.sport !== 'run' ? ['allen2010'] : []), 'tanaka2001', ...(s.sport === 'tri' ? ['wakayoshi1992'] : [])]) : ''}
       <button class="btn primary block big" data-a="ev-start">${ctx.db.event?.type === 'race' ? 'Update plan' : 'Start plan'}</button>
       ${ctx.db.event ? '<button class="btn plain block danger-text" data-a="ev-remove">Remove event</button>' : ''}`);
   }
@@ -255,9 +259,14 @@ export function createEvent(ctx) {
   function card() {
     const db = ctx.db;
     const ev = db.event;
-    if (!ev) return `<button class="card ev-card ev-empty" data-a="ev-choose"><span class="grow"><b>Training for something specific?</b><span class="muted small">A race or a powerlifting meet: set a date and a target</span></span></button>`;
+    if (!ev) return `<button class="card ev-card ev-empty" data-a="ev-choose"><span class="grow"><b>Training for a race or meet?</b><span class="muted small">Running, cycling, triathlon or powerlifting: set a date and a target</span></span></button>`;
     const label = ev.customLabel ? `${ev.customLabel} ${ev.sport === 'bike' ? 'ride' : 'race'}` : eventLabel(ev);
     const left = daysBetween(todayStr(), ev.date);
+    const recN = recoveryDay(ev, todayStr());
+    if (recN) {
+      return `<section class="card ev-card"><h3>${esc(label)} · recovery</h3><p class="small">Day ${recN} of ${recoveryDays(ev)}: ${ev.type === 'meet' ? 'lifting at half the sets, moderate weights' : 'easy sessions only and lifting at half the sets'}. Then your regular plan picks back up.</p>
+        <div class="row"><button class="btn grow" data-a="ev-finish">${ev.prev ? 'Restore my plan now' : 'Finish now'}</button><button class="btn grow" data-a="ev-choose">Plan the next one</button></div></section>`;
+    }
     if (left < 0) {
       return `<section class="card ev-card"><h3>${esc(label)} · done</h3><p class="small muted">${ctx.fmtDate(ev.date)}. How did it go? Log the result as a workout, then go back to your regular plan.</p>
         <div class="row"><button class="btn primary grow" data-a="ev-finish">${ev.prev ? 'Restore my lifting plan' : 'Finish'}</button><button class="btn grow" data-a="ev-choose">Plan the next one</button></div></section>`;

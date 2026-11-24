@@ -29,6 +29,7 @@ import { todayStr, addDays, mondayOf, daysBetween, dateOfDay } from './store.js'
 import { roundToGym, activeGym, isAvailable } from './gym.js';
 import { wUnit } from './units.js';
 import { CARDIO } from './cardio-bank.js';
+import { testPlan } from './maxes.js';
 
 const DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 const KM = 1000;
@@ -71,7 +72,18 @@ export function weekIndex(ev, date = todayStr()) {
   const i = Math.floor(daysBetween(ev.start, mondayOf(date)) / 7);
   return i >= 0 && i < planWeeks(ev) && date <= ev.date ? i : null;
 }
-export const eventActive = (db, date = todayStr()) => !!db.event && weekIndex(db.event, date) != null;
+export const eventActive = (db, date = todayStr()) => !!db.event && (weekIndex(db.event, date) != null || !!recoveryDay(db.event, date));
+
+// After the event: easy days to recover before regular training. Longer events need longer
+// (a common guide is about a day per mile raced for runners); a meet gets a lighter week.
+const RECOVERY = { '5k': 4, '10k': 7, half: 10, marathon: 14, '40k': 4, '100k': 7, century: 10, sprint: 5, olympic: 7, '70.3': 14, ironman: 21 };
+export const recoveryDays = (ev) => (ev?.type === 'meet' ? 7 : RECOVERY[ev?.distance] || 7);
+// Day n of the recovery (1 = the day after), or null.
+export function recoveryDay(ev, date = todayStr()) {
+  if (!ev?.date) return null;
+  const n = daysBetween(ev.date, date);
+  return n >= 1 && n <= recoveryDays(ev) ? n : null;
+}
 
 // ---------- Running: VDOT (Daniels and Gilbert) ----------
 
@@ -94,6 +106,14 @@ export function runPaces(vdot) {
     interval: paceAt(vdot, 0.98), rep: paceAt(vdot, 0.98) * 0.94,
   };
 }
+
+// ---------- Heart rate ----------
+// Zones as a share of maximum heart rate. Max from the athlete, or estimated from age
+// (208 − 0.7 × age, tanaka2001) when no pace or power is known.
+export const estMaxHr = (age) => (age > 0 ? Math.round(208 - 0.7 * age) : null);
+const hrMax = (ev) => +ev.maxHr || +ev.hrEst || null;
+export const hrText = (ev, lo, hi) => { const m = hrMax(ev); return m ? `${Math.round(m * lo)}–${Math.round(m * hi)} bpm` : ''; };
+const HR_RUN = { easy: [0.65, 0.78], long: [0.65, 0.78], threshold: [0.85, 0.9], interval: [0.9, 0.95], rep: [0.92, 0.97], fivek: [0.9, 0.95], tenk: [0.88, 0.93], half: [0.85, 0.9], marathon: [0.8, 0.87] };
 
 // ---------- Formatting ----------
 
@@ -149,8 +169,9 @@ const runItem = (id, metric, target, sets, note, extra = {}) => ({ exerciseId: i
 function runSessions(ev, w, wk, n, metric) {
   const vdot = ev.vdotNow ? ev.vdotNow + (ev.vdotGoal - ev.vdotNow) * Math.min(1, wk / Math.max(1, raceWeeks(ev).length - 1)) * 0.85 : null;
   const P = vdot ? runPaces(vdot) : null;
-  const pace = (k) => (P ? fmtPace(P[k], metric) : '');
-  const easyPace = P ? `${fmtPace(P.easy[0], metric)} or slower` : 'conversational';
+  const hr = (k) => (HR_RUN[k] && (ev.maxHr || !P) ? hrText(ev, ...HR_RUN[k]) : '');
+  const pace = (k) => [P ? fmtPace(P[k], metric) : '', hr(k)].filter(Boolean).join(' or ');
+  const easyPace = P ? `${fmtPace(P.easy[0], metric)} or slower${hr('easy') ? ` (${hr('easy')})` : ''}` : `a conversational effort${hr('easy') ? ` (${hr('easy')})` : ''}`;
   const goalPace = ev.goalSec ? ev.goalSec / (eventDistance(ev) / KM) : P?.[{ '5k': 'fivek', '10k': 'tenk', half: 'half', marathon: 'marathon' }[ev.distance]] || null;
   const gp = goalPace ? fmtPace(goalPace, metric) : 'goal race pace';
   const total = w.minutes;
@@ -192,7 +213,9 @@ function runSessions(ev, w, wk, n, metric) {
 
 function bikeSessions(ev, w, wk, n) {
   const ftp = +ev.ftp || 0;
-  const z = (lo, hi, rpe) => (ftp ? `${Math.round(ftp * lo)}–${Math.round(ftp * hi)} W` : rpe);
+  // Heart rate alongside power or effort, from the share of FTP (roughly: 75% FTP ≈ 75% max HR, threshold ≈ 90%).
+  const hrFor = (lo) => (lo < 0.76 ? hrText(ev, 0.65, 0.75) : lo < 0.88 ? hrText(ev, 0.76, 0.85) : lo < 0.95 ? hrText(ev, 0.84, 0.88) : lo < 1.06 ? hrText(ev, 0.88, 0.92) : hrText(ev, 0.92, 0.97));
+  const z = (lo, hi, rpe) => [ftp ? `${Math.round(ftp * lo)}–${Math.round(ftp * hi)} W` : rpe, ev.maxHr || !ftp ? hrFor(lo) : ''].filter(Boolean).join(', ');
   const total = w.minutes;
   const longMin = Math.min(LONG_CAP[ev.distance] || 180, Math.max(60, Math.round(total * 0.38)));
   const q = [];
@@ -409,22 +432,52 @@ export function recordRun(db, session) {
   return null;
 }
 
+function recoveryItems(ev, n, day) {
+  if (n <= 2 || n % 2 === 0) return [];
+  const minutes = Math.min(40, 15 + n * 2);
+  const sport = ev.sport === 'tri' ? ['swim', 'bike', 'run'][Math.floor(n / 2) % 3] : ev.sport;
+  const item = sport === 'bike' ? runItem('ride-endurance', 'time', minutes * 60, 1, `Recovery ride: ${minutes} min, very easy. Your legs are still recovering from the race.`)
+    : sport === 'swim' ? runItem('swim-technique', 'distance', 800, 1, 'Recovery swim: 800 m easy, any stroke')
+      : runItem('run-easy', 'time', minutes * 60, 1, `Recovery run: ${minutes} min, very easy. Walk breaks are fine. Stop if anything hurts.`);
+  return [{ uid: `ev-rec-${day}-${n}`, group: 'E1', eventKind: 'recovery', sport, ...item }];
+}
+
 // Workout items for a weekday this week (what the Train screen shows for the event).
 export function eventItemsFor(db, day, date = todayStr()) {
   const ev = db.event;
   if (!ev || ev.type !== 'race') return [];
   const d = dateOfDay(day, date);
+  const rec = recoveryDay(ev, d);
+  if (rec) return recoveryItems(ev, rec, day);
   const i = weekIndex(ev, d);
   if (i == null || d > ev.date) return [];
   const wp = raceWeekPlan(ev, i, wUnit() === 'kg', db);
-  return (wp?.byDay[day] || []).filter((s) => !s.movedTo).map((s, k) => ({ uid: `ev-${day}-${i}-${s.kind}-${k}`, group: `E${k + 1}`, eventKind: s.kind, sport: s.sport, ...s.item }));
+  return (wp?.byDay[day] || []).filter((s) => !s.movedTo).map((s, k) => ({ uid: `ev-${day}-${i}-${s.kind}-${k}`, group: `E${k + 1}`, eventKind: s.kind, sport: s.sport, eventFirst: s.sport !== 'mobility', ...s.item }));
 }
 export function eventDays(db, date = todayStr()) {
   if (!db.event || db.event.type !== 'race') return [];
+  const ev = db.event;
+  const recDays = DAY_KEYS.filter((d) => { const n = recoveryDay(ev, dateOfDay(d, date)); return n && recoveryItems(ev, n, d).length; });
   const i = weekIndex(db.event, date);
-  if (i == null) return [];
+  if (i == null) return recDays;
   const wp = raceWeekPlan(db.event, i, wUnit() === 'kg', db);
-  return DAY_KEYS.filter((d) => wp.byDay[d].some((s) => !s.movedTo) && dateOfDay(d, date) <= db.event.date);
+  return [...new Set([...DAY_KEYS.filter((d) => wp.byDay[d].some((s) => !s.movedTo) && dateOfDay(d, date) <= db.event.date), ...recDays])];
+}
+
+// A future week's line about the event (phase and week), or ''.
+export function eventWeekNote(db, date) {
+  const ev = db.event;
+  if (!ev) return '';
+  const rec = recoveryDay(ev, date);
+  if (rec) return `${eventLabel(ev)}: recovery`;
+  const i = weekIndex(ev, date);
+  if (i == null) return '';
+  if (ev.type === 'meet') {
+    const w = meetWeeks(ev)[i];
+    return `Meet plan · ${{ volume: 'Volume block', strength: 'Strength block', peak: 'Peak', taper: 'Taper week', meet: 'Meet week' }[w.block]} · week ${i + 1} of ${planWeeks(ev)}${w.deload ? ' · lighter week' : ''}`;
+  }
+  const w = raceWeeks(ev)[i];
+  return `${eventLabel(ev)} · ${{ base: 'Base', build: 'Build', peak: 'Peak', taper: 'Taper' }[w.phase]} · week ${i + 1} of ${planWeeks(ev)}${w.raceWeek ? ' · race week' : w.cutback ? ' · easier week' : ''}`;
 }
 
 // ---------- Strength for endurance athletes ----------
@@ -458,6 +511,12 @@ export function enduranceStrengthDays(db, ev, plan = null) {
 // the last week. Applied on top of whatever the day's plan is.
 export function eventLiftAdjust(db, day, items, date = todayStr()) {
   const ev = db.event;
+  const recN = ev ? recoveryDay(ev, dateOfDay(day, date)) : null;
+  if (recN) {
+    const liftIt = (it) => it.ex?.category !== 'conditioning';
+    if (ev.type === 'race' && recN <= 3) return items.filter((it) => !liftIt(it));
+    return items.map((it) => (liftIt(it) ? { ...it, sets: Math.max(1, Math.ceil(it.sets / 2)), note: it.note || (ev.type === 'meet' ? 'Week after the meet: half the sets, moderate weights' : 'Recovering from the race: half the sets') } : it));
+  }
   if (ev?.type === 'meet') {
     const d = dateOfDay(day, date);
     const i = weekIndex(ev, d);
@@ -595,7 +654,8 @@ export function meetOverride(db, item, date = todayStr()) {
   // On meet day: the three attempts.
   if (w.block === 'meet' && date === ev.date && item.meet.kind === 'comp') {
     const at = attemptsFor(ev.target?.[item.meet.lift] || max, max).map((a) => roundToGym(ex, a.lb, gym));
-    return { scheme: 'meet', maxTest: true, weight: at[0], reps: 1, sets: 3, setWeights: at, setReps: [1, 1, 1], rir: null, fixedLadder: true, restSec: 600, aim: 'Meet day: opener, second, third. Take the second only if the opener moved well.' };
+    const warm = testPlan(ex, at[0] / 0.92, gym).warm.filter((w) => w.weight < at[0]);
+    return { scheme: 'meet', maxTest: true, warm, weight: at[0], reps: 1, sets: 3, setWeights: at, setReps: [1, 1, 1], rir: null, fixedLadder: true, restSec: 600, aim: 'Meet day: warm up to your opener, then second and third. Take the second only if the opener moved well.' };
   }
   // A variation is a little lighter than the competition lift.
   const scale = item.meet.kind === 'var' ? 0.85 : 1;

@@ -543,6 +543,28 @@ export function mainLiftOptions(db, p, key) {
     .sort((a, b) => (b.id === first?.id) - (a.id === first?.id) || slot.patterns.includes(b.pattern) - slot.patterns.includes(a.pattern) || a.name.localeCompare(b.name));
 }
 
+// Lift choices split into a short recommended list (what the day's slots would pick first for these
+// goals and equipment, and the lifts most programs use) and everything else, each alphabetical.
+const byName = (a, b) => a.name.localeCompare(b.name);
+export function liftChoices(db, p, key, which, rx = null) {
+  const t = TEMPLATES[key.replace(/2$/, '')];
+  if (!t) return { top: [], rest: [] };
+  const all = which === 'main' ? mainLiftOptions(db, p, key) : secondLiftOptions(db, p, key);
+  const ids = new Set(all.map((e) => e.id));
+  const strength = rx ? goalFocus(rx).strength : (p.goals?.strength || 0) >= 4;
+  const slots = t.slots.filter(([, role]) => (which === 'main' ? role === 'main' : role === 'comp'))
+    .map(([s]) => (strength && STRENGTH_SLOTS[key.replace(/2$/, '')]?.[s]?.[0]) || s);
+  const top = [];
+  for (const s of slots) {
+    const pick = pickExercise(db, p, s, 0, new Set(top), which);
+    if (pick && ids.has(pick.id) && !top.includes(pick.id)) top.push(pick.id);
+    let k = 0;
+    for (const id of SLOTS[s]?.prefer || []) { if (k >= (which === 'main' ? 3 : 2)) break; if (ids.has(id) && !top.includes(id)) { top.push(id); k++; } }
+  }
+  top.splice(which === 'main' ? 4 : 6);
+  return { top: all.filter((e) => top.includes(e.id)).sort(byName), rest: all.filter((e) => !top.includes(e.id)).sort(byName) };
+}
+
 // Choices for a day's second focus lift: compounds for the day's other big movements.
 export function secondLiftOptions(db, p, key) {
   const t = TEMPLATES[key.replace(/2$/, '')];
