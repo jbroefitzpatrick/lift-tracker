@@ -1850,6 +1850,22 @@ function swapInSession(uid, newId) {
   persist();
 }
 
+// Editing a day before its workout starts (the night before, say): the change goes on this week's
+// version of the day, and the workout isn't started. Reset in Plan undoes it.
+function draftDay(day) {
+  if (!weekOverride(db, day)?.items) adjustDay(db, day, { minutes: weekOverride(db, day)?.minutes || null, gymId: weekOverride(db, day)?.gymId || null });
+  return db.week.days[day];
+}
+function draftEdit(day, uid, fn) {
+  const o = draftDay(day);
+  let hit = false;
+  for (const list of [o.items, o.base || []]) { const it = list.find((i) => i.uid === uid); if (it) { fn(it, list); hit = true; } }
+  if (!hit) { toast('That part of the workout can be changed once it starts.'); return false; }
+  persist();
+  return true;
+}
+const notStarted = () => !sessionFor(ui.day);
+
 // Add an exercise to a weekday's plan with sensible defaults for its type.
 function addToPlanDay(day, exId) {
   const plan = db.plan[day];
@@ -2298,6 +2314,11 @@ const actions = {
     persist(); haptic(); render();
   },
   'del-set': (d) => {
+    if (notStarted()) {
+      const it = todayItems(ui.day).find((i) => i.uid === d.uid);
+      if ((it?.sets || 1) <= 1) return toast('An exercise needs at least one set. Remove the exercise instead.');
+      if (draftEdit(ui.day, d.uid, (i) => { i.sets = Math.max(1, (i.sets || 1) - 1); })) render(); return;
+    }
     const sx = ensureSession(ui.day);
     const e = sx?.entries[d.uid];
     if (!e) return;
@@ -2368,6 +2389,7 @@ const actions = {
   },
   'close-sheet': () => closeSheet(),
   'add-set': (d) => {
+    if (notStarted()) { if (draftEdit(ui.day, d.uid, (it) => { it.sets = Math.min(10, (it.sets || 1) + 1); })) render(); return; }
     const session = ensureSession(ui.day);
     if (!session) return;
     const e = session.entries[d.uid];
@@ -2380,6 +2402,7 @@ const actions = {
   },
   'remove-set': (d) => {
     if (!$('#sheet').hidden) closeSheet();
+    if (notStarted()) { if (draftEdit(ui.day, d.uid, (it) => { it.sets = Math.max(1, (it.sets || 1) - 1); })) render(); return; }
     const session = ensureSession(ui.day);
     if (!session) return;
     const e = session.entries[d.uid];
@@ -2848,6 +2871,21 @@ const actions = {
   'ex-note-save': (d) => { const sx = ensureSession(ui.day); if (!sx) return; sx.entries[d.uid].note = $('#ex-note').value.trim(); persist(); closeSheet(); render(); toast('Note saved.'); },
   'ex-move': (d) => {
     // Move past a whole neighbouring group so supersets stay together.
+    if (notStarted()) {
+      const o = draftDay(ui.day);
+      if (!o.items.some((i) => i.uid === d.uid)) return toast('That part of the workout can be moved once it starts.');
+      pushUndo();
+      for (const list of [o.items, o.base].filter(Boolean)) {
+        const i = list.findIndex((it) => it.uid === d.uid);
+        if (i < 0) continue;
+        const [it] = list.splice(i, 1);
+        const g = (k) => groupNum(list[k].group);
+        let j;
+        if (+d.v > 0) { j = i; if (j < list.length) { const ng = g(j); while (j < list.length && g(j) === ng) j++; } } else { j = i - 1; if (j >= 0) { const pg = g(j); while (j >= 0 && g(j) === pg) j--; } j++; }
+        list.splice(j, 0, it);
+      }
+      persist(); closeSheet(); render(); return;
+    }
     const sx = ensureSession(ui.day);
     if (!sx) return; pushUndo(); const o = sx.order; const i = o.indexOf(d.uid);
     const g = (u) => groupNum(sx.entries[u].group);
@@ -3315,6 +3353,10 @@ const actions = {
     // From today's workout
     const entry = sessionFor(ui.day)?.entries[picker.uid];
     if (picker.scope === 'plan') swapInPlan(ui.day, picker.uid, d.id);
+    if (picker.scope === 'today' && notStarted()) {
+      if (!draftEdit(ui.day, picker.uid, (it) => { it.exerciseId = d.id; delete it.role; delete it.variants; it.manual = true; })) return;
+      closeSheet(); render(); return toast(`Swapped to ${ex.name} for this ${FULL_DAY[ui.day]}.`);
+    }
     if (picker.scope === 'today' || sessionFor(ui.day)) swapInSession(picker.uid, d.id);
     closeSheet(); render();
     toast(`Swapped to ${ex.name}.`);
