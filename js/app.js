@@ -948,13 +948,29 @@ function undoList() {
   persist(); render(); toast('Undone.');
 }
 
-// Where today's list lives: the workout once started, otherwise the plan for this weekday.
+// Where today's list lives: the workout once started, otherwise this week's version of the day
+// (like every other edit before starting), so the weekly plan isn't changed. The week's version
+// keeps a full list (base) beside the one trimmed to the time available: it follows the same
+// order and links.
 function editableList() {
   const session = sessionFor(ui.day);
   if (session) return { list: session.order.map((u) => session.entries[u]), save: (list) => { session.order = list.map((e) => e.uid); } };
-  const plan = db.plan[ui.day];
-  if (!plan) return { list: [], save: () => {} }; // a day with nothing planned
-  return { list: plan.items, save: (list) => { plan.items = list; } };
+  if (!db.plan[ui.day] && !weekOverride(db, ui.day)?.items) return { list: [], save: () => {} }; // nothing planned
+  const o = draftDay(ui.day);
+  return {
+    list: o.items,
+    save: (list) => {
+      o.items = list;
+      if (!o.base) return;
+      const byUid = new Map(list.map((x) => [x.uid, x]));
+      const kept = list.map((x) => o.base.find((b) => b.uid === x.uid)).filter(Boolean);
+      kept.forEach((b) => { const x = byUid.get(b.uid); b.group = x.group; b.restSec = x.restSec; });
+      // Ones left out for time go after, each on its own.
+      let n = Math.max(0, ...list.map((x) => parseInt(groupNum(x.group), 10) || 0));
+      const rest = o.base.filter((b) => !byUid.has(b.uid)).map((b) => { b.group = String(++n); return b; });
+      o.base = [...kept, ...rest];
+    },
+  };
 }
 
 // The plan for the day open in Plan → Week.
