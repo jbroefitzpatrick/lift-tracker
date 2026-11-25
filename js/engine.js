@@ -1,4 +1,5 @@
 // Progression engine: double progression + adaptation + deloads (spec section 3).
+import { startEstimate } from './start-weights.js';
 import { daysBetween, parseDate, todayStr, mondayOf } from './store.js';
 import { runItemsFor } from './running.js';
 import { ROW_ROTATION } from './plan.js';
@@ -146,7 +147,8 @@ export function getState(db, exId) {
   const ex = db.exercises[exId];
   const st = db.state[exId] || {};
   return {
-    targetWeight: ex?.noLoad ? 0 : st.targetWeight !== undefined ? st.targetWeight : ex?.startWeight ?? null, // reps-only moves carry no weight
+    // Never logged: a starting guess sized to the person (js/start-weights.js). Reps-only moves carry no weight.
+    targetWeight: ex?.noLoad ? 0 : st.targetWeight !== undefined ? st.targetWeight : ex?.startWeight ?? startEstimate(db, ex),
     targetReps: st.targetReps ?? null,
     targetTotal: st.targetTotal ?? null,
     tm: st.tm ?? null, // training max, for percentage cycles

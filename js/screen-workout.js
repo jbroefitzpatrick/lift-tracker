@@ -133,8 +133,9 @@ export function createWorkoutScreens(A) {
         <button class="icon-btn" data-a="open-settings" aria-label="Settings">${icon('gear')}</button></header>
       <section class="start-card">
         <h2>${first ? 'How would you like to start?' : 'Ready when you are'}</h2>
-        <button class="start-opt primary" data-a="quick-build"><b>Build my plan</b><span>Four quick questions: goal, experience, days a week and equipment. Change anything later.</span></button>
-        <button class="start-opt" data-a="start-empty"><b>Start a workout</b><span>Add exercises as you go. ProFitz (working title) learns your weights from what you log.</span></button>
+        <button class="start-opt primary" data-a="quick-build"><b>Build my plan</b><span>A few quick questions: goal, experience, days a week and equipment. Starting weights fit you.</span></button>
+        <button class="start-opt" data-a="quick-start"><b>Pick a ready-made plan</b><span>Full body, upper and lower, push pull legs, dumbbells only or no equipment.</span></button>
+        <button class="start-opt" data-a="start-empty"><b>Start an empty workout</b><span>Add exercises as you go. The app learns your weights from what you log.</span></button>
       </section>
       ${first ? '<p class="muted small center pad">Use ProFitz (working title) on another phone? <button class="text-link" data-a="open-settings" data-page="account">Sign in to sync</button></p>' : ''}`;
   }

@@ -10,7 +10,7 @@ import { METRICS, sideNote } from './bank.js';
 import { rankOf } from './exercise-rank.js';
 import { DELOAD_ACCESSORIES, DELOAD_STYLES, deloadDose, deloadOf, deloadText, seedFromHistory } from './engine.js';
 import { weekPeek } from './screen-plan.js';
-import { TYPES, ROW_ROTATION, defaultPlan } from './plan.js';
+import { TYPES, ROW_ROTATION } from './plan.js';
 import {
   DAY_KEYS, DAY_NAMES, dayKeyOf, weekInfo, needsRotationPrompt, nextRowCompound, resolveDay,
   targetsFor, getState, painWarning, evaluate, groupNum, e1rm, roundTo, dayPlan, weekOverride,
@@ -44,7 +44,7 @@ import { goalProgress, goalHit, getGoal } from './big-goal.js';
 import { createPeople } from './ui-people.js';
 import { moveDay, copyDayTo, catchUpDay, laggingMuscles, maxDayTo } from './week.js';
 import { estimatedMax, testPlan, PEAKS, peakLength, peakWeek, startPeak, peakTestDate, TEST_REST, MAX_AIM } from './maxes.js';
-import { PROGRAMS, programPlan } from './programs.js';
+import { PROGRAMS, QUICKSTARTS, programPlan } from './programs.js';
 import { scheduleRest, cancelRest } from './push.js';
 import { account } from './account.js';
 import { cloudReady } from './cloud.js';
@@ -809,18 +809,73 @@ function aboutYouOk() {
   return !missing.length;
 }
 
+// About you, for starting weights (and calorie targets): body weight, with age and sex optional.
+function aboutBlock() {
+  const a = (ui.about ||= { weight: latestBodyweight(db) ? String(Math.round(toDisp(latestBodyweight(db)))) : '', age: db.about?.age || db.profile?.age || '', sex: db.about?.sex ?? db.profile?.sex ?? '' });
+  return `<div class="field"><span>About you</span>
+    <div class="grid2"><label class="field"><span class="small muted">Body weight (${wUnit()})</span><input id="ab-w" type="text" inputmode="decimal" value="${esc(a.weight)}" placeholder="${wUnit() === 'kg' ? 'e.g. 75' : 'e.g. 165'}"></label>
+    <label class="field"><span class="small muted">Age (optional)</span><input id="ab-age" type="text" inputmode="numeric" value="${esc(String(a.age || ''))}" placeholder="e.g. 30"></label></div>
+    <div class="segmented small-seg" role="radiogroup" aria-label="Sex">${[['', 'Prefer not to say'], ['female', 'Female'], ['male', 'Male']].map(([v, l]) => `<button class="${a.sex === v ? 'on' : ''}" data-a="about-sex" data-v="${v}" role="radio" aria-checked="${a.sex === v}">${l}</button>`).join('')}</div>
+    <p class="muted small">Used to suggest starting weights for people like you. The app adjusts from what you lift.</p></div>`;
+}
+const readAbout = () => { const a = (ui.about ||= {}); const w = document.getElementById('ab-w'); if (w) a.weight = w.value.trim(); const g = document.getElementById('ab-age'); if (g) a.age = g.value.trim(); return a; };
+// Saves the answers: body weight goes in the weight log; age, sex and experience in db.about.
+function saveAbout(exp) {
+  const a = readAbout();
+  const lb = +fromDisp(a.weight);
+  if (!(lb >= 60 && lb <= 700)) { toast('Add your body weight so starting weights fit you.'); document.getElementById('ab-w')?.focus(); return false; }
+  const age = +a.age;
+  db.about = { age: age >= 13 && age <= 100 ? age : null, sex: a.sex || '', exp: exp || 'beginner', weightLb: Math.round(lb) };
+  const today = todayStr();
+  db.bodyweight = (db.bodyweight || []).filter((b) => b.date !== today);
+  db.bodyweight.push({ date: today, weight: Math.round(lb * 10) / 10 });
+  return true;
+}
+
+// Ready-made plans for a quick start.
+function openQuickStart() {
+  const q = (ui.qb ||= { goal: 'muscle', exp: 'beginner', days: 3, equip: 'gym' });
+  q.exp ||= 'beginner';
+  openSheet(`<h2>Pick a plan</h2>
+    <p class="muted small">Simple plans you can start today. Change days, exercises or time any time.</p>
+    ${aboutBlock()}
+    <div class="field"><span>Lifting experience</span><div class="segmented small-seg wrap-seg" role="radiogroup">${[['beginner', 'New to it'], ['intermediate', '1–3 years'], ['advanced', '3+ years']].map(([v, l]) => `<button class="${q.exp === v ? 'on' : ''}" data-a="qs-exp" data-v="${v}" role="radio" aria-checked="${q.exp === v}">${l}</button>`).join('')}</div></div>
+    <div class="list-group">${Object.entries(QUICKSTARTS).map(([k, p]) => `<button class="list-row" data-a="qs-use" data-v="${k}"><span class="grow"><b>${esc(p.name)}</b><span class="pick-sub">${esc(p.where)} · ${esc(p.level)}</span><span class="pick-sub">${esc(p.desc)}</span></span>${icon('right', 'chev')}</button>`).join('')}</div>
+    <button class="btn plain block" data-a="programs-open">Known programs: 5/3/1, GZCLP, Starting Strength…</button>`);
+}
+
 function openQuickBuild() {
   const q = (ui.qb ||= { goal: 'muscle', exp: 'beginner', days: 3, equip: 'gym' });
   q.exp ||= 'beginner';
   const seg = (k, opts) => `<div class="segmented small-seg wrap-seg" role="radiogroup">${opts.map(([v, l]) => `<button class="${String(q[k]) === String(v) ? 'on' : ''}" data-a="qb-set" data-k="${k}" data-v="${v}" role="radio" aria-checked="${String(q[k]) === String(v)}">${l}</button>`).join('')}</div>`;
   openSheet(`<h2>Build my plan</h2>
-    <p class="muted small">Four quick questions. Everything can be fine-tuned later.</p>
+    <p class="muted small">A few quick questions. Everything can be fine-tuned later.</p>
+    ${aboutBlock()}
     <div class="field"><span>Main goal</span>${seg('goal', Object.entries(QB_GOALS).map(([k, v]) => [k, v.label]))}</div>
     <div class="field"><span>Lifting experience</span>${seg('exp', [['beginner', 'New to it'], ['intermediate', '1–3 years'], ['advanced', '3+ years']])}</div>
     <div class="field"><span>Days a week</span>${seg('days', [2, 3, 4, 5, 6].map((n) => [n, n]))}</div>
     <div class="field"><span>Where you train</span>${seg('equip', Object.entries(QB_EQUIP).map(([k, v]) => [k, v.label]))}</div>
     <button class="btn primary block big" data-a="qb-go">Create my plan</button>
     <button class="btn plain block" data-a="qb-full">Answer more questions instead</button>`);
+}
+
+// A program or quick start becomes the plan (the old one kept for "Switch back").
+// Browser tests run on this computer: their fixture plan is fetched ahead so loading it is instant.
+let testSample = null;
+if (/^(127.0.0.1|localhost)$/.test(location.hostname)) import('./test-sample.js').then((m) => { testSample = m; }).catch(() => {});
+
+function usePlanTemplate(id, p) {
+  if (Object.keys(db.plan || {}).length) {
+    safetySnapshot(db, `Before starting ${p.name}`);
+    db.previousPlan = { plan: db.plan, dayModes: { ...db.settings.dayModes }, deloadEvery: db.settings.deloadEvery, savedAt: Date.now() };
+  }
+  const { plan, dayModes } = programPlan(id);
+  for (const day of Object.values(plan)) day.items = day.items.filter((i) => db.exercises[i.exerciseId]);
+  db.plan = plan; db.settings.dayModes = dayModes;
+  if (p.progression) db.settings.progression = p.progression;
+  if (p.focus) { db.blocks ||= {}; db.blocks.focus ||= {}; db.blocks.focus[blockInfo(db).index] = p.focus.filter((fid) => db.exercises[fid]); }
+  db.settings.welcomed = true; db.settings.planSince = todayStr();
+  persist();
 }
 
 // ---------- First time on a lift: find a working weight from one set ----------
@@ -2197,7 +2252,6 @@ function screenSettings() {
     ${extras.dataCard()}
     <h2 class="group-title">Reset</h2>
     <div class="list-group">
-      <button class="list-row" data-a="reset-plan"><span class="grow">Load the sample plan</span></button>
       <button class="list-row danger-row" data-a="reset-all"><span class="grow">Erase all data</span></button>
     </div>
     <p class="muted small center pad">ProFitz (working title) · ${db.sessions.length} workouts logged</p>` },
@@ -2844,13 +2898,26 @@ const actions = {
   'tour-replay': () => { tour.replay(); ui.setPage = null; ui.tab = 'today'; ui.day = defaultDay(); window.scrollTo(0, 0); render(); },
   'vol-open': (d) => openMuscleWork(d),
   'quick-build': () => openQuickBuild(),
-  'qb-set': (d) => { ui.qb[d.k] = d.k === 'days' ? +d.v : d.v; openQuickBuild(); },
+  'qb-set': (d) => { readAbout(); ui.qb[d.k] = d.k === 'days' ? +d.v : d.v; openQuickBuild(); },
+  'about-sex': (d) => { readAbout().sex = d.v; if (document.querySelector('#sheet [data-a="qb-go"]')) openQuickBuild(); else openQuickStart(); },
+  'quick-start': () => openQuickStart(),
+  'qs-exp': (d) => { readAbout(); ui.qb.exp = d.v; openQuickStart(); },
+  'qs-use': async (d) => {
+    const p = QUICKSTARTS[d.v];
+    if (!p) return;
+    if (Object.keys(db.plan || {}).length && !(await ask(`Switch to ${p.name}? You can switch back from Plan.`, 'Switch'))) return;
+    if (!saveAbout(ui.qb?.exp)) return;
+    usePlanTemplate(d.v, p);
+    ui.tab = 'today'; ui.day = defaultDay(); closeSheet(); window.scrollTo(0, 0); render();
+    toast(`${p.name} is your plan.`);
+  },
   'qb-full': () => { closeSheet(); openBuilder(); },
   'plan-first-today': (d) => { moveDay(db, d.day, dayKeyOf(todayStr())); persist(); ui.day = dayKeyOf(todayStr()); render(); toast(`${db.plan[d.day]?.name || 'Workout'} is today.`); },
   'qb-go': () => {
     const q = ui.qb;
+    if (!saveAbout(q.exp)) return;
     const g = QB_GOALS[q.goal];
-    const draft = { ...defaultProfile(db), goals: { ...g.goals }, weightGoal: g.weightGoal || null, liftDays: q.days, equipment: [...QB_EQUIP[q.equip].eq], routines: ['warm'], experience: q.exp || 'beginner' };
+    const draft = { ...defaultProfile(db), age: db.about.age || 30, sex: db.about.sex, weightLb: db.about.weightLb, goals: { ...g.goals }, weightGoal: g.weightGoal || null, liftDays: q.days, equipment: [...QB_EQUIP[q.equip].eq], routines: ['warm'], experience: q.exp || 'beginner' };
     ui.b = { step: 4, draft, liftEdited: true, cardioEdited: false, splitEdited: false, quick: true };
     const { p, rx } = builderState();
     try { ui.b.out = generatePlan(db, p, rx, p.liftDays, p.cardioDays, p.split); } catch (e) { ui.b = null; return toast(e.message || 'Could not build that plan.'); }
@@ -3221,8 +3288,8 @@ const actions = {
     persist(); ui.tab = 'history'; render(); toast('Workout deleted.');
   },
   'open-builder': () => openBuilder(),
-  // The sample plan (no longer offered at first run; kept for "Load the sample plan" and tests).
-  'welcome-sample': () => { db.plan = defaultPlan(); db.settings.dayModes = { mon: 'lift', tue: 'lift', wed: 'lift', thu: 'lift', fri: 'lift', sat: 'rest', sun: 'rest' }; db.settings.welcomed = true; db.settings.planSince = todayStr(); applyCore(db, 'end'); persist(); render(); },
+  // For the browser tests only: loads a local fixture plan when one is present (never shipped).
+  'welcome-sample': async () => { try { const m = testSample || (await import('./test-sample.js')); m.load(db, { applyCore, todayStr }); persist(); render(); } catch {} },
   'b-exit': () => { ui.b = null; ui.tab = 'plan'; render(); },
   'b-next': () => {
     if (ui.b.step === 0 && !aboutYouOk()) return;
@@ -3404,14 +3471,7 @@ const actions = {
     const p = PROGRAMS[d.v];
     if (!p) return;
     if (!(await ask(`Switch to ${p.name}? You can switch back from Plan.`, `Start ${p.name}`))) return;
-    safetySnapshot(db, `Before starting ${p.name}`);
-    db.previousPlan = { plan: db.plan, dayModes: { ...db.settings.dayModes }, deloadEvery: db.settings.deloadEvery, savedAt: Date.now() };
-    const { plan, dayModes } = programPlan(d.v);
-    db.plan = plan; db.settings.dayModes = dayModes;
-    if (p.progression) db.settings.progression = p.progression;
-    if (p.focus) { db.blocks ||= {}; db.blocks.focus ||= {}; db.blocks.focus[blockInfo(db).index] = p.focus.filter((id) => db.exercises[id]); }
-    db.settings.welcomed = true; db.settings.planSince = todayStr();
-    persist(); closeSheet(); ui.tab = 'plan'; ui.planView = 'week'; window.scrollTo(0, 0); render();
+    usePlanTemplate(d.v, p); closeSheet(); ui.tab = 'plan'; ui.planView = 'week'; window.scrollTo(0, 0); render();
     toast(`${p.name} is your plan.`);
   },
   'ex-note': (d) => {
@@ -3672,12 +3732,6 @@ const actions = {
     if (!(await ask('Set every exercise\'s increment to the default for its type?', 'Apply to all'))) return;
     for (const ex of Object.values(db.exercises)) ex.increment = db.settings.defaultIncrements[ex.type] || ex.increment;
     persist(); toast('Increments updated.');
-  },
-  'reset-plan': async () => {
-    if (!(await ask('Replace your plan with the 5-day sample plan?', 'Load sample'))) return;
-    safetySnapshot(db, 'Before loading the sample plan');
-    db.settings.planSince = todayStr();
-    db.plan = defaultPlan(); db.settings.dayModes = { mon: 'lift', tue: 'lift', wed: 'lift', thu: 'lift', fri: 'lift', sat: 'rest', sun: 'rest' }; persist(); render(); toast('Sample plan loaded.');
   },
 };
 

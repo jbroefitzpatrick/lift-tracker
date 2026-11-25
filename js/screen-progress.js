@@ -241,8 +241,8 @@ export function createProgressScreens(A) {
 
   // ---------- How you compare: strength per area against lifters like you ----------
   function person() {
-    const p = A.db.profile || {};
-    return { sex: p.sex || '', age: +p.age || null, bw: latestBodyweight() };
+    const p = A.db.profile || {}; const a = A.db.about || {};
+    return { sex: a.sex || p.sex || '', age: +(a.age || p.age) || null, bw: latestBodyweight() };
   }
   const areas = () => strengthAreas((id) => liftStats(id), person());
   const partNames = (a) => a.parts.map((p) => p.name.toLowerCase()).join(' or ');

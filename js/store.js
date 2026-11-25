@@ -11,7 +11,7 @@
 // - If an upgrade fails, nothing is saved; the app shows a recovery screen instead (LoadError).
 // - A save that would drop most of the history (workouts, cardio, food, body weight, exercises)
 //   is refused. Replacing everything on purpose (import, restore, erase) calls allowReplace() first.
-import { defaultExercises, defaultPlan, seedState, DEFAULT_INCREMENTS } from './plan.js';
+import { defaultExercises, seedState, DEFAULT_INCREMENTS } from './plan.js';
 import { syncBank } from './bank.js';
 import { relinkFitbod } from './import-fitbod.js';
 import { markFamiliar } from './exercise-rank.js';
@@ -105,6 +105,7 @@ export function freshDb() {
       deloadOff: false, // no scheduled deloads
       lastBackupAt: null,
       backupReminder: true,
+      seedWeightsCleared: true, // new installs never had the old seeded starting weights
     },
     exercises: syncBank(defaultExercises(), DEFAULT_INCREMENTS),
     plan: {}, // new installs start blank: build a plan, or start a workout from scratch
@@ -125,6 +126,7 @@ export function freshDb() {
     yearPlan: null, // { start, phases: [{ id, type, weeks, note }] }
     blocks: { focus: {}, reviews: {} }, // focus lifts and check-ins per training block
     profile: null, // plan builder answers + prescription summary
+    about: null, // quick-start answers: { age, sex, exp, weightLb }, for starting weights
     previousPlan: null, // last plan replaced by the builder, for undo
   };
 }
@@ -174,6 +176,7 @@ const MIGRATIONS = {
 
 export function migrate(db) {
   const base = freshDb();
+  const seeded = !db.settings?.seedWeightsCleared; // read before settings get their defaults
   // "Favorite" became "Prefer".
   for (const [k, v] of Object.entries(db.exPrefs || {})) if (v === 'fav') db.exPrefs[k] = 'prefer';
   while ((db.schemaVersion || 1) < SCHEMA_VERSION) {
@@ -190,6 +193,18 @@ export function migrate(db) {
   db.gyms = db.gyms.map((g) => ({ ...defaultGym(g.id, g.name), ...g }));
   if (!db.gyms.some((g) => g.id === db.settings.activeGym)) db.settings.activeGym = db.gyms[0].id;
   syncBank(db.exercises, db.settings.defaultIncrements);
+  // Early installs came with one person's starting weights and rules on every exercise. On lifts
+  // never logged they're dropped, so a guess sized to this person is used instead.
+  if (seeded) {
+    const logged = new Set(Object.keys(db.state || {}));
+    for (const s of db.sessions || []) for (const e of s.entries || []) logged.add(e.exerciseId);
+    for (const ex of Object.values(db.exercises)) {
+      if (ex.custom || logged.has(ex.id)) continue;
+      if (ex.startWeight != null) ex.startWeight = null;
+      if (ex.rules?.rehab) delete ex.rules.rehab;
+    }
+    db.settings.seedWeightsCleared = true;
+  }
   relinkFitbod(db);
   markFamiliar(db);
   return db;

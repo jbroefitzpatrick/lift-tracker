@@ -70,9 +70,53 @@ export const PROGRAMS = {
   },
 };
 
+// Quick starts: simple plans a new lifter can begin today, for a full gym, dumbbells or no equipment.
+// Plain structure (a few compound lifts, then accessories, 2–3 sets of 6–15), as general
+// guidelines recommend for novices (ACSM 2009 position stand on progression models).
+export const QUICKSTARTS = {
+  fullbody: { ...PROGRAMS.fullbody, where: 'Full gym' },
+  upperlower: {
+    name: 'Upper and lower, 4 days', level: 'Beginner to intermediate', goal: 'Strength and muscle', progression: 'double', where: 'Full gym',
+    desc: 'Upper body twice and lower body twice a week. More time per muscle than full body.',
+    days: [
+      { name: 'Upper A', items: [it('bench-press', 3, 6, 8, 150), it('cable-row', 3, 8, 10, 120), it('db-shoulder-press', 3, 8, 12, 90), it('lat-pulldown', 2, 10, 12, 90), it('db-curl', 2, 10, 15, 60), it('cable-pushdown', 2, 10, 15, 60)] },
+      { name: 'Lower A', items: [it('back-squat', 3, 6, 8, 180), it('rdl', 3, 8, 10, 150), it('leg-press', 2, 10, 12, 120), it('lying-ham-curl', 2, 10, 15, 60), it('standing-calf', 3, 10, 15, 60), it('plank', 2, 1, 1, 60)] },
+      { name: 'Upper B', items: [it('db-incline-bench', 3, 8, 10, 120), it('lat-pulldown', 3, 8, 10, 120), it('db-row', 3, 8, 12, 90), it('db-lat-raise', 3, 12, 15, 60), it('hammer-curl', 2, 10, 15, 60), it('db-overhead-ext', 2, 10, 15, 60)] },
+      { name: 'Lower B', items: [it('deadlift', 3, 5, 6, 180), it('goblet-squat', 3, 8, 12, 120), it('walking-lunge', 2, 10, 12, 90), it('leg-extension', 2, 12, 15, 60), it('seated-calf', 3, 12, 15, 60), it('dead-bug', 2, 8, 12, 60)] },
+    ],
+  },
+  ppl3: {
+    name: 'Push, pull, legs, 3 days', level: 'Beginner to intermediate', goal: 'Muscle', progression: 'double', where: 'Full gym',
+    desc: 'One day each for pushing muscles, pulling muscles and legs.',
+    days: [
+      { name: 'Push', items: [it('bench-press', 3, 6, 8, 150), it('db-shoulder-press', 3, 8, 12, 120), it('db-incline-bench', 2, 10, 12, 90), it('db-lat-raise', 3, 12, 15, 60), it('cable-pushdown', 3, 10, 15, 60)] },
+      { name: 'Pull', items: [it('lat-pulldown', 3, 8, 10, 120), it('cable-row', 3, 8, 12, 120), it('face-pull', 3, 12, 15, 60), it('db-curl', 3, 10, 15, 60), it('hammer-curl', 2, 10, 15, 60)] },
+      { name: 'Legs', items: [it('back-squat', 3, 6, 8, 180), it('rdl', 3, 8, 10, 150), it('leg-press', 2, 10, 12, 120), it('lying-ham-curl', 2, 10, 15, 60), it('standing-calf', 3, 10, 15, 60)] },
+    ],
+  },
+  dumbbell3: {
+    name: 'Dumbbells only, 3 days', level: 'Beginner', goal: 'Strength and muscle', progression: 'double', where: 'Dumbbells',
+    desc: 'Full body with a pair of dumbbells and a bench, at home or a small gym.',
+    days: [
+      { name: 'Dumbbell A', items: [it('goblet-squat', 3, 8, 12, 120), it('db-bench', 3, 8, 12, 120), it('db-row', 3, 8, 12, 90), it('db-rdl', 3, 8, 12, 120), it('db-curl', 2, 10, 15, 60)] },
+      { name: 'Dumbbell B', items: [it('reverse-lunge', 3, 8, 12, 90), it('db-shoulder-press', 3, 8, 12, 90), it('chest-supported-db-row', 3, 8, 12, 90), it('db-hip-thrust', 3, 10, 15, 90), it('db-overhead-ext', 2, 10, 15, 60)] },
+      { name: 'Dumbbell C', items: [it('db-squat', 3, 8, 12, 120), it('db-incline-bench', 3, 8, 12, 90), it('db-row', 3, 10, 12, 90), it('single-leg-rdl', 2, 8, 12, 90), it('db-lat-raise', 2, 12, 15, 60)] },
+    ],
+  },
+  bodyweight3: {
+    name: 'No equipment, 3 days', level: 'Beginner', goal: 'Get fit overall', progression: 'double', where: 'No equipment',
+    desc: 'Bodyweight only, anywhere. Add reps each week; harder versions come up as you improve.',
+    days: [
+      { name: 'Bodyweight A', items: [it('air-squat', 3, 12, 20, 60), it('pushup', 3, 6, 15, 90), it('inverted-row', 3, 6, 12, 90), it('glute-bridge', 3, 12, 20, 60), it('plank', 3, 1, 1, 60)] },
+      { name: 'Bodyweight B', items: [it('bw-split-squat', 3, 8, 12, 60), it('pike-pushup', 3, 5, 10, 90), it('inverted-row', 3, 6, 12, 90), it('single-leg-glute-bridge', 2, 8, 12, 60), it('dead-bug', 3, 8, 12, 60)] },
+      { name: 'Bodyweight C', items: [it('air-squat', 3, 15, 25, 60), it('knee-pushup', 2, 10, 20, 60), it('pushup', 2, 6, 15, 90), it('bw-calf-raise', 3, 15, 25, 45), it('hollow-hold', 3, 1, 1, 60)] },
+    ],
+  },
+};
+
 // The program as a plan: { plan, dayModes }.
 export function programPlan(id) {
-  const p = PROGRAMS[id];
+  const p = PROGRAMS[id] || QUICKSTARTS[id];
   const days = DAYS[p.days.length];
   const plan = {}; const dayModes = {};
   for (const d of ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']) dayModes[d] = 'rest';
