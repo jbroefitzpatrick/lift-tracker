@@ -1,6 +1,7 @@
 // Train tab and workouts: today's list, the exercise screen with its set rows, the summary, and editing a past workout.
 // Split out of app.js. App state and the helpers this needs come from A: live getters (and
 // setters for variables), so db and the rest stay shared with app.js.
+import { isMeetDay } from './event-plan.js';
 import { addDays, dateOfDay, mondayOf, parseDate, todayStr, weekOrder, weekPos } from './store.js';
 import { currentFatigue, dayMode, freshness, liftLoads } from './fatigue.js';
 import { DAY_KEYS, DAY_NAMES, dayKeyOf, dayPlan, evaluate, groupNum, needsRotationPrompt, nextRowCompound, resolveDay, targetsFor, weekInfo, weekOverride } from './engine.js';
@@ -193,7 +194,7 @@ export function createWorkoutScreens(A) {
 
     // Cardio-only and rest days (an unfinished workout still shows so it can be finished).
     const condOnly = !session && mode !== 'rest' && resolveDay(A.db, day).some((i) => i.ex.category === 'conditioning');
-    if (!session && !condOnly && (!dayPlan(A.db, day) || mode === 'cardio' || mode === 'rest')) {
+    if (!session && !condOnly && !isMeetDay(A.db, day) && (!dayPlan(A.db, day) || mode === 'cardio' || mode === 'rest')) {
       if (planDay0) return html + planReadyCard();
       html += A.train.recoveryCards(day, []);
       if (!banner) html += A.train.recoveryReminder(day, mode);

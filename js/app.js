@@ -47,7 +47,7 @@ import { moveDay, copyDayTo, catchUpDay, laggingMuscles, maxDayTo } from './week
 import { estimatedMax, testPlan, PEAKS, peakLength, peakWeek, startPeak, peakTestDate, TEST_REST, MAX_AIM } from './maxes.js';
 import { PROGRAMS, QUICKSTARTS, programPlan } from './programs.js';
 import { scheduleRest, cancelRest } from './push.js';
-import { account } from './account.js';
+import { account, api } from './account.js';
 import { cloudReady } from './cloud.js';
 import { workoutBurn, cardioBurn, workoutMinutes } from './energy.js';
 import { createPain } from './ui-pain.js';
@@ -757,6 +757,7 @@ function finishWorkout() {
     const top = e.sets.filter((x) => x.done !== false && !x.pain && x.type !== 'w' && x.reps >= 1 && x.weight > 0).reduce((a, x) => (x.weight > (a?.weight || 0) ? x : a), null);
     if (top) recordCheck(db, e.exerciseId, top.weight, saved.date, saved.id);
   }
+  setTimeout(sendChecks, 1500);
   const goalBefore = getGoal(db).on ? goalProgress(db) : null;
   db.sessions.push(saved);
   if (goalBefore) { const hit = goalHit(goalBefore, goalProgress(db)); if (hit) saved.goalHit = hit; }
@@ -864,6 +865,23 @@ function openQuickBuild() {
     <div class="field"><span>Where you train</span>${seg('equip', Object.entries(QB_EQUIP).map(([k, v]) => [k, v.label]))}</div>
     <button class="btn primary block big" data-a="qb-go">Create my plan</button>
     <button class="btn plain block" data-a="qb-full">Answer more questions instead</button>`);
+}
+
+// Tested-max checks go to the pooled research (docs/ESTIMATES.md) unless turned off in Settings.
+// No names: the server keeps a one-way code for the account, the exercise, the two numbers and context.
+const shareChecks = () => db.settings.shareChecks !== false;
+async function sendChecks() {
+  if (account()?.token && db.settings.calibForget && navigator.onLine) { try { await api('/v2/calib/forget', {}, { auth: true }); delete db.settings.calibForget; persist(); } catch {} }
+  if (!account()?.token || !shareChecks() || !navigator.onLine) return;
+  const unsent = (db.calib || []).filter((k) => !k.sent && k.id);
+  if (!unsent.length) return;
+  const sex = db.about?.sex || db.profile?.sex || null;
+  const age = +(db.about?.age || db.profile?.age) || null;
+  try {
+    await api('/v2/calib', { checks: unsent.map((k) => ({ id: k.id, ex: k.exId, pred: k.pred, actual: k.actual, method: k.method, srcReps: k.srcReps, srcRir: k.srcRir, gapDays: k.gapDays, month: String(k.date).slice(0, 7) })), sex, ageBand: age ? Math.floor(age / 10) * 10 : null }, { auth: true });
+    unsent.forEach((k) => { k.sent = true; });
+    persist();
+  } catch {}
 }
 
 // A program or quick start becomes the plan (the old one kept for "Switch back").
@@ -2290,7 +2308,8 @@ function screenSettings() {
       ${row('settings-page', 'appearance', 'Appearance and units', `${{ dark: 'Rubber', light: 'Chalk', system: 'Match iPhone' }[s.theme] || ''} · ${wUnit()}`)}
       ${row('open-share', '', 'Share the app', '')}
       ${row('tour-replay', '', 'Show the tour again', '')}
-      <a class="list-row" href="privacy.html" target="_blank" rel="noopener"><span class="grow"><b>Privacy policy</b></span>${icon('right', 'chev')}</a>
+      <label class="list-row toggle-row"><span class="grow"><b>Help improve max estimates</b><span class="pick-sub">${shareChecks() ? 'Tested maxes and their estimates, without your name, when signed in' : 'Off. Nothing is shared'}</span></span><input type="checkbox" switch data-a="set-share-checks" ${shareChecks() ? 'checked' : ''} aria-label="Help improve max estimates"></label>
+      <a class="list-row" href="privacy.html#research" target="_blank" rel="noopener"><span class="grow"><b>Privacy policy</b></span>${icon('right', 'chev')}</a>
     </div>
     <p class="muted small center pad">ProFitz (working title) · ${db.sessions.length} workouts logged</p>`;
 }
@@ -2758,6 +2777,12 @@ const actions = {
   'start-workout': () => { ensureSession(ui.day); haptic(); render(); },
   'open-settings': (d) => { if (!$('#sheet').hidden) closeSheet(); ui.setPage = d?.page || null; ui.prevTab = ui.tab; ui.tab = 'settings'; window.scrollTo(0, 0); render(); },
   'settings-back': () => { if (ui.setPage) { ui.setPage = null; window.scrollTo(0, 0); return render(); } ui.tab = ui.prevTab || 'today'; window.scrollTo(0, 0); render(); },
+  'set-share-checks': async (d, el) => {
+    db.settings.shareChecks = !!el.checked;
+    if (el.checked) { (db.calib || []).forEach((k) => { delete k.sent; }); persist(); render(); sendChecks(); return; }
+    persist(); render();
+    if (account()?.token) { try { await api('/v2/calib/forget', {}, { auth: true }); toast('Turned off. Checks you shared were removed.'); } catch { toast('Turned off. Will remove shared checks when online.'); db.settings.calibForget = true; persist(); } }
+  },
   'set-food': (d, el) => { db.settings.foodTracking = !!el.checked; persist(); render(); toast(foodOn() ? 'Food tracking is on.' : 'Food tracking is off.'); },
   'food-off': async () => {
     if (!(await ask('Hide the Food tab? Your log is kept; turn it back on in Settings.', 'Hide'))) return;
@@ -3462,7 +3487,7 @@ const actions = {
     if (!(r >= 1 && r <= 10)) return toast('Reps from 1 to 10.');
     if (r === 1) recordCheck(db, d.id, w, date > todayStr() ? todayStr() : date);
     (db.maxes ||= []).push({ id: `m${Date.now()}`, exerciseId: d.id, date: date > todayStr() ? todayStr() : date, weight: w, reps: r });
-    persist(); closeSheet(); render(); toast('Max saved.');
+    persist(); closeSheet(); render(); toast('Max saved.'); sendChecks();
   },
   'logmax-del': async (d) => { if (!(await ask('Delete this logged max?', 'Delete', true))) return; db.maxes = (db.maxes || []).filter((m) => m.id !== d.id); persist(); render(); },
   'session-more-go': (d) => { if (d.v === 'edit-session') closeSheet(); actions[d.v]({ id: d.id }); },
@@ -3972,6 +3997,7 @@ actions['recovery-download'] = () => recoveryRaw && download(`lift-recovery-${to
   cloud.onBoot();
   acctUi.start();
   people.start();
+  setTimeout(sendChecks, 4000);
   // Leaving the app during a rest: the server sends "Rest is over" on time; coming back cancels it.
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') {

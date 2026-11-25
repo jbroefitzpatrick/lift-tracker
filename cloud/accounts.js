@@ -13,6 +13,7 @@
 // Storage: Cloudflare D1 (SQLite), binding DB. Tables in schema.sql.
 
 import { handleSocial } from './social.js';
+import { handleCalib, whoOf } from './calib.js';
 import { handlePush } from './push.js';
 import { handleMedia, deleteMedia } from './media.js';
 
@@ -299,6 +300,7 @@ export async function handleV2(req, env, url, json, allowedOrigins, accessOk) {
         env.DB.prepare('DELETE FROM blocks WHERE user_id = ? OR blocked = ?').bind(id, id),
         env.DB.prepare('DELETE FROM reports WHERE reporter = ? OR target = ?').bind(id, id),
         env.DB.prepare('DELETE FROM requests WHERE from_user = ? OR to_user = ?').bind(id, id),
+        env.DB.prepare('DELETE FROM calib WHERE who = ?').bind(await whoOf(id)),
         env.DB.prepare('DELETE FROM users WHERE id = ?').bind(id),
       ];
       await env.DB.batch(stmts);
@@ -310,6 +312,12 @@ export async function handleV2(req, env, url, json, allowedOrigins, accessOk) {
       const user = await authUser(req, env);
       if (!user) return json({ error: 'Signed out.' }, 401);
       return handlePush(path, body, user, env, json);
+    }
+    // Accuracy checks for max estimates (calib.js).
+    if (path.startsWith('/v2/calib') && req.method === 'POST') {
+      const user = await authUser(req, env);
+      if (!user) return json({ error: 'Signed out.' }, 401);
+      return handleCalib(path, body, user, env, json);
     }
     // Friends and coaching (social.js).
     if ((path.startsWith('/v2/social') || path.startsWith('/v2/coach/')) && (req.method === 'POST' || path === '/v2/social')) {

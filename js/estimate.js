@@ -113,7 +113,9 @@ export const liftedMax = (db, ids) => { const s = liftedSeries(db, ids); return 
 export function recordCheck(db, exId, actual, date, skipSid) {
   const before = liftMax(db, [exId], { skipSid, until: date, factor: 1 });
   if (!before?.v || before.tested && before.from?.sid === skipSid) return null;
-  const k = { date, exId, pred: Math.round(before.v), actual: Math.round(actual), method: METHOD };
+  const src = before.from || {};
+  const gapDays = src.date ? Math.max(0, Math.round((Date.parse(date) - Date.parse(src.date)) / 864e5)) : null;
+  const k = { id: `k${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, date, exId, pred: Math.round(before.v), actual: Math.round(actual), method: METHOD, srcReps: src.r ?? null, srcRir: src.rir ?? null, gapDays };
   (db.calib ||= []).push(k);
   if (db.calib.length > 200) db.calib.splice(0, db.calib.length - 200);
   return k;

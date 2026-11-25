@@ -6,6 +6,7 @@
 // Freshness = 1 - fatigue / FULL_FATIGUE, so ~10 hard sets on a muscle leaves it at 0% fresh.
 import { resolveDay, weekOverride } from './engine.js';
 import { runDays } from './running.js';
+import { isMeetDay } from './event-plan.js';
 import { muscleRecoveryMultipliers } from './recovery.js';
 import { CARDIO, cardioLoad } from './cardio-bank.js';
 
@@ -53,6 +54,7 @@ export function plannedLoads(db, day) {
 }
 
 export function dayMode(db, day) {
+  if (isMeetDay(db, day)) return 'lift';
   const o = weekOverride(db, day);
   let m = o ? (o.mode || (o.items?.length ? 'lift' : 'rest')) : db.settings.dayModes?.[day] || (db.plan[day] ? 'lift' : 'rest');
   // Running-goal days add cardio to whatever the day already is.

@@ -74,8 +74,18 @@ Sources:
 
 ## Tracking accuracy
 
-`db.calib` keeps `{ date, exId, pred, actual, method }` for each tested max, up to 200. The goal details
-sheet shows the average miss and any personal correction.
+`db.calib` keeps `{ id, date, exId, pred, actual, method, srcReps, srcRir, gapDays }` for each tested max,
+up to 200. The goal details sheet ("How these are worked out") shows the average miss and any personal
+correction.
+
+**Pooled checks.** When signed in, and unless Settings → Help improve max estimates is off, the app
+sends each check to the server (`POST /v2/calib`, `cloud/calib.js`, table `calib`). The record has no
+name: the person is a one-way hash of the account id, kept so the records can be removed. Optional sex
+and age by decade are included for later subgroup analysis. Turning the setting off calls
+`/v2/calib/forget`, which deletes that person's records, and deleting the account removes them too. The
+privacy policy section "Improving max estimates" covers this. `POST /v2/calib/summary` returns
+aggregates only: bias and mean absolute error by method and by the reps the estimate came from, and
+only for groups with at least 5 checks.
 
 Each check is one person, one lift and one day, so single checks are noisy. What to look at:
 
@@ -86,8 +96,7 @@ Each check is one person, one lift and one day, so single checks are noisy. What
 ## How to tune
 
 1. **Per person (automatic).** The personal factor after 3 tests.
-2. **For everyone (by hand).** Collect checks across users who share them. A server-side or export
-   option would be needed first; today checks stay on each phone. Then refit `damp` and `dampFrom`
+2. **For everyone (by hand).** Read `/v2/calib/summary` once enough people have tested. Then refit `damp` and `dampFrom`
    against tested maxes: minimize median absolute error, and keep bias near 0. Bump `METHOD` and note
    the change here.
 3. **Next candidates to test:**
@@ -97,6 +106,11 @@ Each check is one person, one lift and one day, so single checks are noisy. What
    - weighting low-rep sets above high-rep sets when they disagree.
 
 ## Log
+
+- **2026-11-25.** Pooled checks: the server endpoint, the opt-out setting and the privacy policy section.
+  A first local backtest against one long training history (heavy singles; no RIR in that data) agreed
+  with the feeling that estimates run high: v2 overshot less than v1. Small sample, details kept out of
+  the repo.
 
 - **2026-11-25 · v2.** RIR added; 0.5% per rep easing above 5; the standing-alone guard; tests reset
   the estimate; calibration tracking and the personal factor. v1 was plain Epley on the single best

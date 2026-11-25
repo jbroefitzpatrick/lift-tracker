@@ -248,3 +248,23 @@ CREATE TABLE IF NOT EXISTS together (
 );
 CREATE INDEX IF NOT EXISTS together_a ON together (a);
 CREATE INDEX IF NOT EXISTS together_b ON together (b);
+
+-- Tested-max checks for tuning the estimated one-rep max (opt-out in Settings). No names: "who" is
+-- a one-way hash of the account id, so rows can be removed on opt-out or account deletion.
+CREATE TABLE IF NOT EXISTS calib (
+  id TEXT PRIMARY KEY,          -- who prefix + the phone's id for the check
+  who TEXT NOT NULL,
+  ex TEXT NOT NULL,             -- exercise id
+  pred REAL NOT NULL,           -- estimate just before the test (lb)
+  actual REAL NOT NULL,         -- weight lifted in the test (lb)
+  method INTEGER NOT NULL,      -- estimate method version
+  src_reps INTEGER,             -- reps of the set the estimate came from
+  src_rir INTEGER,              -- reps in reserve logged on it
+  gap_days INTEGER,             -- days between that set and the test
+  sex TEXT,                     -- optional
+  age_band INTEGER,             -- optional, by decade
+  month TEXT,                   -- YYYY-MM of the test
+  created INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS calib_who ON calib (who);
+CREATE INDEX IF NOT EXISTS calib_method ON calib (method);

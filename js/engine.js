@@ -7,7 +7,7 @@ import { activeGym, isAvailable } from './gym.js';
 import { similarExercises } from './bank.js';
 import { wt } from './units.js';
 import { maxOverride } from './maxes.js';
-import { meetOverride, eventLiftAdjust, eventActive } from './event-plan.js';
+import { meetOverride, eventLiftAdjust, isMeetDay, eventActive } from './event-plan.js';
 
 export const DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 export const DAY_NAMES = { mon: 'Mon', tue: 'Tue', wed: 'Wed', thu: 'Thu', fri: 'Fri', sat: 'Sat', sun: 'Sun' };
@@ -102,7 +102,10 @@ function pickVariant(db, item) {
 export function resolveDay(db, day, opts = {}) {
   const plan = opts.template ? db.plan[day] || null : dayPlan(db, day);
   const runs = opts.template ? [] : runItemsFor(db, day);
-  if (!plan) return runs.map((r) => ({ ...r, ex: db.exercises[r.exerciseId] })).filter((r) => r.ex);
+  if (!plan) {
+    if (!opts.template && isMeetDay(db, day)) return eventLiftAdjust(db, day, []);
+    return runs.map((r) => ({ ...r, ex: db.exercises[r.exerciseId] })).filter((r) => r.ex);
+  }
   const race = db.settings.raceBlock;
   const compound = ROW_ROTATION[db.settings.rowRotation % ROW_ROTATION.length];
   const out = [];

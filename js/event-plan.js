@@ -509,6 +509,9 @@ export function enduranceStrengthDays(db, ev, plan = null) {
 
 // Lifting near the race: fewer sets in the peak, half the sets in the taper, and nothing heavy in
 // the last week. Applied on top of whatever the day's plan is.
+// The meet itself: a lifting day whatever the plan says (warm-ups to the openers, then attempts).
+export const isMeetDay = (db, day, date = todayStr()) => db.event?.type === 'meet' && dateOfDay(day, date) === db.event.date;
+
 export function eventLiftAdjust(db, day, items, date = todayStr()) {
   const ev = db.event;
   const recN = ev ? recoveryDay(ev, dateOfDay(day, date)) : null;
