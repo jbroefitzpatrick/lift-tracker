@@ -41,6 +41,7 @@ import { createGoals } from './ui-goals.js';
 import { createStreak } from './ui-streak.js';
 import { syncStreak } from './streak.js';
 import { goalProgress, goalHit, getGoal } from './big-goal.js';
+import { recordCheck } from './estimate.js';
 import { createPeople } from './ui-people.js';
 import { moveDay, copyDayTo, catchUpDay, laggingMuscles, maxDayTo } from './week.js';
 import { estimatedMax, testPlan, PEAKS, peakLength, peakWeek, startPeak, peakTestDate, TEST_REST, MAX_AIM } from './maxes.js';
@@ -750,6 +751,12 @@ function finishWorkout() {
     db.cardio.push({ id: `c${finishedAt}`, date: s.date, ts: finishedAt, cardioId, minutes, note: 'From workout', fromWorkout: true });
   }
   syncStreak(db);
+  // A tested max checks the estimate it replaces (docs/ESTIMATES.md).
+  for (const e of saved.entries || []) {
+    if (!e.maxTest || e.pain) continue;
+    const top = e.sets.filter((x) => x.done !== false && !x.pain && x.type !== 'w' && x.reps >= 1 && x.weight > 0).reduce((a, x) => (x.weight > (a?.weight || 0) ? x : a), null);
+    if (top) recordCheck(db, e.exerciseId, top.weight, saved.date, saved.id);
+  }
   const goalBefore = getGoal(db).on ? goalProgress(db) : null;
   db.sessions.push(saved);
   if (goalBefore) { const hit = goalHit(goalBefore, goalProgress(db)); if (hit) saved.goalHit = hit; }
@@ -1442,8 +1449,12 @@ function liftPicker(sel, act) {
 function openMaxDay(day) {
   const st = (ui.maxDay ||= { sel: [] }); st.day = day;
   const n = st.sel.length;
+  // The rest of this week, from today.
+  const today = todayStr(); const order = weekOrder();
+  const days = order.slice(Math.max(0, order.indexOf(dayKeyOf(today))));
   openSheet(`<h2>Max-out day</h2>
     <p class="muted small">Guided warm-ups, then three single attempts per lift. Best when rested; once every few months is plenty. ${refChips(['nsca2016'])}</p>
+    ${days.length > 1 ? `<div class="field"><span>Day</span><div class="chips wrap">${days.map((k) => `<button class="chip ${st.day === k ? 'on' : ''}" data-a="maxday-day" data-v="${k}">${k === dayKeyOf(today) ? 'Today' : FULL_DAY[k]}</button>`).join('')}</div></div>` : ''}
     ${liftPicker(st.sel, 'maxday-pick')}
     <button class="btn primary block" data-a="maxday-go" ${n ? '' : 'disabled'}>${n ? `Test ${n} ${n === 1 ? 'lift' : 'lifts'} on ${FULL_DAY[day]}` : 'Pick the lifts to test'}</button>
     <button class="btn plain block" data-a="peak-open">Build up to it over 4–8 weeks</button>`);
@@ -2322,6 +2333,12 @@ const ctx = {
     if (idx >= 0 && entry.sets[idx] && !entry.sets[idx].done) entry.sets[idx].pain = true;
     entry.pain = true;
     stopRest();
+  },
+  // From the big goal: a max-out day with these lifts picked (the biggest gaps first).
+  openMaxDay(ids = []) {
+    const ok = new Set(maxCandidates().map((c) => c.ex.id));
+    ui.maxDay = { sel: ids.filter((id) => ok.has(id)).slice(0, 4) };
+    closeSheet(); setTimeout(() => openMaxDay(dayKeyOf(todayStr())), 0);
   },
   swapEntry(uid, newId) { swapInSession(uid, newId); render(); toast(`Swapped to ${db.exercises[newId].name}.`); },
   tryWorkout(ids, when, name) {
@@ -3421,6 +3438,7 @@ const actions = {
     toast(`Max test: opener ${wt(attempts[0])}.`);
   },
   'maxday-open': (d) => { closeSheet(); setTimeout(() => openMaxDay(d.day || ui.day), 0); },
+  'maxday-day': (d) => { if (ui.maxDay) openMaxDay(d.v); },
   'maxday-pick': (d) => { const st = ui.maxDay; if (!st) return; st.sel = st.sel.includes(d.id) ? st.sel.filter((x) => x !== d.id) : [...st.sel, d.id].slice(-4); openMaxDay(st.day); },
   'maxday-go': () => {
     const st = ui.maxDay;
@@ -3442,6 +3460,7 @@ const actions = {
     const w = fromDisp(num('lm-w')); const r = Math.round(num('lm-r') || 1); const date = $('#lm-d')?.value || todayStr();
     if (!(w > 0)) return toast('Enter the weight.');
     if (!(r >= 1 && r <= 10)) return toast('Reps from 1 to 10.');
+    if (r === 1) recordCheck(db, d.id, w, date > todayStr() ? todayStr() : date);
     (db.maxes ||= []).push({ id: `m${Date.now()}`, exerciseId: d.id, date: date > todayStr() ? todayStr() : date, weight: w, reps: r });
     persist(); closeSheet(); render(); toast('Max saved.');
   },

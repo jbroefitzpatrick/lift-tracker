@@ -6,6 +6,7 @@
 // carries workouts done against the plan, weekly sets, a streak, strength change as a percentage,
 // and records without their weights.
 
+import { setMax } from './estimate.js';
 import { todayStr, addDays, mondayOf } from './store.js';
 import { e1rm } from './engine.js';
 import { liftTemplates, doneTemplates } from './week.js';
@@ -39,7 +40,7 @@ export function buildCard(db, name) {
       if (!ex || ex.category === 'conditioning' || ex.type === 'bodyweight' || e.metric) continue;
       const good = goodSets(e).filter((x) => x.weight > 0);
       if (!good.length) continue;
-      const top = Math.max(...good.map((x) => e1rm(x.weight, x.reps)));
+      const top = Math.max(...good.map((x) => setMax(x.weight, x.reps, x.rir)));
       const prev = best[e.exerciseId];
       if (prev && top > prev + 0.5 && s.date >= recSince && !s.isDeload) records.push({ id: `${s.id}:${e.exerciseId}`, date: s.date, ex: ex.name, exId: e.exerciseId, pct: Math.round((top / prev - 1) * 1000) / 10 });
       best[e.exerciseId] = Math.max(prev || 0, top);
@@ -154,8 +155,8 @@ export function recentRecords(db, days = 45) {
       if (!ex || ex.category === 'conditioning' || ex.noLoad || e.metric) continue;
       const good = goodSets(e).filter((x) => x.weight > 0);
       if (!good.length) continue;
-      const top = good.reduce((a, x) => (e1rm(x.weight, x.reps) > e1rm(a.weight, a.reps) ? x : a));
-      const est = e1rm(top.weight, top.reps);
+      const top = good.reduce((a, x) => (setMax(x.weight, x.reps, x.rir) > setMax(a.weight, a.reps, a.rir) ? x : a));
+      const est = setMax(top.weight, top.reps, top.rir);
       const prev = best[e.exerciseId];
       if (prev && est > prev + 0.5 && s.date >= since && !s.isDeload) out.push({ sessionId: s.id, exId: e.exerciseId, name: ex.name, date: s.date, weight: top.weight, reps: top.reps, e1rm: Math.round(est), pct: Math.round((est / prev - 1) * 1000) / 10 });
       best[e.exerciseId] = Math.max(prev || 0, est);

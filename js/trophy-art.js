@@ -13,13 +13,15 @@ export function ensureTrophyDefs() {
   const svg = `<svg id="trophy-defs" width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
     ${Object.entries(PLATE).map(([k, c]) => `<radialGradient id="tp${k}" cx="0.38" cy="0.32" r="0.75">${stops(c)}</radialGradient>`).join('')}
     ${Object.entries(METAL).map(([k, c]) => `<radialGradient id="tm${k}" cx="0.35" cy="0.3" r="0.8">${stops(c)}</radialGradient><linearGradient id="tl${k}" x1="0" y1="0" x2="0.6" y2="1"><stop offset="0" stop-color="${c[0]}"/><stop offset="0.5" stop-color="${c[1]}"/><stop offset="1" stop-color="${c[2]}"/></linearGradient>`).join('')}
+    <linearGradient id="tgold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff6c4"/><stop offset="0.35" stop-color="#e3b341"/><stop offset="0.55" stop-color="#fff0a8"/><stop offset="0.8" stop-color="#b8860b"/><stop offset="1" stop-color="#7d5a08"/></linearGradient>
     <linearGradient id="tchrome" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff"/><stop offset="0.45" stop-color="#9aa0a7"/><stop offset="0.6" stop-color="#e6e9ec"/><stop offset="1" stop-color="#5d636a"/></linearGradient>
     <linearGradient id="tspec" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity="0.75"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
   </defs></svg>`;
   document.body.insertAdjacentHTML('afterbegin', svg);
 }
 
-const plate = (t, s) => { const c = PLATE[t.tier] || PLATE[1]; const big = t.label.length > 4; return `<svg class="tro-art" viewBox="0 0 56 56" width="${s}" height="${s}" aria-hidden="true">
+const plate = (t, s, o = {}) => { const c = PLATE[t.tier] || PLATE[1]; const big = t.label.length > 4; const ring = o.sealed || o.pending; const vs = ring ? Math.round((s * 68) / 56) : s; return `<svg class="tro-art${o.sealed ? ' sealed' : ''}" viewBox="${ring ? '-6 -6 68 68' : '0 0 56 56'}" width="${vs}" height="${vs}" aria-hidden="true">
+  ${o.sealed ? '<circle cx="28" cy="28" r="30.5" fill="none" stroke="url(#tgold)" stroke-width="3.4"/>' : o.pending ? '<circle cx="28" cy="28" r="30.5" fill="none" stroke="#a8841f" stroke-width="2" stroke-dasharray="4 3.5"/>' : ''}
   <circle cx="28.6" cy="29.2" r="26.5" fill="#000" opacity="0.3"/>
   <circle cx="28" cy="28" r="26.5" fill="url(#tp${t.tier})" stroke="#06080a" stroke-width="0.8"/>
   <circle cx="28" cy="28" r="19.6" fill="none" stroke="#000" stroke-opacity="0.3" stroke-width="1.4"/>
@@ -28,7 +30,8 @@ const plate = (t, s) => { const c = PLATE[t.tier] || PLATE[1]; const big = t.lab
   ${t.unit ? `<text x="28" y="12.4" text-anchor="middle" font-family="Archivo, Arial, sans-serif" font-weight="800" font-size="3.4" letter-spacing="0.5" fill="${c[3]}" fill-opacity="0.7">${t.unit}</text>` : ''}
   <circle cx="28" cy="28" r="7.6" fill="url(#tchrome)" stroke="#2a2d31" stroke-width="0.6"/>
   <circle cx="28" cy="28" r="3.2" fill="#111215"/>
-  <path d="M9 21 A20 20 0 0 1 30 6.5 A22 14 0 0 0 9 21 Z" fill="url(#tspec)" opacity="0.9"/></svg>`; };
+  <path d="M9 21 A20 20 0 0 1 30 6.5 A22 14 0 0 0 9 21 Z" fill="url(#tspec)" opacity="0.9"/>
+  ${o.sealed ? '<circle cx="49" cy="7" r="7.5" fill="url(#tgold)" stroke="#5a4206" stroke-width="0.6"/><path d="M45.6 7.2 L48 9.6 L52.6 4.6" fill="none" stroke="#3d2a00" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>' : ''}</svg>`; };
 
 const medal = (t, s) => { const c = METAL[t.tier] || METAL[1]; const r = RIBBON[t.tier] || RIBBON[1]; const unit = t.unit === 'RACES' && t.label === '1' ? 'RACE' : t.unit; return `<svg class="tro-art" viewBox="0 0 60 82" width="${Math.round(s * 0.8)}" height="${Math.round(s * 1.1)}" aria-hidden="true">
   <path d="M14 0 H27 L33 30 H22 Z" fill="${r}"/><path d="M46 0 H33 L27 30 H38 Z" fill="${r}"/><path d="M46 0 H33 L27 30 H38 Z" fill="#000" opacity="0.25"/>
@@ -51,7 +54,8 @@ const laurel = (t, s) => { const c = METAL[t.tier] || METAL[1]; return `<svg cla
   <text x="30" y="${t.label.length > 2 ? 34 : 35}" text-anchor="middle" font-family="Archivo, Arial, sans-serif" font-weight="900" font-size="${t.label.length > 2 ? 13 : 16}" fill="currentColor">${t.label}</text>
   <text x="30" y="41.5" text-anchor="middle" font-family="Archivo, Arial, sans-serif" font-weight="800" font-size="3.8" letter-spacing="0.6" fill="currentColor" opacity="0.65">WEEKS</text></svg>`; };
 
-export function trophySvg(t, size = 56) {
+// opts: { sealed } a gold ring and check (a strength club actually lifted); { pending } a dashed ring.
+export function trophySvg(t, size = 56, opts = {}) {
   ensureTrophyDefs();
-  return t.shape === 'medal' ? medal(t, size) : t.shape === 'laurel' ? laurel(t, size) : plate(t, size);
+  return t.shape === 'medal' ? medal(t, size) : t.shape === 'laurel' ? laurel(t, size) : plate(t, size, opts);
 }

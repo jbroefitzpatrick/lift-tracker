@@ -21,6 +21,7 @@ export function createGoals(ctx) {
     if (p.type === 'club') {
       if (p.missing.length) return `Log a ${listOf(p.missing.map((k) => NAMES[k]))} to count`;
       if (p.reached) return 'You reached the top club';
+      if (p.pending && p.pending < p.target) return `${wtEst(p.target - p.value)} to go · ${p.pending.toLocaleString()}: ${wtEst(p.pending - p.lifted)} to lift`;
       return `${wtEst(p.target - p.value)} to go${p.earned ? ` · ${p.earned.toLocaleString()}-lb club member` : ''}`;
     }
     if (p.reached) return 'Goal reached. Tap to set a new one.';
@@ -28,13 +29,20 @@ export function createGoals(ctx) {
     if (p.type === 'calories') return `${(p.target - p.value).toLocaleString()} kcal to go`;
     return `${(Math.round((p.target - p.value) * 10) / 10).toLocaleString()} mi to go`;
   };
+  const clubPct = (p, v) => Math.max(0, Math.min(100, (v / p.target) * 100)).toFixed(1);
+  const bar = (p) => {
+    if (p.type !== 'club') return `<span class="goal-track" aria-hidden="true"><i style="width:${Math.round(p.pct * 100)}%"></i></span>`;
+    const notch = p.pending && p.pending < p.target ? `<b class="gb-notch" style="left:${clubPct(p, p.pending)}%"></b>` : '';
+    return `<span class="gb-wrap" aria-hidden="true"><span class="goal-track gb"><i class="gb-est" style="width:${clubPct(p, p.value)}%"></i><i class="gb-lift" style="width:${clubPct(p, p.lifted)}%"></i></span>${notch}</span>
+      ${p.lifted ? `<span class="gb-key"><span><i class="k-lift"></i>Lifted <b>${esc(wtEst(p.lifted))}</b></span><span><i class="k-est"></i>Estimated ${esc(wtEst(p.value))}</span></span>` : ''}`;
+  };
   function card() {
     if (!getGoal(ctx.db).on) return '';
     const p = goalProgress(ctx.db);
-    return `<button class="goal-card" data-a="goal-detail" aria-label="Big goal: ${esc(p.title)}. ${esc(valueText(p))}. ${esc(leftText(p))}. See details.">
+    return `<button class="goal-card" data-a="goal-detail" aria-label="Big goal: ${esc(p.title)}. ${esc(valueText(p))}${p.type === 'club' && p.lifted ? `, ${esc(wtEst(p.lifted))} actually lifted` : ''}. ${esc(leftText(p))}. See details.">
       <span class="goal-top"><span class="goal-name">${esc(p.title)}</span>${icon('right', 'chev')}</span>
       <b class="goal-val num">${esc(valueText(p))}</b>
-      <span class="goal-track" aria-hidden="true"><i style="width:${Math.round(p.pct * 100)}%"></i></span>
+      ${bar(p)}
       <span class="goal-sub">${esc(leftText(p))}</span>
     </button>`;
   }
@@ -52,13 +60,22 @@ export function createGoals(ctx) {
   function detailBody(d) {
     const p = d.p;
     if (p.type === 'club') {
-      const rows = d.lifts.map((l) => `<button class="list-row goal-lift" ${l.v ? `data-a="chart-open" data-id="${l.exId}"` : 'disabled'}><span class="grow"><b>${l.name}</b><span class="pick-sub">${l.v ? `${l.r === 1 ? wt(l.w) : `${wt(l.w)} × ${l.r}`} · ${ctx.fmtDate(l.date)}${l.logged ? ' · logged' : ''}` : 'Not logged yet'}</span><span class="goal-share" aria-hidden="true"><i style="width:${Math.round(l.share * 100)}%"></i></span></span><b class="num">${l.v ? wtEst(l.v) : '—'}</b>${l.v ? icon('right', 'chev') : ''}</button>`).join('');
-      const ladder = d.clubs.map((c) => `<div class="goal-club ${c.date ? 'done' : c.t === p.target ? 'next' : ''}"><b class="num">${c.t.toLocaleString()}</b><span>${c.date ? ctx.fmtDate(c.date) : c.t === p.target ? 'Next' : ''}</span></div>`).join('');
-      const pace = [p.missing.length ? '' : kv('Left to go', p.reached ? 'Done' : wtEst(p.target - p.value)), d.gained > 0 ? kv('Last 6 months', `+${wtEst(d.gained)}`) : '', etaText(d.etaWeeks) ? kv(`Reaching ${p.target.toLocaleString()}`, etaText(d.etaWeeks), 'At your recent pace, an estimate') : ''].join('');
-      return `<h3 class="sheet-h">Your three lifts</h3><div class="list-group">${rows}</div>
-        ${pace.trim() ? `<div class="kv-list">${pace}</div>` : ''}
+      const top = Math.max(1, ...d.lifts.map((l) => Math.max(l.v, l.lifted?.w || 0)));
+      const rows = d.lifts.map((l) => `<button class="list-row goal-lift" ${l.v ? `data-a="chart-open" data-id="${l.exId}"` : 'disabled'}><span class="grow">
+        <span class="gl-top"><b>${l.name}</b>${l.v ? `<span><b>${wtEst(l.v)}</b> · <b class="gold">${l.lifted ? wtEst(l.lifted.w) : '—'}</b></span>` : '<span>Not logged yet</span>'}</span>
+        ${l.v ? `<span class="gl-bar"><i class="gb-est" style="width:${((l.v / top) * 100).toFixed(1)}%"></i><i class="gb-lift" style="width:${(((l.lifted?.w || 0) / top) * 100).toFixed(1)}%"></i></span>` : ''}</span>${l.v ? icon('right', 'chev') : ''}</button>`).join('');
+      // Where a max test has the most to show: a club still to lift, or the biggest gap.
+      const gaps = [...d.lifts].filter((l) => l.gap > 0).sort((a, b) => b.gap - a.gap);
+      const g = gaps[0];
+      const nudge = !p.missing.length && (p.pending || (g && g.gap >= 5)) ? `<div class="goal-nudge"><b class="grow">${p.pending ? `${wtEst(p.pending - p.lifted)} to lift the ${p.pending.toLocaleString()}-lb club` : `${wtEst(g.gap)} to lift on ${g.name.toLowerCase()}`}</b>
+        <button class="btn gold-btn" data-a="goal-maxday" data-ids="${[...gaps, ...d.lifts.filter((l) => !gaps.includes(l))].map((l) => l.exId).join(',')}">Plan a max day</button></div>` : '';
+      const ladder = d.clubs.map((c) => `<div class="goal-club ${c.lifted ? 'sealed' : c.date ? 'done' : c.t === p.target ? 'next' : ''}"><b class="num">${c.t.toLocaleString()}</b>${c.lifted ? '<i class="gc-check" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M4 8.4 L7 11.2 L12.4 5.2"/></svg></i>' : ''}<span>${c.lifted ? 'Lifted' : c.date ? (p.pending === c.t ? 'To lift' : 'Estimated') : c.t === p.target ? 'Next' : ''}</span></div>`).join('');
+      const eta = !p.missing.length && etaText(d.etaWeeks) ? kv(`Reaching ${p.target.toLocaleString()}`, etaText(d.etaWeeks), 'At your recent pace') : '';
+      return `<h3 class="sheet-h gl-head"><span>Your three lifts</span><span class="gl-cols">Estimated · <span class="gold">Lifted</span></span></h3><div class="list-group">${rows}</div>
+        ${nudge}
         <h3 class="sheet-h">Clubs</h3><div class="goal-clubs" style="--n:${CLUBS.length}">${ladder}</div>
-        <p class="muted small">Uses your best estimated max for each lift, from sets of 10 reps or fewer and any max you've logged. A true single counts as its weight.</p>`;
+        ${eta ? `<div class="kv-list">${eta}</div>` : ''}
+        <button class="text-link small-link goal-how" data-a="goal-how">How these are worked out</button>`;
     }
     if (p.type === 'mile') {
       return `<div class="kv-list">${kv('Target pace', `${fmtTime(p.target)} per mile`)}${d.gap != null ? kv(p.reached ? 'Under target by' : 'Left to cut', fmtTime(Math.abs(d.gap))) : ''}${d.entered ? kv('Best time you entered', fmtTime(d.entered)) : ''}${kv('Runs of a mile or more', d.runs)}</div>
@@ -77,13 +94,30 @@ export function createGoals(ctx) {
     return `<div class="kv-list">${kv('Counting since', ctx.fmtDate(d.since))}${kv('From lifting', `${d.lifting.toLocaleString()} kcal`)}${kv('From cardio', `${d.cardio.toLocaleString()} kcal`)}${kv('Average week', `${Math.round(d.perWeek).toLocaleString()} kcal`)}${etaText(d.etaWeeks) ? kv('Reaching your goal', etaText(d.etaWeeks), 'At this pace, an estimate') : ''}</div>
       <p class="muted small">Active calories above resting, estimated from your workouts and cardio.</p>`;
   }
+  // One tap deeper: where each number comes from, how accurate it's been, and the method.
+  function howSheet() {
+    const d = goalDetails(ctx.db);
+    const setText = (l) => (l.r === 1 ? wt(l.w) : `${wt(l.w)} × ${l.r}${l.rir ? ` + ${l.rir} in reserve` : ''}`);
+    const day = (s) => ctx.fmtDate(s).replace(/^w+,s*/, '');
+    const rows = d.lifts.filter((l) => l.v).map((l) => `<div class="kv"><span>${l.name}<span class="pick-sub">${l.tested ? `Tested ${day(l.date)}` : `From ${setText(l)}, ${day(l.date)}`}${l.alone ? ' · waiting for another session to back it up' : ''}</span><span class="pick-sub">${l.lifted ? `Heaviest lifted ${l.lifted.r === 1 ? wt(l.lifted.w) : `${wt(l.lifted.w)} × ${l.lifted.r}`}, ${day(l.lifted.date)}` : ''}</span></span><b>${wtEst(l.v)}</b></div>`).join('');
+    const c = d.cal;
+    const acc = c.n ? `Checked against ${c.n} tested ${c.n === 1 ? 'max' : 'maxes'}: off by ${Math.round(c.err * 1000) / 10}% on average.${c.factor !== 1 ? ` Estimates are adjusted ${c.factor > 1 ? 'up' : 'down'} ${Math.round(Math.abs(c.factor - 1) * 1000) / 10}% for you.` : c.n < 3 ? ' After 3 tests, estimates adjust to you.' : ''}` : 'No tested maxes yet. Each test checks the estimate, and after 3 they adjust to you.';
+    ctx.openSheet(`<h2>How it's worked out</h2>
+      <div class="kv-list">${rows}</div>
+      ${d.gained > 0 ? `<div class="kv-list">${kv('Last 6 months', `+${wtEst(d.gained)}`)}</div>` : ''}
+      <h3 class="sheet-h">Accuracy</h3><p class="small">${acc}</p>
+      <h3 class="sheet-h">Method</h3>
+      <p class="small"><b>Estimated</b> uses sets of 10 reps or fewer, counting reps left in reserve when you log them, eased off a little above 5 reps. A best that stands alone waits for another session to back it up. A tested max resets it.</p>
+      <p class="small"><b>Lifted</b> is the heaviest weight you've logged. A club gets its gold ring once the lifted total reaches it.</p>
+      <button class="btn block" data-a="goal-detail">Back</button>`);
+  }
   function detailSheet() {
     const d = goalDetails(ctx.db);
     const p = d.p;
     const chartFmt = p.type === 'mile' ? fmtTime : (v) => (v >= 10000 ? `${Math.round(v / 1000)}k` : String(Math.round(p.type === 'club' ? toDisp(v) : v)));
     const label = { club: 'Total over time', mile: 'Pace over time', longrun: 'Run distance', miles: 'Miles so far', calories: 'Calories so far' }[p.type];
     ctx.openSheet(`<h2>${esc(p.title)}</h2>
-      <div class="goal-hero"><b class="goal-val num">${esc(valueText(p))}</b><span class="goal-track" aria-hidden="true"><i style="width:${Math.round(p.pct * 100)}%"></i></span><span class="goal-sub">${esc(leftText(p))}</span></div>
+      <div class="goal-hero"><b class="goal-val num">${esc(valueText(p))}</b>${bar(p)}<span class="goal-sub">${esc(leftText(p))}</span></div>
       ${detailBody(d)}
       ${d.history.length > 1 ? `<h3 class="sheet-h">${label}</h3><div id="goal-chart"></div>` : ''}
       <button class="btn block" data-a="goal-open">Change goal</button>`);
@@ -117,6 +151,8 @@ export function createGoals(ctx) {
   }
   const actions = {
     'goal-detail': () => detailSheet(),
+    'goal-how': () => howSheet(),
+    'goal-maxday': (d) => ctx.openMaxDay(String(d.ids || '').split(',').filter(Boolean)),
     'goal-open': () => {
       const g = getGoal(ctx.db);
       ctx.ui.goalDraft = { on: g.on, type: g.type, target: g.target ?? GOAL_TYPES[g.type].def, best: g.best || null };

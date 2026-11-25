@@ -1,6 +1,7 @@
 // Posting one lift or run from a workout, showing just what you choose: every set, one set, your
 // max, the volume, or a run's distance, time and pace. Only the chosen numbers are sent.
 
+import { setMax } from './estimate.js';
 import { e1rm } from './engine.js';
 import { CARDIO } from './cardio-bank.js';
 import { fmtTime, goalProgress, runLog, getGoal } from './big-goal.js';
@@ -29,9 +30,9 @@ function bestBefore(db, exId, date) {
   let best = 0;
   for (const s of db.sessions || []) {
     if (s.date >= date) continue;
-    for (const e of s.entries || []) if (e.exerciseId === exId) for (const x of goodSets(e)) if (x.weight > 0 && x.reps > 0) best = Math.max(best, e1rm(x.weight, x.reps));
+    for (const e of s.entries || []) if (e.exerciseId === exId) for (const x of goodSets(e)) if (x.weight > 0 && x.reps > 0) best = Math.max(best, setMax(x.weight, x.reps, x.rir));
   }
-  for (const m of db.maxes || []) if (m.exerciseId === exId && m.date < date) best = Math.max(best, e1rm(m.weight, m.reps || 1));
+  for (const m of db.maxes || []) if (m.exerciseId === exId && m.date < date) best = Math.max(best, setMax(m.weight, m.reps || 1));
   return best;
 }
 
@@ -56,8 +57,8 @@ export function activityItems(db, id) {
       continue;
     }
     const loaded = sets.filter((x) => x.weight > 0 && x.reps > 0);
-    const top = loaded.length ? loaded.reduce((a, b) => (e1rm(b.weight, b.reps) > e1rm(a.weight, a.reps) ? b : a)) : null;
-    const est = top ? e1rm(top.weight, top.reps) : 0;
+    const top = loaded.length ? loaded.reduce((a, b) => (setMax(b.weight, b.reps, b.rir) > setMax(a.weight, a.reps, a.rir) ? b : a)) : null;
+    const est = top ? setMax(top.weight, top.reps, top.rir) : 0;
     const before = top ? bestBefore(db, e.exerciseId, s.date) : 0;
     out.push({ kind: 'lift', name, date: s.date, exId: e.exerciseId, sets: sets.map((x) => [num(x.weight), num(x.reps), x.reps > 0 ? 0 : num(x.time)]), top: top ? [top.weight, top.reps] : null, est, isNew: !!top && before > 0 && est > before, volume: loaded.reduce((a, x) => a + x.weight * x.reps, 0) });
   }

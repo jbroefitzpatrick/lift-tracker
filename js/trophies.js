@@ -12,7 +12,7 @@
 // Medals (runs, races) and laurel wreaths (streaks) step up in metal.
 
 import { todayStr, addDays } from './store.js';
-import { e1rm } from './engine.js';
+import { liftSeries, liftedSeries } from './estimate.js';
 import { streakInfo } from './streak.js';
 import { runLog } from './big-goal.js';
 
@@ -50,21 +50,19 @@ export function trophyCase(db, today = todayStr()) {
   for (const w of st.weeks || []) { const s = st.states?.[w]; if (s === 'hit' || s === 'frozen') { run++; sSeries.push([addDays(w, 6) < today ? addDays(w, 6) : today, run]); } else if (s === 'missed') run = 0; }
   got.push(...earned('streak', sSeries));
   progress.streak = Math.max(st.best || 0, run);
-  // Strength total: best squat + bench + deadlift so far, by date.
-  const big = { squat: ['back-squat'], bench: ['bench-press'], deadlift: ['deadlift', 'sumo-deadlift'] };
-  const best = { squat: 0, bench: 0, deadlift: 0 };
-  const cSeries = [];
-  const events = [];
-  for (const s of sessions) for (const e of s.entries || []) {
-    const k = Object.keys(big).find((x) => big[x].includes(e.exerciseId));
-    if (!k || e.pain) continue;
-    for (const x of e.sets || []) if (x.done !== false && !x.pain && x.type !== 'w' && x.weight > 0 && x.reps > 0 && x.reps <= 10) events.push({ date: s.date, k, v: e1rm(x.weight, x.reps) });
-  }
-  for (const m of db.maxes || []) { const k = Object.keys(big).find((x) => big[x].includes(m.exerciseId)); if (k) events.push({ date: m.date, k, v: e1rm(m.weight, m.reps || 1) }); }
-  events.sort((a, b) => a.date.localeCompare(b.date));
-  for (const ev of events) { if (ev.v > best[ev.k]) { best[ev.k] = ev.v; if (best.squat && best.bench && best.deadlift) cSeries.push([ev.date, best.squat + best.bench + best.deadlift]); } }
-  got.push(...earned('club', cSeries));
+  // Strength total: estimated squat + bench + deadlift (js/estimate.js), and what's been lifted.
+  const big = [['back-squat'], ['bench-press'], ['deadlift', 'sumo-deadlift']];
+  const totals = (series, val) => {
+    const all = series.flatMap((s, k) => s.map((e) => ({ date: e.date, k, v: val(e) }))).sort((p, q) => String(p.date).localeCompare(String(q.date)));
+    const cur = {}; const out = [];
+    for (const e of all) { cur[e.k] = e.v; if (Object.keys(cur).length === 3) out.push([e.date, Object.values(cur).reduce((s, v) => s + v, 0)]); }
+    return out;
+  };
+  const cSeries = totals(big.map((ids) => liftSeries(db, ids)), (e) => e.v);
+  const lSeries = totals(big.map((ids) => liftedSeries(db, ids)), (e) => e.w);
+  got.push(...earned('club', cSeries).map((g) => ({ ...g, lifted: lSeries.find(([, v]) => v >= TROPHY[g.id].at)?.[0] || null })));
   progress.club = Math.round(cSeries.at(-1)?.[1] || 0);
+  progress.clubLifted = Math.round(lSeries.at(-1)?.[1] || 0);
   // Personal bests (records counted at each workout).
   let pbs = 0; const pSeries = [];
   for (const s of sessions) if (s.prs?.length) { pbs += s.prs.length; pSeries.push([s.date, pbs]); }
@@ -90,4 +88,4 @@ export function trophyCase(db, today = todayStr()) {
 }
 
 // For the card: what friends see (ids and dates only).
-export const cardTrophies = (db) => trophyCase(db).got.map((g) => ({ id: g.id, date: g.date }));
+export const cardTrophies = (db) => trophyCase(db).got.map((g) => ({ id: g.id, date: g.date, ...(g.lifted ? { l: g.lifted } : {}) }));

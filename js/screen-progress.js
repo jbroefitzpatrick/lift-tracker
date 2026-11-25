@@ -1,6 +1,7 @@
 // Progress tab: this week's rings, calendar, strength, exercise history and body weight.
 // Split out of app.js. App state and the helpers this needs come from A: live getters (and
 // setters for variables), so db and the rest stay shared with app.js.
+import { setMax } from './estimate.js';
 import { addDays, daysBetween, mondayOf, parseDate, todayStr, weekOrder, weekPos } from './store.js';
 import { doneTemplates, liftTemplates } from './week.js';
 import { cardioTargetFor } from './year.js';
@@ -349,13 +350,13 @@ export function createProgressScreens(A) {
         const top = good.reduce((a, b) => (b.weight > a.weight || (b.weight === a.weight && b.reps > a.reps) ? b : a));
         out.push({
           date: s.date, isDeload: s.isDeload && !e.maxTest, excluded: e.excluded, sets: e.sets,
-          top, best1rm: Math.max(...good.map((x) => e1rm(x.weight, x.reps))),
+          top, best1rm: Math.max(...good.map((x) => setMax(x.weight, x.reps, x.rir))),
           totalReps: good.reduce((a, x) => a + x.reps, 0),
         });
       }
     }
     // Maxes logged by hand (tested somewhere else).
-    for (const m of A.db.maxes || []) if (m.exerciseId === exId) out.push({ date: m.date, logged: true, sets: [{ weight: m.weight, reps: m.reps || 1 }], top: { weight: m.weight, reps: m.reps || 1 }, best1rm: e1rm(m.weight, m.reps || 1), totalReps: m.reps || 1 });
+    for (const m of A.db.maxes || []) if (m.exerciseId === exId) out.push({ date: m.date, logged: true, sets: [{ weight: m.weight, reps: m.reps || 1 }], top: { weight: m.weight, reps: m.reps || 1 }, best1rm: setMax(m.weight, m.reps || 1), totalReps: m.reps || 1 });
     return out.sort((a, b) => a.date.localeCompare(b.date));
   }
 

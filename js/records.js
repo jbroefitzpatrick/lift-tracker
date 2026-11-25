@@ -1,4 +1,5 @@
 // Personal records and check-in based plan adjustments.
+import { setMax } from './estimate.js';
 import { todayStr } from './store.js';
 import { wt, wtEst, toDisp } from './units.js';
 import { e1rm } from './engine.js';
@@ -27,7 +28,7 @@ export function bestRecords(db, exId) {
   let e1 = { v: 0 }; let heavy = { v: 0 }; let reps = { v: 0 }; let vol = { v: 0 };
   for (const { s, sets } of h) {
     for (const x of sets) {
-      const est = e1rm(x.weight, x.reps);
+      const est = setMax(x.weight, x.reps, x.rir);
       if (est > e1.v) e1 = { v: est, w: x.weight, r: x.reps, date: s.date };
       if (x.weight > heavy.v) heavy = { v: x.weight, r: x.reps, date: s.date };
       if (x.reps > reps.v) reps = { v: x.reps, w: x.weight, date: s.date };
@@ -54,10 +55,10 @@ export function detectPRs(db, entry, beforeTs) {
     if (best > prevBest) prs.push({ type: 'reps', text: `${best} reps — most ever (was ${prevBest})` });
     return prs;
   }
-  const bestNow = sets.reduce((a, x) => (e1rm(x.weight, x.reps) > e1rm(a.weight, a.reps) ? x : a));
-  const prevE1 = Math.max(...prev.map((x) => e1rm(x.weight, x.reps)));
-  if (e1rm(bestNow.weight, bestNow.reps) > prevE1 + 0.5) {
-    prs.push({ type: 'e1rm', from: Math.round(prevE1), to: Math.round(e1rm(bestNow.weight, bestNow.reps)), text: `Est. max ${wtEst(e1rm(bestNow.weight, bestNow.reps))}${bw ? ' incl. body weight' : ''} (${bw ? `+${toDisp(bestNow.added)}` : toDisp(bestNow.weight)}×${bestNow.reps}), up from ${Math.round(toDisp(prevE1))}` });
+  const bestNow = sets.reduce((a, x) => (setMax(x.weight, x.reps, x.rir) > setMax(a.weight, a.reps, a.rir) ? x : a));
+  const prevE1 = Math.max(...prev.map((x) => setMax(x.weight, x.reps, x.rir)));
+  if (setMax(bestNow.weight, bestNow.reps, bestNow.rir) > prevE1 + 0.5) {
+    prs.push({ type: 'e1rm', from: Math.round(prevE1), to: Math.round(setMax(bestNow.weight, bestNow.reps, bestNow.rir)), text: `Est. max ${wtEst(setMax(bestNow.weight, bestNow.reps, bestNow.rir))}${bw ? ' incl. body weight' : ''} (${bw ? `+${toDisp(bestNow.added)}` : toDisp(bestNow.weight)}×${bestNow.reps}), up from ${Math.round(toDisp(prevE1))}` });
   }
   // Rep PR: more reps than ever at this weight or heavier (report the heaviest one).
   const repPRs = sets.filter((x) => x.weight > 0 && x.reps > Math.max(0, ...prev.filter((p) => p.weight >= x.weight).map((p) => p.reps)))

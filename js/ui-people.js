@@ -611,7 +611,9 @@ export function createPeople(ctx) {
   // Trophies: a laurel for the streak, plates for strength and workouts, medals for runs and races.
   // The shelf shows the best of each line; the sheet shows every step, locked ones dimmed.
   const trophiesOf = (id) => (id === me() ? trophyCase(ctx.db).got : (cardOf(id)?.trophies || [])).filter((t) => TROPHY[t.id]);
-  const artOf = (g, size) => `<span class="tro-wrap${g.date && g.date >= addDays(todayStr(), -3) ? ' fresh' : ''}">${trophySvg(TROPHY[g.id], size)}</span>`;
+  // Strength clubs: a gold ring once the weights actually lifted add up to it; on your own, a dashed one until then.
+  const liftedOf = (g) => g.lifted || g.l || null;
+  const artOf = (g, size, mine = false) => `<span class="tro-wrap${g.date && g.date >= addDays(todayStr(), -3) ? ' fresh' : ''}">${trophySvg(TROPHY[g.id], size, TROPHY[g.id].line === 'club' && g.date ? { sealed: !!liftedOf(g), pending: mine && !liftedOf(g) } : {})}</span>`;
   function trophyShelf(id) {
     const got = trophiesOf(id);
     const mine = id === me();
@@ -623,7 +625,7 @@ export function createPeople(ctx) {
     const laurel = of('laurel')[0];
     const plates = of('plate'); const medals = of('medal');
     const now = mine ? streakInfo(ctx.db).current : cardOf(id)?.streak || 0;
-    const item = (g) => `<button class="tro" data-a="ppl-trophies" data-id="${id}">${artOf(g, 54)}<span>${esc(TROPHY[g.id].name)}</span></button>`;
+    const item = (g) => `<button class="tro" data-a="ppl-trophies" data-id="${id}">${artOf(g, 54, mine)}<span>${esc(TROPHY[g.id].name)}</span>${TROPHY[g.id].line === 'club' ? `<span class="tro-lifted${liftedOf(g) ? '' : ' to'}">${liftedOf(g) ? 'Lifted' : mine ? 'To lift' : ''}</span>` : ''}</button>`;
     const next = mine ? Object.values(trophyCase(ctx.db).next).sort((p, q) => q.pct - p.pct)[0] : null;
     return `<section class="card trophy-shelf"><div class="row between"><h3>Trophies</h3><button class="link-btn" data-a="ppl-trophies" data-id="${id}">${got.length ? `All ${got.length}` : 'See them'}</button></div>
       ${laurel ? `<button class="tro-streak" data-a="ppl-trophies" data-id="${id}">${artOf(laurel, 64)}<span class="grow"><b>${esc(TROPHY[laurel.id].name)}</b><span class="pick-sub">${now >= TROPHY[laurel.id].at ? `Holding it · ${now} weeks now` : `Earned ${esc(ctx.fmtDate(laurel.date))}`}</span></span></button>` : ''}
@@ -635,15 +637,16 @@ export function createPeople(ctx) {
   function trophySheet(id) {
     const mine = id === me();
     const got = new Map(trophiesOf(id).map((g) => [g.id, g.date]));
+    const liftedAt = new Map(trophiesOf(id).map((g) => [g.id, liftedOf(g)]));
     const tc = mine ? trophyCase(ctx.db) : null;
     ctx.openSheet(`<h2>Trophies${mine ? '' : ` · ${esc(nameOf(id).split(' ')[0])}`}</h2>${Object.entries(LINES).map(([line, L]) => {
       const steps = L.steps.filter(([sid]) => mine || got.has(sid));
       if (!steps.length) return '';
-      return `<h3 class="sheet-h">${esc(L.name)}</h3><div class="tro-grid">${steps.map(([sid]) => { const t = TROPHY[sid]; const d = got.get(sid); return `<div class="tro-cell${d ? '' : ' locked'}">${artOf({ id: sid, date: d }, 52)}<b>${esc(t.name)}</b><span>${d ? ctx.fmtDate(d) : `${(Math.round((tc?.progress[line] || 0) * 10) / 10).toLocaleString()} of ${t.at.toLocaleString()}`}</span></div>`; }).join('')}</div>`;
+      return `<h3 class="sheet-h">${esc(L.name)}</h3><div class="tro-grid">${steps.map(([sid]) => { const t = TROPHY[sid]; const d = got.get(sid); return `<div class="tro-cell${d ? '' : ' locked'}">${artOf({ id: sid, date: d, lifted: liftedAt.get(sid) }, 52, mine)}<b>${esc(t.name)}</b><span>${d ? `${ctx.fmtDate(d)}${liftedAt.get(sid) ? ` · <b class="tro-lifted">Lifted ${ctx.fmtDate(liftedAt.get(sid)).replace(/^\w+,\s*/, '')}</b>` : ''}` : `${(Math.round((tc?.progress[line] || 0) * 10) / 10).toLocaleString()} of ${t.at.toLocaleString()}`}</span></div>`; }).join('')}</div>`;
     }).join('')}
     <h3 class="sheet-h">How the colors work</h3>
     <div class="tro-key">${[1, 2, 3, 4, 5].map((n) => `<div>${trophySvg({ shape: 'plate', tier: n, label: '', unit: '' }, 30)}${trophySvg({ shape: 'medal', tier: n, label: '', unit: '' }, 30)}<span>${TIER_WORDS[n]}</span></div>`).join('')}</div>
-    <p class="muted small">The harder a trophy is to earn, the higher its color, on one scale for every kind. Plates go white, green, yellow, blue, red, like competition plates. Medals and wreaths go bronze, silver, gold, platinum, then gold with red for the rarest.</p>`);
+    <p class="muted small">The harder a trophy is to earn, the higher its color, on one scale for every kind. Plates go white, green, yellow, blue, red, like competition plates. Medals and wreaths go bronze, silver, gold, platinum, then gold with red for the rarest. A strength club gets a gold ring once the weights you've actually lifted add up to it, not just your estimate.</p>`);
   }
   // Strength at a glance: the biggest movers and latest records, shown when there are any.
   function strengthBlock(c) {

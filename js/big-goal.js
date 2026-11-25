@@ -5,7 +5,7 @@
 // Also the numbers behind head-to-head challenges (minutes, miles, weight lifted, workouts).
 
 import { todayStr } from './store.js';
-import { e1rm } from './engine.js';
+import { liftMax, liftSeries, liftedSeries, liftedMax, calibration } from './estimate.js';
 import { workoutBurn, cardioBurn, workoutMinutes } from './energy.js';
 import { CARDIO } from './cardio-bank.js';
 
@@ -23,15 +23,9 @@ export const fmtTime = (sec) => `${Math.floor(sec / 60)}:${String(Math.round(sec
 
 const goodSets = (e) => (e.sets || []).filter((x) => x.done !== false && !x.pain && x.type !== 'w' && x.reps > 0);
 
-function bestEver(db, ids) {
-  let best = 0;
-  for (const s of db.sessions || []) for (const e of s.entries) {
-    if (!ids.includes(e.exerciseId) || e.pain) continue;
-    for (const x of goodSets(e)) if (x.weight > 0 && x.reps <= 10) best = Math.max(best, e1rm(x.weight, x.reps));
-  }
-  for (const m of db.maxes || []) if (ids.includes(m.exerciseId)) best = Math.max(best, e1rm(m.weight, m.reps || 1));
-  return Math.round(best);
-}
+// Best estimated max (js/estimate.js), and the heaviest weight actually lifted.
+const bestEver = (db, ids) => Math.round(liftMax(db, ids)?.v || 0);
+const liftedEver = (db, ids) => liftedMax(db, ids)?.w || 0;
 
 // Every logged run with a distance: cardio entries, and run sets inside workouts.
 export function runLog(db) {
@@ -54,11 +48,15 @@ function caloriesSince(db, since) {
 export function goalProgress(db) {
   const g = getGoal(db);
   if (g.type === 'club') {
-    const parts = BIG3.map(([k, ids]) => ({ k, v: bestEver(db, ids) }));
+    const parts = BIG3.map(([k, ids]) => ({ k, v: bestEver(db, ids), lifted: liftedEver(db, ids) }));
     const value = parts.reduce((a, p) => a + p.v, 0);
+    const lifted = parts.every((p) => p.lifted) ? parts.reduce((a, p) => a + p.lifted, 0) : 0;
     const earned = CLUBS.filter((t) => value >= t).pop() || 0;
     const target = CLUBS.find((t) => value < t) || CLUBS[CLUBS.length - 1];
-    return { type: 'club', value, target, earned, parts, missing: parts.filter((p) => !p.v).map((p) => p.k), reached: value >= CLUBS[CLUBS.length - 1], pct: Math.min(1, value / target), title: `${target.toLocaleString()}-lb club` };
+    // Clubs the estimate has reached but the lifted total hasn't: the lowest one is "to lift".
+    const sealed = CLUBS.filter((t) => lifted >= t).pop() || 0;
+    const pending = CLUBS.find((t) => value >= t && lifted < t) || null;
+    return { type: 'club', value, lifted, sealed, pending, target, earned, parts, missing: parts.filter((p) => !p.v).map((p) => p.k), reached: value >= CLUBS[CLUBS.length - 1], pct: Math.min(1, value / target), title: `${target.toLocaleString()}-lb club` };
   }
   const since = g.since || todayStr();
   const target = +g.target || GOAL_TYPES[g.type].def;
@@ -82,16 +80,6 @@ const DAY = 864e5;
 const between = (a, b) => (Date.parse(`${b}T12:00:00Z`) - Date.parse(`${a}T12:00:00Z`)) / DAY;
 const shift = (d, n) => new Date(Date.parse(`${d}T12:00:00Z`) + n * DAY).toISOString().slice(0, 10);
 
-// Every qualifying set for one of the big lifts, oldest first.
-function bigLiftEvents(db, ids) {
-  const out = [];
-  for (const s of db.sessions || []) for (const e of s.entries) {
-    if (!ids.includes(e.exerciseId) || e.pain) continue;
-    for (const x of goodSets(e)) if (x.weight > 0 && x.reps <= 10) out.push({ date: s.date, v: e1rm(x.weight, x.reps), w: x.weight, r: x.reps, exId: e.exerciseId });
-  }
-  for (const m of db.maxes || []) if (ids.includes(m.exerciseId)) out.push({ date: m.date, v: e1rm(m.weight, m.reps || 1), w: m.weight, r: m.reps || 1, exId: m.exerciseId, logged: true });
-  return out.sort((a, b) => String(a.date).localeCompare(String(b.date)));
-}
 // Weeks to the target at a steady rate, if it's moving the right way.
 const etaWeeks = (left, perWeek) => (perWeek > 0 && left > 0 ? left / perWeek : null);
 
@@ -99,21 +87,27 @@ export function goalDetails(db, today = todayStr()) {
   const p = goalProgress(db); const g = getGoal(db);
   if (p.type === 'club') {
     const lifts = BIG3.map(([k, ids]) => {
-      const ev = bigLiftEvents(db, ids);
-      const best = ev.reduce((a, b) => (!a || b.v > a.v ? b : a), null);
-      return { k, name: NAMES[k], exId: best?.exId || ids[0], v: Math.round(best?.v || 0), w: best?.w, r: best?.r, date: best?.date, logged: best?.logged, share: p.value ? (best?.v || 0) / p.value : 0, ev };
+      const ser = liftSeries(db, ids); const cur = ser[ser.length - 1];
+      const lser = liftedSeries(db, ids); const lw = lser[lser.length - 1];
+      const v = Math.round(cur?.v || 0);
+      return { k, name: NAMES[k], exId: cur?.from?.exId || lw?.exId || ids[0], v, w: cur?.from?.w, r: cur?.from?.r, rir: cur?.from?.rir, date: cur?.from?.date, logged: cur?.from?.logged, tested: !!cur?.tested, alone: !!cur?.alone,
+        lifted: lw ? { w: lw.w, r: lw.r, date: lw.date } : null, gap: lw ? Math.max(0, v - lw.w) : 0, share: p.value ? v / p.value : 0, ser, lser };
     });
-    // The running total each time a best moved.
-    const all = lifts.flatMap((l) => l.ev.map((e) => ({ ...e, k: l.k }))).sort((a, b) => String(a.date).localeCompare(String(b.date)));
-    const cur = {}; const byDate = new Map();
-    for (const e of all) { if (e.v > (cur[e.k] || 0)) cur[e.k] = e.v; if (lifts.every((l) => cur[l.k])) byDate.set(e.date, Math.round(Object.values(cur).reduce((a, b) => a + b, 0))); }
-    const history = [...byDate].map(([x, v]) => ({ x, v }));
+    // The running total each time one of the three moved.
+    const totalOver = (key, val) => {
+      const all = lifts.flatMap((l) => l[key].map((e) => ({ date: e.date, k: l.k, v: val(e) }))).sort((a, b) => String(a.date).localeCompare(String(b.date)));
+      const cur = {}; const byDate = new Map();
+      for (const e of all) { cur[e.k] = e.v; if (lifts.every((l) => cur[l.k])) byDate.set(e.date, Math.round(Object.values(cur).reduce((s, v) => s + v, 0))); }
+      return [...byDate].map(([x, v]) => ({ x, v }));
+    };
+    const history = totalOver('ser', (e) => e.v);
+    const liftedHistory = totalOver('lser', (e) => e.w);
     const from = shift(today, -182);
     const then = [...history].reverse().find((h) => h.x <= from)?.v ?? history[0]?.v;
     const span = history.length ? Math.max(between(history[0].x > from ? history[0].x : from, today), 7) : 0;
     const perWeek = then != null && p.value > then ? (p.value - then) / (span / 7) : 0;
-    const clubs = CLUBS.map((t) => ({ t, date: history.find((h) => h.v >= t)?.x || null }));
-    return { p, lifts: lifts.map(({ ev, ...l }) => l), history, clubs, gained: then != null ? p.value - then : 0, etaWeeks: p.reached ? null : etaWeeks(p.target - p.value, perWeek) };
+    const clubs = CLUBS.map((t) => ({ t, date: history.find((h) => h.v >= t)?.x || null, lifted: liftedHistory.find((h) => h.v >= t)?.x || null }));
+    return { p, lifts: lifts.map(({ ser, lser, ...l }) => l), history, liftedHistory, clubs, cal: calibration(db), gained: then != null ? p.value - then : 0, etaWeeks: p.reached ? null : etaWeeks(p.target - p.value, perWeek) };
   }
   const since = g.since || today;
   const runs = runLog(db).sort((a, b) => a.date.localeCompare(b.date));
@@ -146,7 +140,11 @@ export function goalDetails(db, today = todayStr()) {
 // What a finished workout just achieved, if anything.
 export function goalHit(before, after) {
   if (!before || !after || before.type !== after.type) return null;
-  if (after.type === 'club') return after.earned > before.earned ? `${after.earned.toLocaleString()}-lb club` : null;
+  if (after.type === 'club') {
+    if (after.earned > before.earned) return `${after.earned.toLocaleString()}-lb club`;
+    if ((after.sealed || 0) > (before.sealed || 0)) return `${after.sealed.toLocaleString()}-lb club, lifted`;
+    return null;
+  }
   return after.reached && !before.reached ? after.title : null;
 }
 

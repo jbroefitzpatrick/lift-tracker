@@ -13,6 +13,7 @@
 // are percentages of the estimated max when the block starts.
 
 import { e1rm } from './engine.js';
+import { liftMax } from './estimate.js';
 import { roundToGym, activeGym } from './gym.js';
 import { todayStr, addDays, mondayOf, daysBetween } from './store.js';
 
@@ -33,17 +34,8 @@ export const peakLength = (n) => PEAKS[n].weeks.length + 1;
 
 // Best estimated max lately: work sets of 1–10 reps and logged maxes in the last 16 weeks.
 export function estimatedMax(db, exId, date = todayStr()) {
-  const since = addDays(date, -112);
-  let best = 0;
-  for (const s of db.sessions || []) {
-    if (s.date < since) continue;
-    for (const e of s.entries) {
-      if (e.exerciseId !== exId || e.pain || (s.isDeload && !e.maxTest)) continue;
-      for (const x of e.sets) if (x.reps > 0 && x.reps <= 10 && x.weight > 0 && x.type !== 'w' && !x.pain) best = Math.max(best, e1rm(x.weight, x.reps));
-    }
-  }
-  for (const m of db.maxes || []) if (m.exerciseId === exId && m.date >= since) best = Math.max(best, e1rm(m.weight, m.reps || 1));
-  return best ? Math.round(best) : null;
+  const m = liftMax(db, [exId], { since: addDays(date, -112), until: date });
+  return m?.v ? Math.round(m.v) : null;
 }
 
 // Warm-ups and attempts for a test, rounded to what the gym can load.
