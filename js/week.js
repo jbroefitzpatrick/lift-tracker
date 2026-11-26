@@ -449,10 +449,10 @@ export function copyDayTo(db, from, to) {
   return db.week.days[to].name;
 }
 
-// The muscles with the fewest hard sets in the last 7 days (the big and commonly skipped ones).
+// The muscles with the fewest hard sets this week so far (the big and commonly skipped ones).
 const CATCH_UP = ['chest', 'lats', 'upper-back', 'side-delts', 'rear-delts', 'biceps', 'triceps', 'quads', 'hamstrings', 'glutes', 'calves', 'abs'];
 export function laggingMuscles(db, n = 3, now = Date.now()) {
-  const { muscles } = weeklySets(db, 7, now);
+  const { muscles } = weeklySets(db, 'week', now);
   return [...CATCH_UP].sort((a, b) => (muscles[a] || 0) - (muscles[b] || 0)).slice(0, n);
 }
 

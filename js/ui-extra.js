@@ -97,8 +97,8 @@ export function createExtras(ctx) {
       const head = line(g.name, v, lo, hi, '', note);
       return `<details class="vol-group"><summary>${head}</summary>${sub.join('')}${pm ? '<p class="muted small sub-note">Estimated from which exercises you did.</p>' : ''}<button class="text-btn small-text vol-more" data-a="vol-open" data-g="${g.id}">Exercises for ${g.name.toLowerCase()}</button></details>`;
     }).join('');
-    return `<div class="card"><div class="row between"><h3>Weekly sets</h3><button class="help-btn" data-a="help" aria-expanded="false" aria-label="What is this?">?</button></div>
-      <p class="help-text" hidden>Hard sets in the last 7 days, counting half for assisting muscles, against your weekly target${db.profile ? '' : ' (default 10–20 per muscle)'}. The tick marks the low end. Tap a row with an arrow to see the muscles or parts inside it. ${ctx.refChips(['pelland2026', 'schoenfeld2017vol'])}</p>${rows}</div>`;
+    return `<div class="card"><div class="row between"><h3>Sets this week</h3><button class="help-btn" data-a="help" aria-expanded="false" aria-label="What is this?">?</button></div>
+      <p class="help-text" hidden>Hard sets this week so far, counting half for assisting muscles, against your weekly target${db.profile ? '' : ' (default 10–20 per muscle)'}. The tick marks the low end. Tap a row with an arrow to see the muscles or parts inside it. ${ctx.refChips(['pelland2026', 'schoenfeld2017vol'])}</p>${rows}</div>`;
   }
 
   // ---------- Body: measurements & photos ----------

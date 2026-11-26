@@ -1652,7 +1652,7 @@ function recoveryDetail(sel) {
     const pct = Math.round(groupFreshness(g, fresh) * 100);
     const h = Math.max(...g.muscles.map((m) => hoursToReady(m, fat[m] || 0)));
     const pains = g.muscles.flatMap((m) => painFor(m, null)).filter((r, i, arr) => arr.findIndex((x) => x.id === r.id) === i);
-    const pm = g.parts ? setsByPart(db).parts[g.parts] : null;
+    const pm = g.parts ? setsByPart(db, 7).parts[g.parts] : null; // recent fatigue: a rolling 7 days
     return `<div class="rec-detail-head"><h4>${g.name}</h4><button class="btn sm" data-a="pain-report" data-pre="${sel.focus || g.muscles[0]}">Log pain</button></div>
       <div class="rec-stat"><b class="num">${pct}%</b><span><b>${pct >= 80 ? 'Fresh' : pct >= 50 ? 'Recovering' : 'Fatigued'}</b><span class="pick-sub">${h > 0 ? `Ready in about ${h < 20 ? `${Math.max(1, Math.round(h))} h` : `${Math.round(h / 24)} day${Math.round(h / 24) === 1 ? '' : 's'}`}` : 'Ready to train'}</span></span></div>
       <div class="field rec-goal"><span>Goal for ${g.name.toLowerCase()} ${helpBtn()}</span><p class="help-text" hidden>Changes the rep range and rest for every exercise that mainly works ${g.name.toLowerCase()}. Auto keeps your plan's settings.</p>

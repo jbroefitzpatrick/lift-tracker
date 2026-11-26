@@ -689,7 +689,7 @@ export function createWorkoutScreens(A) {
     const opts = addOptions(A.db, lead);
     const session = A.db.activeSession && A.sessionFor(A.ui.day);
     A.openSheet(`<h2>${A.esc(name)}</h2>
-      <p class="muted"><b class="num">${v}</b> sets in the last 7 days · target ${lo}–${hi}${v < lo ? ' · below' : v > hi ? ' · above' : ''}</p>
+      <p class="muted"><b class="num">${v}</b> sets this week · target ${lo}–${hi}${v < lo ? ' · below' : v > hi ? ' · above' : ''}</p>
       <h3 class="sheet-h">Worked by</h3>
       ${work.length ? `<div class="list-group">${work.map((w) => `<button class="list-row" data-a="ex-info" data-id="${w.exerciseId}"><span class="grow"><b>${A.esc(A.db.exercises[w.exerciseId].name)}</b><span class="pick-sub">${r2(w.sets)} sets · last ${A.fmtDate(w.date)}</span></span>${icon('right', 'chev')}</button>`).join('')}</div>` : '<p class="muted small">Nothing logged for it in the last 7 days.</p>'}
       <h3 class="sheet-h">Add more${g ? ` for ${A.esc(MUSCLES[lead].toLowerCase())}` : ''}</h3>

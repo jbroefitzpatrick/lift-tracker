@@ -1,3 +1,4 @@
+import { todayStr, mondayOf } from './store.js';
 // Display groups: the high-level view of the body. Tracking stays per muscle (20 of them);
 // these roll the related ones up so recovery and weekly volume read at a glance, with the
 // detail one tap away.
@@ -56,12 +57,15 @@ export function emphasis(ex, muscle) {
 }
 
 // Hard sets per muscle and per part over the last `days` days (assisting muscles count half).
-export function weeklySets(db, days = 7, now = Date.now()) {
-  const since = now - days * 86400000;
+// Hard sets per muscle. By default this week so far (from the chosen first day of the week), which
+// is what weekly targets are about; pass a number of days for a rolling window (recovery uses 7).
+export function weeklySets(db, days = 'week', now = Date.now()) {
+  const weekStart = days === 'week' ? mondayOf(todayStr(new Date(now))) : null;
+  const since = days === 'week' ? 0 : now - days * 86400000;
   const muscles = {};
   const parts = { biceps: {}, triceps: {}, chest: {} };
   for (const s of db.sessions) {
-    if ((s.finishedAt || 0) < since) continue;
+    if (weekStart ? s.date < weekStart || s.date > todayStr(new Date(now)) : (s.finishedAt || 0) < since) continue;
     for (const e of s.entries) {
       const ex = db.exercises[e.exerciseId];
       if (!ex || ['mobility', 'prehab'].includes(ex.pattern)) continue;
