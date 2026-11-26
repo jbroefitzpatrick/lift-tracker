@@ -196,3 +196,7 @@
 /* Steel: empty and missed streak weeks stay visible on the gray. */
 :root[data-theme="steel"] .sw-dot, :root[data-theme="steel"] .sw-dot.missed { background: rgb(255 255 255 / 0.16); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.32); }
 :root[data-theme="steel"] .sw-dot.current { background: transparent; box-shadow: inset 0 0 0 1.5px #f5f7f9; }
+/* The summary stamp sits beside the title, not over it. */
+.summary-top { display: flex; align-items: flex-start; gap: 10px; }
+.summary-top > div { flex: 1; min-width: 0; }
+:root .summary-top .finish-stamp { position: static; order: 1; flex: none; margin-top: 12px; }

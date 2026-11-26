@@ -1,7 +1,11 @@
 // Weekly streaks, streak freezes and the two tiers.
 //
-// A week counts when you train on enough days for your own plan: about three quarters of the
-// planned days (3 of 4, 4 of 5), or one day with no plan. Lifting and cardio both count; a short or
+// A week counts when you train on enough days for your goal (settings.streakGoal):
+//   easy    1 day a week
+//   steady  most of your planned days, about three quarters (3 of 4, 4 of 5); the default
+//   all     every planned day
+// With no plan, 1 day. Missing one occasion doesn't undo a habit (lally2010), so "most weeks, most
+// days" is the default rather than every planned day. Lifting and cardio both count; a short or
 // mobility-only session doesn't. Each week's target is saved as the week begins, so changing your
 // plan later doesn't rewrite past weeks. Weeks from before this existed need one active day.
 //
@@ -23,8 +27,23 @@ const box = (db) => { db.streak ||= {}; db.streak.targets ||= {}; db.streak.froz
 // Stored weeks are matched by range, so changing the first day of the week doesn't lose them.
 const inWeek = (date, w) => date >= w && date <= addDays(w, 6);
 
-export const targetFromPlan = (days) => (days > 0 ? Math.ceil(days * 0.75) : 1);
-function plannedDays(db) {
+export const STREAK_GOALS = {
+  easy: { name: 'Easy', sub: '1 day a week' },
+  steady: { name: 'Steady', sub: 'Most of your planned days: 3 of 4, 4 of 5' },
+  all: { name: 'All in', sub: 'Every planned day' },
+};
+export const goalOf = (db) => (STREAK_GOALS[db.settings?.streakGoal] ? db.settings.streakGoal : 'steady');
+export const targetFromPlan = (days, goal = 'steady') => (!(days > 0) || goal === 'easy' ? 1 : goal === 'all' ? days : Math.ceil(days * 0.75));
+// A new goal applies to this week right away (up or down); later weeks follow it as they begin.
+export function setStreakGoal(db, goal, today = todayStr()) {
+  if (!STREAK_GOALS[goal]) return;
+  db.settings.streakGoal = goal;
+  const w = mondayOf(today);
+  const s = box(db);
+  const key = Object.keys(s.targets).find((k) => inWeek(k, w)) || w;
+  s.targets[key] = targetFromPlan(plannedDays(db), goal);
+}
+export function plannedDays(db) {
   const lifts = liftTemplates(db).length;
   if (lifts) return lifts;
   return Object.values(db.settings?.dayModes || {}).filter((m) => m === 'cardio').length;
@@ -35,7 +54,7 @@ export function syncStreak(db, today = todayStr()) {
   const w = mondayOf(today);
   const s = box(db);
   const since = db.settings?.planSince || '';
-  const now = since > w && inWeek(since, w) ? 1 : targetFromPlan(plannedDays(db));
+  const now = since > w && inWeek(since, w) ? 1 : targetFromPlan(plannedDays(db), goalOf(db));
   const key = Object.keys(s.targets).find((k) => inWeek(k, w)) || w;
   const prev = s.targets[key];
   const next = prev == null ? now : Math.min(prev, now);
@@ -56,7 +75,7 @@ export function streakInfo(db, today = todayStr()) {
   const targets = s.targets || {}; const frozen = s.frozen || []; const declined = s.declined || [];
   const days = activeDays(db);
   const cur = mondayOf(today);
-  const targetOf = (w) => { const k = Object.keys(targets).find((x) => inWeek(x, w)); return k ? targets[k] : (w === cur ? targetFromPlan(plannedDays(db)) : 1); };
+  const targetOf = (w) => { const k = Object.keys(targets).find((x) => inWeek(x, w)); return k ? targets[k] : (w === cur ? targetFromPlan(plannedDays(db), goalOf(db)) : 1); };
   const countOf = (w) => { let n = 0; for (let i = 0; i < 7; i++) if (days.has(addDays(w, i))) n += 1; return n; };
   const stateOf = (w) => {
     const hit = countOf(w) >= targetOf(w);

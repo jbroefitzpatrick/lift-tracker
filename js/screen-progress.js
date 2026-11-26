@@ -412,21 +412,23 @@ export function createProgressScreens(A) {
         </button>`).join('')}</div></div>` : ''}`;
   }
 
-  // Rep maxes: the most you could likely lift for 1 to 12 reps, from your best set in the last
-  // 8 weeks (Epley's formula, rounded to weights your gym has). Most accurate near the reps you
-  // actually did; beyond about 10 reps from that, treat as rough.
+  // Rep maxes: the most you could likely lift for 1 to 12 reps, from the same estimated max as the
+  // rest of the page (js/estimate.js, turned around), rounded down to weights your gym has so none
+  // reads above the estimate. Most accurate near the reps you actually do; past ~10 reps, rough.
   function repMaxCard(ex, hist) {
     if (ex.category === 'conditioning' || ex.noLoad) return '';
     const recent = hist.filter((h) => !h.isDeload && !h.excluded && h.date >= addDays(todayStr(), -56));
     if (!recent.length) return '';
     const best = recent.reduce((a, h) => (h.best1rm > a.best1rm ? h : a));
     const gym = activeGym(A.db);
+    const E = liftMax(A.db, [ex.id])?.v || best.best1rm;
+    const down = (raw) => { let w = roundToGym(ex, raw, gym); for (let k = 1; w > raw + 0.01 && k < 80; k++) w = roundToGym(ex, raw - k * 0.5, gym); return w; };
     const rows = [1, 2, 3, 4, 5, 6, 8, 10, 12].map((r) => {
-      const w = roundToGym(ex, best.best1rm / (1 + (r === 1 ? 0 : r) / 30), gym);
+      const w = down(r <= 1 ? E : E / (setMax(1, r) || 1));
       return `<div class="rm-cell"><span>${r} ${r === 1 ? 'rep' : 'reps'}</span><b class="num">${toDisp(w)}</b></div>`;
     }).join('');
     return `<div class="card"><div class="row between"><h3>Rep maxes</h3><span class="muted small">${wUnit()}${loadNote(ex) ? ` ${loadNote(ex)}` : ''}</span></div>
-      <p class="muted small">Estimated from your best set in the last 8 weeks (${A.fmtDate(best.date)}).</p>
+      <p class="muted small">From your estimated max, ${A.esc(wtEst(E))}. Rounded down to weights you can load.</p>
       <div class="rm-grid">${rows}</div></div>`;
   }
 

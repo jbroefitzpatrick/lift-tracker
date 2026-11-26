@@ -134,12 +134,21 @@ export function createPlanScreens(A) {
     const items = plan.items;
     const est = estimateMinutes(items);
     const totalSets = items.reduce((a, i) => a + i.sets, 0);
+    // Time against the session length from the plan builder, and what to trim first when it runs long:
+    // accessories with 3+ sets, from the end of the day.
+    const avail = +A.db.profile?.sessionMin || 60;
+    const over = est - avail;
+    const trims = over > 3 ? items.map((it, i) => ({ it, i, ex: A.db.exercises[it.exerciseId] })).filter(({ it, ex }) => ex && ex.category === 'accessory' && it.sets >= 3).reverse().slice(0, 3) : [];
+    const timeBar = `<div class="pd-time ${over > 3 ? 'over' : ''}"><div class="pd-track" aria-hidden="true"><i style="width:${(over > 0 ? (avail / est) * 100 : (est / avail) * 100).toFixed(1)}%"></i>${over > 0 ? `<i class="pd-over" style="width:${((over / est) * 100).toFixed(1)}%"></i>` : ''}</div>
+      <span class="small">${over > 3 ? `About ${over} min over your ${avail}` : `~${est} of your ${avail} min`}</span></div>
+      ${trims.length ? `<div class="pd-trims"><span class="small muted">Trim a set from</span>${trims.map(({ it, i, ex }) => `<button class="chip" data-a="plan-trim" data-i="${i}">${A.esc(ex.name)}: ${it.sets} to ${it.sets - 1} sets</button>`).join('')}</div>` : ''}`;
     return `${subHeader(A.FULL_DAY[day], 'plan-back')}${head}
       ${mode === 'cardio' || mode === 'rest' ? `<p class="muted small pad">Lifting is off on ${A.FULL_DAY[day]}s. The exercises below are kept for when you switch back.</p>` : ''}
       <div class="card plan-day">
         <div class="row between"><input id="plan-name" class="title-input" type="text" value="${A.esc(plan.name)}" data-a="plan-name" aria-label="Day name"><button class="icon-btn plain" data-a="plan-day-menu" data-day="${day}" aria-label="${A.FULL_DAY[day]} options: move, edit all, remove">${icon('more')}</button></div>
         <div class="row between plan-day-meta">
           <span class="muted small nowrap">${items.length} exercises · ${totalSets} sets · ~${est} min</span></div>
+        ${timeBar}
         <div class="plan-list">
         ${items.map((it, i) => {
           const ex = A.db.exercises[it.exerciseId];

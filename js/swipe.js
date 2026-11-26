@@ -1,8 +1,9 @@
-// Swipe a row left to reveal one action (e.g. delete a set), the way iOS lists work.
-// A row opts in with data-swipe="<action>" and data-swipe-label; its other data-* attributes are
-// passed to the action. Everything a swipe does is also available from a menu, so nothing depends on it.
+// Swipe a row left to reveal an action (e.g. delete a set), the way iOS lists work.
+// A row opts in with data-swipe="<action>" and data-swipe-label; a second action can sit beside it
+// with data-swipe2 and data-swipe2-label. The row's other data-* attributes are passed to the action. Everything a swipe does is also available from a menu, so nothing depends on it.
 
-const OPEN = 84; // px the row slides
+const OPEN = 84; // px the row slides per action
+const openOf = (el) => (el?.dataset.swipe2 ? OPEN * 2 : OPEN);
 let active = null; // { el, x0, y0, swiping }
 let opened = null;
 
@@ -15,8 +16,16 @@ function close(el = opened) {
 
 function ensureButton(el) {
   if (el.querySelector(':scope > .swipe-act')) return;
+  if (el.dataset.swipe2) {
+    const b2 = document.createElement('button');
+    b2.className = 'swipe-act alt';
+    b2.textContent = el.dataset.swipe2Label || 'More';
+    b2.dataset.a = el.dataset.swipe2;
+    for (const [k, v] of Object.entries(el.dataset)) if (!k.startsWith('swipe') && !k.startsWith('drag')) b2.dataset[k] = v;
+    el.appendChild(b2);
+  }
   const b = document.createElement('button');
-  b.className = 'swipe-act';
+  b.className = el.dataset.swipe2 ? 'swipe-act second' : 'swipe-act';
   b.setAttribute('aria-label', el.dataset.swipeLabel || 'Delete');
   b.innerHTML = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v5M14 11v5"/></svg>';
   b.dataset.a = el.dataset.swipe;
@@ -82,7 +91,7 @@ export function initSwipe() {
     if (opened && opened !== el) close();
     if (!el || e.target.closest('.swipe-act, [data-drag-handle]')) return;
     const t = e.touches[0];
-    active = { el, x0: t.clientX, y0: t.clientY, swiping: false, base: el === opened ? -OPEN : 0 };
+    active = { el, x0: t.clientX, y0: t.clientY, swiping: false, base: el === opened ? -openOf(el) : 0 };
   }, { passive: true });
 
   document.addEventListener('touchmove', (e) => {
@@ -98,7 +107,7 @@ export function initSwipe() {
       ensureButton(active.el);
       active.el.style.transition = 'none';
     }
-    const x = Math.max(-OPEN - 24, Math.min(0, active.base + dx));
+    const x = Math.max(-openOf(active.el) - 24, Math.min(0, active.base + dx));
     active.el.style.transform = `translateX(${x}px)`;
   }, { passive: true });
 
@@ -109,7 +118,7 @@ export function initSwipe() {
     if (!swiping) return;
     el.style.transition = '';
     const dx = (e.changedTouches?.[0]?.clientX ?? x0) - x0;
-    if (base + dx < -OPEN / 2) { el.style.transform = `translateX(${-OPEN}px)`; el.classList.add('swiped'); opened = el; } else close(el);
+    if (base + dx < -OPEN / 2) { el.style.transform = `translateX(${-openOf(el)}px)`; el.classList.add('swiped'); opened = el; } else close(el);
   };
   document.addEventListener('touchend', end, { passive: true });
   document.addEventListener('touchcancel', end, { passive: true });

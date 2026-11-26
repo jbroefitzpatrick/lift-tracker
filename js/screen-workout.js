@@ -7,7 +7,7 @@ import { currentFatigue, dayMode, freshness, liftLoads } from './fatigue.js';
 import { DAY_KEYS, DAY_NAMES, dayKeyOf, dayPlan, evaluate, groupNum, needsRotationPrompt, nextRowCompound, resolveDay, targetsFor, weekInfo, weekOverride } from './engine.js';
 import { cooldownItems, dayExtras, extraStored, warmupItems, warmupMinutes } from './warmcool.js';
 import { EX_INFO } from './exercise-info.js';
-import { bodyPair, muscleIcon } from './body.js';
+import { bodyPair, muscleIcon, MUSCLE_NAMES } from './body.js';
 import { PHASE_TYPES, activePhase } from './year.js';
 import { icon } from './icons.js';
 import { estimateMinutes, volumeTarget } from './builder.js';
@@ -175,7 +175,7 @@ export function createWorkoutScreens(A) {
     if (!session && day === dayKeyOf(todayStr())) html += A.doneTodayCard(day);
     // The day a plan is made: nothing but the plan (no check-ins, reviews or reminders yet).
     const planDay0 = A.db.settings.planSince === todayStr() && day === dayKeyOf(todayStr());
-    const banner = !session && !planDay0 ? [A.peopleOn() ? A.people.togetherBanner(dateOfDay(day)) : '', A.train.recoveryCheck(), A.reviewCard(), A.skippedPrompt(day), A.train.weekPrompt(), A.extras.backupBanner(), A.db.settings.welcomed ? A.train.installHint() : ''].filter(Boolean)[0] || '' : '';
+    const banner = !session && !planDay0 ? [A.peopleOn() ? A.people.togetherBanner(dateOfDay(day)) : '', A.train.recoveryCheck(), A.skippedPrompt(day), A.train.weekPrompt(), A.extras.backupBanner(), A.db.settings.welcomed ? A.train.installHint() : ''].filter(Boolean)[0] || '' : '';
     html += banner;
     html += A.blockCheckinBanner();
     if (needsRotationPrompt(A.db)) {
@@ -223,10 +223,10 @@ export function createWorkoutScreens(A) {
     if (items.length) {
       html += session
         ? ''
-        : `<button class="day-line" data-a="day-edit" data-day="${day}" aria-label="Time, gym, warm-up and cool-down for this workout"><span class="grow"><b>${est} min</b> · ${A.esc(A.db.gyms.find((g) => g.id === weekOverride(A.db, day)?.gymId)?.name || activeGym(A.db).name)}${dayExtras(A.db, day).warm ? ' · warm-up' : ''}${isDeload ? ' · deload' : ''}</span>
-            ${icon('down')}</button>
+        : `<div class="day-meta"><button class="day-line" data-a="day-edit" data-day="${day}" aria-label="Time, gym, warm-up and cool-down for this workout"><span class="grow"><b>${est} min</b> · ${A.esc(A.db.gyms.find((g) => g.id === weekOverride(A.db, day)?.gymId)?.name || activeGym(A.db).name)}${dayExtras(A.db, day).warm ? ' · warm-up' : ''}${isDeload ? ' · deload' : ''}</span>
+            ${icon('down')}</button>${readyChip(items)}</div>
           <button class="cta" data-a="start-workout">Start workout</button>`;
-      if (!session) html += targetMuscles(items);
+      if (!session && A.ui.showMuscles) html += targetMuscles(items, true);
     }
 
     // Exercise list
@@ -293,7 +293,22 @@ export function createWorkoutScreens(A) {
   }
 
   // The muscles today's exercises train, with how recovered each one is.
-  function targetMuscles(items) {
+  function muscleTiles(items) {
+    const loads = liftLoads(A.db, items.map((i) => ({ exerciseId: i.exerciseId, sets: i.sets || 3 })));
+    const fresh = freshness(currentFatigue(A.db));
+    return GROUPS.map((g) => {
+      const used = g.muscles.filter((m) => (loads[m] || 0) >= 2);
+      if (!used.length) return null;
+      return { g, pct: Math.round(Math.min(...used.map((m) => fresh[m] ?? 1)) * 100) };
+    }).filter(Boolean);
+  }
+  function readyChip(items) {
+    const tiles = muscleTiles(items);
+    if (!tiles.length) return '';
+    const low = Math.min(...tiles.map((x) => x.pct));
+    return `<button class="ready-chip ${low < 50 ? 'low' : low < 80 ? 'mid' : ''}" data-a="muscles-toggle" aria-expanded="${!!A.ui.showMuscles}" aria-label="Muscles for today: ${low}% recovered. Show details">${low}% ready</button>`;
+  }
+  function targetMuscles(items, open = false) {
     const loads = liftLoads(A.db, items.map((i) => ({ exerciseId: i.exerciseId, sets: i.sets || 3 })));
     const fresh = freshness(currentFatigue(A.db));
     // One tile per group, ordered by how much work it gets today.
@@ -308,7 +323,9 @@ export function createWorkoutScreens(A) {
     const names = tiles.slice(0, 3).map((x) => x.g.name).join(', ');
     const low = Math.min(...tiles.map((x) => x.pct));
     const line = `<button class="muscle-line" data-a="muscles-toggle" aria-expanded="${!!A.ui.showMuscles}"><span class="grow"><b>${A.esc(names)}${tiles.length > 3 ? ` +${tiles.length - 3}` : ''}</b><span class="${low < 50 ? 'low' : low < 80 ? 'mid' : ''}"> · ${low === 100 ? 'fully recovered' : `${low}% recovered`}</span></span>${icon('down')}</button>`;
-    if (!A.ui.showMuscles) return line;
+    const TILE = (g, lead, pct) => `<button class="target-tile" data-a="open-recovery" data-g="${g.id}" aria-label="${g.name}, ${pct}% recovered"><span class="tile-art">${muscleIcon(lead)}<span class="pct-badge ${pct < 50 ? 'low' : pct < 80 ? 'mid' : ''}">${pct}%</span></span><span class="tile-name">${g.name}</span></button>`;
+    if (!A.ui.showMuscles && !open) return line;
+    if (open) return `<div class="target-strip" role="group" aria-label="Muscles worked today">${tiles.map(({ g, lead, pct }) => TILE(g, lead, pct)).join('')}</div>`;
     return line + `<div class="target-strip" role="group" aria-label="Muscles worked today">${tiles.map(({ g, lead, pct }) => `<button class="target-tile" data-a="open-recovery" data-g="${g.id}" aria-label="${g.name}, ${pct}% recovered"><span class="tile-art">${muscleIcon(lead)}<span class="pct-badge ${pct < 50 ? 'low' : pct < 80 ? 'mid' : ''}">${pct}%</span></span><span class="tile-name">${g.name}</span></button>`).join('')}</div>`;
   }
 
@@ -466,14 +483,19 @@ export function createWorkoutScreens(A) {
       ${A.ui.heroBig && img ? `<button class="station-big ex-hero big" data-a="hero-toggle" aria-label="Make photo smaller"><img src="${img}" alt="${A.esc(ex.name)}" referrerpolicy="no-referrer"></button>` : ''}
       <div class="station-head">
         ${A.ui.heroBig && img ? '<span></span>' : `<button class="station-pic ex-hero" data-a="hero-toggle" aria-label="Enlarge photo">${thumb(ex)}${familyDisc(ex, 26)}</button>`}
-        <div><h1>${A.esc(ex.name)}</h1>${muscleRow(ex)}</div>
+        <div><h1>${A.esc(ex.name)}</h1>${muscleRow(ex)}
+          <div class="ex-tools">
+            <button class="tool-btn" data-a="ex-info" data-id="${ex.id}" aria-label="How-to">${icon('play')}<span>How-to</span></button>
+            ${A.db.exCues?.[ex.id]?.length && A.db.settings.showCues !== false ? '' : `<button class="tool-btn" data-a="cues-open" data-id="${ex.id}" aria-label="Cues">${icon('bolt')}<span>Cues</span></button>`}
+            ${A.db.exNotes?.[ex.id] ? '' : `<button class="tool-btn" data-a="ex-note" data-id="${ex.id}" aria-label="Note">${icon('note')}<span>Note</span></button>`}
+          </div></div>
         <button class="station-more" data-a="ex-sheet" data-uid="${item.uid}" aria-label="More options">${icon('more')}</button>
       </div>
       ${A.db.exCues?.[ex.id]?.length && A.db.settings.showCues !== false ? `<button class="my-cues" data-a="cues-open" data-id="${ex.id}" aria-label="Your cues. Tap to edit"><ul>${A.db.exCues[ex.id].map((c) => `<li>${A.esc(c)}</li>`).join('')}</ul></button>` : ''}
       ${A.db.exNotes?.[ex.id] ? `<button class="ex-note" data-a="ex-note" data-id="${ex.id}">${icon('note')}<span>${A.esc(A.db.exNotes[ex.id])}</span></button>` : ''}
       ${grp.linked ? `<div class="group-note"><b>${linkLabel(grp.items.length)}</b>${entry ? (() => { const n = Math.max(...grp.items.map((i) => session.entries[i.uid]?.sets.length || i.sets)); const r = entry.sets.findIndex((x) => !x.done); return ` · round ${r < 0 ? entry.sets.length : r + 1} of ${n}`; })() : ''} · ${grp.items.map((i) => (i === item ? `<span class="cur">${A.esc(i.ex.name)}</span>` : A.esc(i.ex.name))).join(' → ')}</div>` : ''}
       ${dialBlock(item, session, ex, sets, conditioning, fields, gym, info, ended)}
-      <p class="aim-line">${aim}${conditioning || t.aim ? '' : t.rir || rir ? ` · ${A.effort(t.rir || rir, 'aim')}` : ''}</p>
+      <p class="aim-line">${aim}${conditioning || t.aim ? '' : t.rir || rir ? ` · ${A.effort(t.rir || rir, 'aim')}` : ''} · <button class="aim-rest" data-a="ex-rest" data-uid="${item.uid}" aria-label="Rest time. Change">Rest ${A.fmtRest(item.restSec || grp.items.reduce((a, i) => Math.max(a, i.restSec || 0), 0)) || 'off'}</button></p>
       ${(() => {
         // A lift never logged before: the weight shown is a starting guess.
         const fresh = !conditioning && !ex.noLoad && ex.type !== 'bodyweight' && !A.db.sessions.some((x) => x.entries.some((e) => e.exerciseId === ex.id));
@@ -494,12 +516,6 @@ export function createWorkoutScreens(A) {
       ${!ended ? `<button class="text-btn" data-a="add-set" data-uid="${item.uid}">${icon('plus')} ${conditioning ? 'Add round' : 'Add set'}</button>${conditioning || entry?.maxTest ? '' : `<button class="text-btn" data-a="add-drop" data-uid="${item.uid}">${icon('plus')} Add drop set</button>`}` : ''}
       ${ex.rules?.rehab && !ended && !entry?.maxTest ? `<label class="toggle"><input type="checkbox" data-a="painfree" data-uid="${item.uid}" ${entry?.painFree ? 'checked' : ''}><span>Pain-free today<span class="pick-sub">Weight goes up only after pain-free sessions</span></span></label>` : ''}
       ${checkin}
-      <div class="chips quick-row">
-        <button class="chip" data-a="ex-info" data-id="${ex.id}">${icon('play')} How-to</button>
-        ${A.db.exCues?.[ex.id]?.length && A.db.settings.showCues !== false ? '' : `<button class="chip" data-a="cues-open" data-id="${ex.id}">${icon('bolt')} Cues</button>`}
-        ${A.db.exNotes?.[ex.id] ? '' : `<button class="chip" data-a="ex-note" data-id="${ex.id}">${icon('note')} Note</button>`}
-        <button class="chip" data-a="ex-rest" data-uid="${item.uid}">Rest ${A.fmtRest(item.restSec || grp.items.reduce((a, i) => Math.max(a, i.restSec || 0), 0)) || 'off'}</button>
-      </div>
       <div class="ex-nav">
         ${back ? `<button class="btn prev-ex" data-a="ex-go" data-uid="${back.uid}" aria-label="Previous exercise: ${A.esc(back.ex.name)}">${icon('left')}<span>Prev</span></button>` : ''}
         ${!session ? '<button class="btn primary grow" data-a="start-workout">Start workout</button>'
@@ -544,7 +560,7 @@ export function createWorkoutScreens(A) {
     const done = warm.filter((w) => w.done).length;
     const open = A.ui.warmOpen?.[item.uid] ?? !!entry?.maxTest; // a max test starts with its warm-ups showing
     return `<details class="warmup" data-uid="${item.uid}" ${open ? 'open' : ''}>
-      <summary>Ramp-up sets · ${done ? `${done} of ${warm.length} done` : `${warm.length}`}</summary>
+      <summary>Ramp-up sets <span class="ws-hint">${done ? `${done} of ${warm.length} done` : `${warm.length} before your first set`}</span></summary>
       <div class="set-head warm" aria-hidden="true"><span></span><span>${unitLabel(ex)}</span><span>${repsLabel(ex)}</span><span></span></div>
       ${warm.map((w, i) => `<div class="set-row warm ${w.done ? 'done' : ''}" data-swipe="warm-del" data-swipe-label="Delete" data-uid="${item.uid}" data-i="${i}">
         <span class="set-badge ty-w">R</span>
@@ -599,13 +615,15 @@ export function createWorkoutScreens(A) {
       const pr = last?.reps?.[i];
       const prev = pr != null ? (ex.noLoad ? `${pr} reps` : (ex.type === 'bodyweight' && !pw ? `${pr} reps` : `${pw} × ${pr}`)) : '';
       const ty = SET_TYPES[s.type];
-      return `<div class="set-row lift ${ex.noLoad ? 'no-load' : ''} ${s.done ? 'done' : ''} ${s.pain ? 'pain' : ''} ${disabled ? 'disabled' : ''}" data-swipe="del-set" data-uid="${item.uid}" data-i="${i}" data-swipe-label="Delete">
+      const ask = A.ui.rirAsk && A.ui.rirAsk.uid === item.uid && A.ui.rirAsk.idx === i && s.done;
+      const rpe = A.db.settings.effortScale === 'rpe';
+      return `<div class="set-row lift ${s.best && s.done ? 'best' : ''} ${ex.noLoad ? 'no-load' : ''} ${s.done ? 'done' : ''} ${s.pain ? 'pain' : ''} ${disabled ? 'disabled' : ''}" data-swipe="del-set" data-uid="${item.uid}" data-i="${i}" data-swipe-label="Delete"${s.type === 'w' ? '' : ` data-swipe2="swipe-drop" data-swipe2-label="${s.type === 'd' ? 'Normal' : 'Drop set'}"`}>
         <button class="set-badge ${ty ? `ty-${s.type}` : ''}" data-a="open-set" data-uid="${item.uid}" data-i="${i}" aria-label="Set ${i + 1}${ty ? `, ${ty[1]}` : ''}. Options: type, effort, pain">${ty ? ty[0] : i + 1}</button>
         ${prev ? `<button class="prev" data-a="copy-prev" data-uid="${item.uid}" data-i="${i}" data-w="${pw ?? 0}" data-r="${pr}" ${s.done || disabled ? 'disabled' : ''} aria-label="Last time ${prev}${sideNote(ex) ? ` ${sideNote(ex)}` : ''}. Tap to use these numbers">${prev}</button>` : '<span class="prev none" aria-label="No previous set">—</span>'}
         ${ex.noLoad ? '' : `<input class="cell" type="text" inputmode="decimal" data-set="${item.uid}:${i}:weight" value="${toDisp(s.weight) ?? ''}" placeholder="—" aria-label="Set ${i + 1} weight in ${wUnit() === 'kg' ? 'kilograms' : 'pounds'}" ${disabled ? 'disabled' : ''}>`}
         <input class="cell" type="text" inputmode="numeric" data-set="${item.uid}:${i}:reps" value="${s.reps ?? ''}" aria-label="Set ${i + 1} reps${sideNote(ex) ? ` ${sideNote(ex)}` : ''}" ${disabled ? 'disabled' : ''}>
         <button class="check" data-a="check-inline" data-uid="${item.uid}" data-i="${i}" ${disabled || s.pain ? 'disabled' : ''} aria-pressed="${s.done}" aria-label="${s.done ? 'Undo' : 'Complete'} set ${i + 1}">${icon('check')}</button>
-      </div>${s.rir != null || s.pain ? `<p class="set-extra">${s.pain ? 'Pain flagged' : A.effort(s.rir, 'done')}</p>` : ''}`;
+      </div>${s.best && s.done ? '<p class="set-extra best-chip"><span>New best</span></p>' : ''}${ask ? `<div class="rir-ask" role="group" aria-label="${rpe ? 'How hard was it, RPE' : 'Reps left in the tank'}"><span>${rpe ? 'RPE?' : 'Reps left?'}</span>${[0, 1, 2, 3].map((v) => `<button data-a="rir-quick" data-uid="${item.uid}" data-i="${i}" data-v="${v}">${rpe ? 10 - v : v === 3 ? '3+' : v}</button>`).join('')}<button class="rir-skip" data-a="rir-later" aria-label="Skip">${icon('x')}</button></div>` : s.rir != null || s.pain ? `<p class="set-extra">${s.pain ? 'Pain flagged' : A.effort(s.rir, 'done')}</p>` : ''}`;
     }).join('');
   }
 
@@ -683,6 +701,19 @@ export function createWorkoutScreens(A) {
 
   // ---------- Summary ----------
 
+  // The muscles this workout trained: hard sets per muscle (helpers count half), shaded front and back.
+  function workedMap(s) {
+    const items = s.entries.map((e) => ({ exerciseId: e.exerciseId, sets: (e.sets || []).filter((x) => x.type !== 'w' && x.done !== false && !x.pain && (x.reps > 0 || x.time > 0 || x.dist > 0)).length })).filter((i) => i.sets);
+    const loads = liftLoads(A.db, items);
+    const top = Math.max(0, ...Object.values(loads));
+    if (!top) return '';
+    const values = Object.fromEntries(Object.entries(loads).map(([m, v]) => [m, Math.max(0.18, v / top)]));
+    const lead = Object.entries(loads).sort((a, b) => b[1] - a[1]).slice(0, 3);
+    return `<section class="card worked"><h3>Muscles worked</h3>
+      ${bodyPair(values, { cls: 'worked-map', label: 'Muscles worked this workout' })}
+      <p class="small worked-top">${lead.map(([m, v]) => `<span><b>${A.esc(MUSCLE_NAMES[m] || m)}</b> ${Math.round(v * 2) / 2} ${v === 1 ? 'set' : 'sets'}</span>`).join('')}</p></section>`;
+  }
+
   const STATUS = {
     progressed: ['up', 'Going up', 'good'],
     held: ['minus', 'Same next time', ''],
@@ -741,19 +772,28 @@ export function createWorkoutScreens(A) {
     const res = (s.results || []).filter((r) => r.status !== 'skipped');
     const progressed = res.filter((r) => r.status === 'progressed');
     const stalled = res.filter((r) => r.stalled || r.status === 'missed' || r.status === 'reduced');
+    // What happened and what's next, in one line: "190 × 5 → 195 × 5", with a short tag.
+    const SHORT = {"progressed":"Up","held":"Same","missed":"Short","reduced":"Down","pain":"Pain","deload":"Deload","logged":"Logged","tested":"Max test","peak":"Peaking","skipped":"Skipped"};
     const row = (r) => {
-      const [ic, label, cls] = STATUS[r.status];
+      const [ic, , cls] = STATUS[r.status];
       const ex = A.db.exercises[r.exerciseId];
-      return `<div class="result ${cls}">
-        <span class="r-icon" aria-hidden="true">${icon(ic)}</span>
-        <div class="grow"><b>${A.esc(r.name)}</b> <span class="pill ${cls}">${label}${r.stalled ? ' · stalled' : ''}</span>
-          ${r.next ? `<p class="small">Next: <b>${A.fmtW(r.next.weight, ex)} × ${r.next.reps}</b>${r.next.total ? ` · beat ${r.next.total - 1} reps in total` : ''}</p>` : ''}
-          ${r.status !== 'held' || !r.next ? `<p class="small muted">${A.esc(r.message)}</p>` : ''}
-        </div></div>`;
+      const e = s.entries.find((x) => x.exerciseId === r.exerciseId);
+      const top = (e?.sets || []).filter((x) => x.type !== 'w' && x.weight > 0 && x.reps > 0).reduce((a, x) => (!a || x.weight > a.weight || (x.weight === a.weight && x.reps > a.reps) ? x : a), null);
+      const now = top ? `${A.fmtW(top.weight, ex)} × ${top.reps}` : '';
+      const next = r.next ? `${A.fmtW(r.next.weight, ex)} × ${r.next.reps}` : '';
+      // Same weight, more reps next time (double progression): say so instead of "Same".
+      const moreReps = r.status === 'held' && top && r.next && r.next.weight === top.weight && r.next.reps > top.reps ? r.next.reps - top.reps : 0;
+      const hint = r.status === 'held' && r.next?.total ? `Beat ${r.next.total - 1} reps in total` : r.status !== 'held' && r.status !== 'progressed' ? r.message : '';
+      return `<div class="result nt ${cls}">
+        <div class="grow"><b>${A.esc(r.name)}</b>
+          ${next ? `<span class="nt-line">${now ? `<span class="muted">${now}</span> <span class="nt-arrow" role="img" aria-label="next time">${icon('arrowRight')}</span> ` : 'Next '}<b>${next}</b></span>` : ''}
+          ${hint ? `<span class="small muted nt-hint">${A.esc(hint)}</span>` : ''}
+        </div>
+        <span class="nt-tag ${cls}${moreReps ? ' good' : ''}">${icon(moreReps ? 'up' : ic)}${moreReps ? `+${moreReps} ${moreReps === 1 ? 'rep' : 'reps'}` : SHORT[r.status] || ''}</span></div>`;
     };
     const prs = s.prs || [];
     const adj = s.adjustments || [];
-    const stamp = `<span class="finish-stamp${A.ui.summaryFresh ? ' fresh' : ''}" aria-hidden="true">Done · ${A.fmtDate(s.date).replace(/^\w+,\s*/, '')}</span>`;
+    const stamp = `<span class="finish-stamp${A.ui.summaryFresh ? ' fresh' : ''}" aria-hidden="true">Done</span>`;
     return `<header class="top summary-top">${stamp}<div><h1>${A.ui.summaryFresh ? 'Workout done' : 'Workout'}</h1><p class="muted small">${A.fmtDate(s.date)} · ${DAY_NAMES[s.day]} · ${s.freestyle ? 'Custom workout' : A.esc(A.db.plan[s.day]?.name || '')}${s.isDeload ? ' · deload' : ''}</p></div></header>
       <div class="stats sum-stats">
         <div class="stat"><b data-count="${mins}">${mins}</b><span>min</span></div>
@@ -765,6 +805,7 @@ export function createWorkoutScreens(A) {
       ${s.goalHit ? `<div class="card pr-card ${A.ui.summaryFresh ? 'celebrate' : ''}"><h3>Big goal reached</h3><p class="small"><b>${A.esc(s.goalHit)}</b></p></div>` : ''}
       ${!A.ui.summaryFresh && !s.isDeload ? '' : s.isDeload ? '<p class="muted small pad">Deload workouts don\'t change targets.</p>' : res.length ? `<div class="card"><h3>Next time${progressed.length ? ` · <span class="up-count">${progressed.length} up</span>` : ''}</h3>${[...progressed, ...res.filter((r) => !progressed.includes(r) && !stalled.includes(r)), ...stalled].map(row).join('')}</div>` : ''}
       ${adj.length ? `<div class="card"><h3>Plan adjustments from your check-ins</h3>${adj.map((a) => `<p class="small">${A.esc(a.text)}</p>`).join('')}</div>` : ''}
+      ${workedMap(s)}
       ${exerciseList(s, !A.ui.summaryFresh)}
       ${A.ui.summaryFresh ? A.extras.summaryBackupCard() : ''}
       <details class="card note-card" ${s.note ? 'open' : ''}><summary>${s.note ? 'Note' : 'Add a note'}</summary><textarea id="session-note" data-sid="${s.id}" rows="3" placeholder="How did it go?">${A.esc(s.note || '')}</textarea></details>

@@ -41,7 +41,7 @@ import { createGoals } from './ui-goals.js';
 import { createStreak } from './ui-streak.js';
 import { syncStreak } from './streak.js';
 import { goalProgress, goalHit, getGoal } from './big-goal.js';
-import { recordCheck } from './estimate.js';
+import { recordCheck, liftMax, setMax } from './estimate.js';
 import { onFinish as tuneOnFinish, unsent as tuneUnsent } from './tuning.js';
 import { createPeople } from './ui-people.js';
 import { moveDay, copyDayTo, catchUpDay, laggingMuscles, maxDayTo } from './week.js';
@@ -361,6 +361,8 @@ function runRest() {
       if (rest.work && workDone) {
         const cb = workDone;
         workDone = null; rest = null; clearInterval(restTick);
+        try { localStorage.removeItem(REST_KEY); } catch {}
+        renderRest(); // clears the resting state, so Prev and Next come back
         beep(); haptic([200, 100, 200]);
         cb();
         return;
@@ -625,6 +627,19 @@ function logSet(uid, idx, vals) {
   resumeSession(session); // logging a set picks the workout back up
   const entry = session.entries[uid];
   Object.assign(entry.sets[idx], vals, { done: true });
+  const set = entry.sets[idx];
+  const lx = db.exercises[entry.exerciseId];
+  const lifting = lx && !entry.metric && lx.category !== 'conditioning' && !lx.noLoad && set.type !== 'w' && set.weight > 0 && set.reps > 0 && set.reps <= 10;
+  // A new best: this set's estimate beats the best before this workout (history only).
+  if (lifting && !session.isDeload) {
+    const before = liftMax(db, [entry.exerciseId], { factor: 1 })?.v || 0;
+    const sessionBest = Math.max(0, ...entry.sets.filter((x, i) => i !== idx && x.best).map((x) => setMax(x.weight, x.reps, x.rir)));
+    const now = setMax(set.weight, set.reps, set.rir);
+    if (before > 0 && now > before + 0.5 && now > sessionBest) { entry.sets.forEach((x) => { delete x.best; }); set.best = true; }
+  }
+  // Ask how many reps were left, unless it's already set or turned off.
+  ui.rirAsk = lifting && set.rir == null && db.settings.askRir !== false ? { uid, idx, at: Date.now() } : null;
+  if (ui.rirAsk) setTimeout(() => { if (ui.rirAsk?.uid === uid && ui.rirAsk.idx === idx && Date.now() - ui.rirAsk.at >= 7900) { ui.rirAsk = null; render(); } }, 8000);
   prefillFollowing(entry, idx);
   persist();
   haptic();
@@ -633,14 +648,15 @@ function logSet(uid, idx, vals) {
   persist();
   render();
   const row = document.querySelector(`.set-row[data-uid="${uid}"][data-i="${idx}"]`);
-  if (row) { row.classList.remove('flash'); void row.offsetWidth; row.classList.add('flash'); setTimeout(() => row.classList.remove('flash'), 800); }
+  if (row) { const c = set.best ? 'flash-best' : 'flash'; row.classList.remove(c); void row.offsetWidth; row.classList.add(c); setTimeout(() => row.classList.remove(c), set.best ? 1600 : 800); }
+  if (set.best) { haptic(); setTimeout(haptic, 120); }
   // On the exercise screen, move through the superset/circuit automatically, after a short beat
   // so the logged set registers before the next exercise slides in.
   if (ui.tab === 'exercise' && ui.exUid === uid && db.settings.autoAdvance !== false) {
     const nx = nextInCircuit(session, uid, idx);
     if (nx?.uid) {
       clearTimeout(logSet.adv);
-      logSet.adv = setTimeout(() => {
+      const go = () => {
         if (ui.tab !== 'exercise' || ui.exUid !== uid || db.activeSession !== session) return;
         ui.backUid = uid;
         ui.exUid = nx.uid;
@@ -648,7 +664,9 @@ function logSet(uid, idx, vals) {
         const name = db.exercises[session.entries[nx.uid]?.exerciseId]?.name || 'next exercise';
         toast(nx.groupDone ? `${linkLabel(nextGroupSize(session, uid))} done. Next: ${name}` : `${nx.sameRound ? 'Next' : 'After the rest'}: ${name}, set ${nx.round + 1}`);
         render();
-      }, 550);
+      };
+      logSet.go = go;
+      logSet.adv = setTimeout(() => { logSet.go = null; go(); }, ui.rirAsk ? 3000 : set.best ? 1500 : 550);
     }
   }
 }
@@ -1454,10 +1472,19 @@ function openAddWorkout(day) {
       ${row('cardio-all', 'Cardio', 'Run, bike, row, swim and more, ranked by how your muscles feel')}
       ${row('open-templates', 'Mobility or recovery', 'Yoga, stretching, foam rolling, recovery routines')}
       ${row('add-catchup', 'Catch up', `Least trained this week: ${esc(low.join(', '))}`)}
+      ${(db.savedWorkouts || []).length ? row('saved-open', 'Saved workouts', esc(db.savedWorkouts.slice(-3).reverse().map((w) => w.name).join(', '))) : ''}
       ${lifts.length ? row('add-double', 'Repeat a lifting day', `Do ${esc(lifts.slice(0, 3).map((t) => t.name).join(', '))} again today`) : ''}
       ${row('start-empty', 'Build your own', 'Pick exercises as you go')}
       ${maxCandidates().length ? row('maxday-open', 'Max-out day', 'Test your one-rep max on a few lifts') : ''}
     </div>`);
+}
+
+// Saved workouts, newest used first: start one as today's workout.
+function openSaved() {
+  const list = [...(db.savedWorkouts || [])].sort((a, b) => (b.used || b.created) - (a.used || a.created));
+  openSheet(`<h2>Saved workouts</h2>
+    ${list.length ? `<div class="list-group">${list.map((w) => `<div class="list-row"><button class="grow saved-go" data-a="saved-use" data-id="${w.id}"><b>${esc(w.name)}</b><span class="pick-sub">${w.items.length} exercises · ${esc(w.items.slice(0, 3).map((i) => db.exercises[i.exerciseId]?.name).filter(Boolean).join(', '))}</span></button><button class="icon-btn" data-a="saved-del" data-id="${w.id}" aria-label="Delete ${esc(w.name)}">${icon('trash')}</button></div>`).join('')}</div>` : '<p class="muted small">None yet. Open a past workout and choose Save to my workouts.</p>'}
+    <p class="muted small">Starting one makes it today's workout for this week. Weights come from your own history.</p>`);
 }
 
 // ---------- Max testing ----------
@@ -1913,11 +1940,17 @@ function openPicker(opts) {
   renderPickerList();
 }
 
+// A small photo for recognition (a muscle icon when there's no photo).
+const pickThumb = (ex) => {
+  const img = EX_INFO[ex.id]?.images?.[0];
+  const fb = muscleIcon(ex.primary?.[0] || 'chest');
+  return `<span class="pk-thumb" aria-hidden="true">${img ? `<img src="${img}" alt="" loading="lazy" referrerpolicy="no-referrer" data-fb='${fb.replace(/'/g, '&#39;')}'>` : fb}</span>`;
+};
 function pickRow(ex, why) {
   const multi = MULTI.includes(picker.mode);
   const on = multi && picker.sel.includes(ex.id);
   return `<button class="pick-row${on ? ' on' : ''}" data-a="${multi ? 'pk-toggle' : 'pick'}" data-id="${ex.id}"${multi ? ` aria-pressed="${on}"` : ''}>
-    <span class="grow"><b>${esc(ex.name)}${db.exPrefs[ex.id] === 'prefer' ? ' <span class="fav-mark" aria-label="Preferred">' + icon('starFill') + '</span>' : ''}</b><span class="pick-sub">${isAvailable(db, ex) ? '' : '<em class="warn-t">Hidden</em> · '}${why ? `<em>${why}</em> · ` : ''}${esc(muscleLine(ex))}</span></span>
+    ${pickThumb(ex)}<span class="grow"><b>${esc(ex.name)}${db.exPrefs[ex.id] === 'prefer' ? ' <span class="fav-mark" aria-label="Preferred">' + icon('starFill') + '</span>' : ''}</b><span class="pick-sub">${isAvailable(db, ex) ? '' : '<em class="warn-t">Hidden</em> · '}${why ? `<em>${why}</em> · ` : ''}${esc(muscleLine(ex))}</span></span>
     <span class="cat ${ex.category}">${CATEGORIES[ex.category]}</span>${multi ? `<span class="pick-check" aria-hidden="true">${icon(on ? 'check' : 'plus')}</span>` : ''}
   </button>`;
 }
@@ -2263,6 +2296,7 @@ function screenSettings() {
     <h2 class="group-title">Logging</h2>
     <div class="card">
       <label class="toggle"><input type="checkbox" data-a="set-warmups" ${s.warmups ? 'checked' : ''}><span>Ramp-up sets on the first big lift</span></label>
+      <label class="toggle"><input type="checkbox" data-a="set-ask-rir" ${s.askRir !== false ? 'checked' : ''}><span>Ask how many reps were left after each set</span></label>
       <label class="toggle"><input type="checkbox" data-a="set-autoadvance" ${s.autoAdvance !== false ? 'checked' : ''}><span>Auto-advance in supersets</span></label>
       <label class="toggle"><input type="checkbox" data-a="set-ramp" ${s.rampEffort ? 'checked' : ''}><span>Ramp up effort through each block (3 to 1 reps in reserve)</span></label>
       ${legacy ? `<details class="sub-details"><summary>Sample-plan options</summary>
@@ -2556,7 +2590,7 @@ function render() {
   const active = { exercise: 'today', summary: ui.summaryFresh ? 'today' : 'progress', builder: 'plan', 'edit-session': 'progress', history: 'progress', body: 'progress', settings: ui.prevTab === 'history' || ui.prevTab === 'body' ? 'progress' : ui.prevTab }[ui.tab] || ui.tab;
   $('#tabs').innerHTML = visibleTabs().map(([k, label, icon]) => `
     <button class="tab ${k === active ? 'on' : ''}" data-a="tab" data-tab="${k}" aria-current="${k === active ? 'page' : 'false'}">
-      <svg viewBox="0 0 24 24" aria-hidden="true">${icon}</svg><span>${label}</span>${k === 'people' && people.pendingCount() ? `<span class="tab-badge" aria-label="${people.pendingCount()} new">${people.pendingCount()}</span>` : ''}
+      <svg viewBox="0 0 24 24" aria-hidden="true">${icon}</svg><span>${label}</span>${k === 'plan' && reviewCard() ? '<span class="tab-dot" aria-label="New: last week\'s review"></span>' : ''}${k === 'people' && people.pendingCount() ? `<span class="tab-badge" aria-label="${people.pendingCount()} new">${people.pendingCount()}</span>` : ''}
     </button>`).join('');
   renderRest();
 }
@@ -2626,6 +2660,23 @@ const actions = {
   'rec-pick': (d) => { ui.recSel = d.g ? { group: d.g } : { area: d.m, side: null }; refreshRecovery(); },
   // A "?" next to a label shows or hides its explanation.
   help: (d, el) => { const p = el.closest('.field, .help-wrap, label, h3, div')?.querySelector('.help-text') || el.parentElement.nextElementSibling; if (!p) return; p.hidden = !p.hidden; el.setAttribute('aria-expanded', String(!p.hidden)); },
+  // Reps left in the tank, from the chips under a just-logged set.
+  'rir-quick': (d) => {
+    const s = sessionFor(ui.day)?.entries[d.uid]?.sets[+d.i];
+    if (!s) return;
+    s.rir = +d.v;
+    ui.rirAsk = null; persist(); render(); haptic();
+    if (logSet.go) { clearTimeout(logSet.adv); const g = logSet.go; logSet.go = null; setTimeout(g, 150); }
+  },
+  'rir-later': () => { ui.rirAsk = null; render(); },
+  'set-ask-rir': (d, el) => { db.settings.askRir = !!el.checked; persist(); render(); },
+  // Swipe a set: make it a drop set (or back to a normal set).
+  'swipe-drop': (d) => {
+    const s = ensureSession(ui.day)?.entries[d.uid]?.sets[+d.i];
+    if (!s) return;
+    if (s.type === 'd') delete s.type; else s.type = 'd';
+    persist(); render(); toast(s.type === 'd' ? `Set ${+d.i + 1} is a drop set.` : `Set ${+d.i + 1} is a normal set.`);
+  },
   'set-type': (d, el) => {
     const s = sessionFor(ui.day)?.entries[d.uid]?.sets[+d.i];
     if (!s) return;
@@ -3508,6 +3559,7 @@ const actions = {
       ${row('edit-session', 'Edit workout', 'Fix sets, weights or exercises')}
       ${row('repeat-session', 'Do it again', "Make it today's workout")}
       ${row('save-session-plan', 'Save to plan', 'Use it as a weekly day')}
+      ${row('save-session-saved', 'Save to my workouts', 'Start it again any day')}
     </div>`);
   },
   'plan-change': () => {
@@ -3554,6 +3606,43 @@ const actions = {
     closeSheet(); toast(`${sessionName(s)} is today.`);
   },
   'save-session-plan': (d) => openSaveToPlan(d.id),
+  // Saved workouts: any past workout kept by name, to start again on any day.
+  'save-session-saved': (d) => {
+    const s = db.sessions.find((x) => x.id === d.id);
+    if (!s) return;
+    const items = sessionToItems(s, 'sv-').filter((i) => db.exercises[i.exerciseId]);
+    if (!items.length) return toast('Nothing to save in that workout.');
+    const base = sessionName(s) === 'Workout' ? `Workout, ${fmtDate(s.date).replace(/^w+,s*/, '')}` : sessionName(s);
+    const names = new Set((db.savedWorkouts || []).map((w) => w.name));
+    let name = base; for (let n = 2; names.has(name); n++) name = `${base} ${n}`;
+    (db.savedWorkouts ||= []).push({ id: `sw${Date.now().toString(36)}`, name, items, created: Date.now() });
+    persist(); closeSheet(); toast(`Saved as ${name}.`);
+  },
+  'saved-open': () => openSaved(),
+  // Plan day editor: one set fewer on a suggested accessory, to fit the session length.
+  'plan-trim': (d) => {
+    const it = db.plan[ui.planDay]?.items?.[+d.i];
+    if (!it || it.sets <= 1) return;
+    it.sets -= 1; persist(); render(); toast(`${db.exercises[it.exerciseId]?.name || 'Exercise'}: ${it.sets} sets.`);
+  },
+  'saved-use': async (d) => {
+    const w = (db.savedWorkouts || []).find((x) => x.id === d.id);
+    if (!w) return;
+    const today = dayKeyOf(todayStr());
+    if (db.activeSession) return toast('Finish or discard the current workout first.');
+    const planned = dayPlan(db, today)?.items?.some((i) => db.exercises[i.exerciseId]?.category !== 'conditioning');
+    if (planned && !sessionFor(today) && !(await ask(`Replace today's workout with ${w.name}? This week only.`, 'Replace'))) return;
+    const items = w.items.filter((i) => db.exercises[i.exerciseId]).map((i, k) => ({ ...i, uid: `${today}-s${k + 1}` }));
+    if (!db.week || db.week.start !== mondayOf(todayStr())) db.week = { start: mondayOf(todayStr()), avail: {}, days: {} };
+    db.week.days[today] = { name: w.name, mode: 'lift', from: [], base: items.map((x) => ({ ...x })), items };
+    w.used = Date.now();
+    persist(); closeSheet(); ui.tab = 'today'; ui.day = today; window.scrollTo(0, 0); render(); toast(`${w.name} is today.`);
+  },
+  'saved-del': async (d) => {
+    const w = (db.savedWorkouts || []).find((x) => x.id === d.id);
+    if (!w || !(await ask(`Delete ${w.name} from your saved workouts?`, 'Delete', true))) return;
+    db.savedWorkouts = db.savedWorkouts.filter((x) => x.id !== d.id); persist(); openSaved();
+  },
   'save-session-plan-go': async (d) => {
     const s = db.sessions.find((x) => x.id === d.id);
     if (!s) return;

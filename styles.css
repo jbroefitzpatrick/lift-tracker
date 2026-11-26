@@ -1985,3 +1985,79 @@ button.vol-btn { min-height: 44px; }
 .gc-lift .gl-top { font-size: 0.8125rem; }
 .gc-lift .gl-top > span:first-child { font-weight: 700; color: var(--text); }
 .gc-lift .gl-bar { height: 6px; }
+/* Ramp-up sets: a row that clearly opens. */
+details.warmup > summary { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 12px; border: 1px solid var(--line); border-radius: var(--radius-sm, 8px); cursor: pointer; list-style: none; font-weight: 700; }
+details.warmup > summary::-webkit-details-marker { display: none; }
+details.warmup > summary::after { content: ''; margin-left: auto; width: 8px; height: 8px; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(45deg) translateY(-2px); transition: transform 0.15s; }
+details.warmup[open] > summary::after { transform: rotate(-135deg) translateY(-2px); }
+details.warmup > summary .ws-hint { font-weight: 600; color: var(--muted); font-size: 0.8125rem; }
+
+/* Train: time, gym and readiness on one line. */
+.day-meta { display: flex; align-items: stretch; gap: 8px; margin: 2px 0 10px; }
+.day-meta button.day-line { margin: 0; flex: 1; min-width: 0; }
+.ready-chip { flex: none; display: inline-flex; align-items: center; padding: 0 12px; border: 0; border-radius: 12px; background: var(--good-soft); color: var(--good); font: inherit; font-size: 0.8125rem; font-weight: 800; cursor: pointer; }
+.ready-chip.mid { background: var(--warn-soft); color: var(--warn); }
+.ready-chip.low { background: var(--bad-soft); color: var(--bad); }
+.tab { position: relative; }
+.tab-dot { position: absolute; top: 6px; right: calc(50% - 16px); width: 8px; height: 8px; border-radius: 50%; background: var(--ember, var(--accent)); box-shadow: 0 0 0 2px var(--bg); }
+/* Summary: next time in one line. */
+.result.nt { display: flex; align-items: center; gap: 12px; }
+.result.nt .grow { display: grid; gap: 2px; min-width: 0; }
+.nt-line { font-variant-numeric: tabular-nums; }
+.nt-arrow { color: var(--muted); padding: 0 2px; }
+.nt-tag { flex: none; display: inline-flex; align-items: center; gap: 4px; padding: 4px 9px; border-radius: 999px; background: var(--surface-2); color: var(--muted); font-size: 0.75rem; font-weight: 800; }
+.nt-tag .ic { width: 14px; height: 14px; }
+.nt-tag.good { background: var(--good-soft); color: var(--good); }
+.nt-tag.warn { background: var(--warn-soft); color: var(--warn); }
+.nt-tag.bad { background: var(--bad-soft); color: var(--bad); }
+.nt-arrow { display: inline-flex; vertical-align: -3px; } .nt-arrow .ic { width: 15px; height: 15px; }
+/* Summary: muscles worked. */
+.worked .body-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; max-width: 300px; margin: 6px auto 0; }
+.worked .body-map { width: 100%; height: auto; max-height: 220px; }
+.worked-map .mus.on { fill: color-mix(in srgb, var(--accent) calc(var(--v) * 100%), var(--muscle)); }
+.worked-top { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 14px; margin-top: 8px; color: var(--muted); }
+.worked-top b { color: var(--text); }
+/* Exercise picker: a photo on each row. */
+.pick-row .pk-thumb { flex: none; width: 46px; height: 46px; border-radius: 8px; overflow: hidden; background: var(--surface-2); display: grid; place-items: center; }
+.pick-row .pk-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.pick-row .pk-thumb svg { width: 34px; height: 34px; }
+.pick-row { gap: 12px; }
+
+/* Swipe: two actions side by side (drop set, then delete). */
+:root .set-row .swipe-act.alt { left: calc(100% + 8px); width: 76px; background: var(--accent-strong) !important; font-size: 0.8125rem; }
+.swipe-act.second { left: calc(100% + 92px); }
+
+/* A new best during a workout: a plate-gold flash and a chip. */
+.set-row.best { box-shadow: inset 3px 0 0 #e3b341; }
+.best-chip span { display: inline-block; padding: 2px 9px; border-radius: 999px; background: #e3b341; color: #141518; font-size: 0.75rem; font-weight: 900; letter-spacing: 0.02em; }
+@media (prefers-reduced-motion: no-preference) {
+  :root:not([data-motion="calm"]) .set-row.flash-best { animation: best-flash 1.5s ease-out; }
+  :root:not([data-motion="calm"]) .set-row.best + .best-chip span { animation: best-pop 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.4); }
+}
+@keyframes best-flash { 0% { background: rgb(227 179 65 / 0.55); } 100% { background: transparent; } }
+@keyframes best-pop { 0% { transform: scale(0.6); opacity: 0; } 100% { transform: none; opacity: 1; } }
+/* Reps left: one tap after a set. */
+.rir-ask { display: flex; align-items: center; gap: 6px; margin: 2px 0 8px 44px; }
+.rir-ask > span { font-size: 0.8125rem; color: var(--muted); font-weight: 700; margin-right: 2px; }
+.rir-ask button { min-width: 44px; min-height: 36px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--surface); color: var(--text); font: inherit; font-weight: 800; }
+.rir-ask .rir-skip { min-width: 36px; border: 0; background: none; color: var(--muted); display: grid; place-items: center; }
+.rir-ask .rir-skip .ic { width: 16px; height: 16px; }
+.saved-go { border: 0; background: none; color: inherit; font: inherit; text-align: left; padding: 0; display: grid; gap: 2px; min-height: 44px; align-content: center; }
+
+/* Plan day editor: time against the session length. */
+.pd-time { display: grid; gap: 4px; margin: 8px 0 4px; }
+.pd-track { position: relative; height: 6px; border-radius: 3px; background: var(--surface-3); overflow: hidden; display: flex; }
+.pd-track i { display: block; height: 100%; background: var(--accent-strong); }
+.pd-track .pd-over { background: var(--warn); }
+.pd-time.over .small { color: var(--warn); font-weight: 700; }
+.pd-trims { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 6px; }
+
+.sh-goal { padding: 0; border: 0; background: none; color: inherit; font: inherit; font-size: inherit; text-align: left; text-decoration: underline dotted; text-underline-offset: 3px; cursor: pointer; opacity: 0.85; }
+/* Exercise screen: tools as small icons under the name; rest time in the aim line. */
+.ex-tools { display: flex; gap: 6px; margin-top: 6px; }
+.tool-btn { display: inline-flex; align-items: center; gap: 5px; min-height: 34px; padding: 0 10px; border: 0; border-radius: 999px; background: var(--surface-2); color: var(--text); font: inherit; font-size: 0.75rem; font-weight: 700; cursor: pointer; }
+.tool-btn .ic { width: 15px; height: 15px; }
+.aim-rest { padding: 0; border: 0; background: none; color: inherit; font: inherit; text-decoration: underline dotted; text-underline-offset: 3px; cursor: pointer; }
+/* While the rest timer runs, it owns the bottom of the screen; Prev and Next come back when it's done or skipped. */
+body.resting .ex-nav { display: none; }
+.tool-btn { white-space: nowrap; flex: none; } .ex-tools { flex-wrap: wrap; }
