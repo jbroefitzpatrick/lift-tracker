@@ -43,7 +43,7 @@ export async function handleCalib(path, body, user, env, json) {
   }
   // Turned off in Settings: everything this person sent is removed.
   if (path === '/v2/calib/forget') {
-    await env.DB.prepare('DELETE FROM calib WHERE who = ?').bind(who).run();
+    await env.DB.batch([env.DB.prepare('DELETE FROM calib WHERE who = ?').bind(who), env.DB.prepare('DELETE FROM tune WHERE who = ?').bind(who)]);
     return json({ ok: true });
   }
   // Aggregates only: how far off the estimate runs, by method and by the reps it came from.

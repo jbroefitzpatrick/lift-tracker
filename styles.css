@@ -1978,3 +1978,10 @@ button.vol-btn { min-height: 44px; }
 .goal-how { display: block; margin: 12px auto 4px; }
 :root[data-theme="light"] .goal-card { --gb-gold: #e3b341; --gb-gold-ink: #e3b341; }
 .goal-clubs .goal-club.done, .goal-clubs .goal-club.next, .goal-clubs .goal-club.sealed { background: none; outline: none; color: var(--muted); }
+/* Big goal card: compact on Progress, the three lifts on Strength. */
+.goal-sub b.gold, .gl-top b.gold { color: var(--gb-gold-ink); }
+.goal-lifts { display: grid; gap: 8px; margin: 4px 0 2px; }
+.gc-lift { display: grid; gap: 4px; }
+.gc-lift .gl-top { font-size: 0.8125rem; }
+.gc-lift .gl-top > span:first-child { font-weight: 700; color: var(--text); }
+.gc-lift .gl-bar { height: 6px; }

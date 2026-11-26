@@ -136,7 +136,7 @@ export function createCloud(ctx) {
         <p class="code-box small-code">${esc(link)}</p>
         <button class="btn block" data-a="cloud-copy" data-v="${esc(link)}">Copy link</button>
         <h3 class="sheet-h">Already on their Home Screen</h3>
-        <p class="muted small">Links open in Safari, which keeps separate data from the Home Screen app. Have them paste these in Settings → Data & security instead.</p>
+        <p class="muted small">Links open in Safari, which keeps separate data from the Home Screen app. Have them paste these in Settings → Backup and data instead.</p>
         <div class="kv-list"><div class="kv"><span>Server address</span><b class="wrap-any">${esc(c.url)}</b></div></div>
         <button class="btn block" data-a="cloud-copy" data-v="${esc(c.url)}">Copy address</button>
         <button class="btn block" data-a="cloud-copy" data-v="${esc(c.key)}">Copy access key</button>
@@ -184,7 +184,7 @@ export function createCloud(ctx) {
     if (link) {
       setCloudConfig({ ...link, fromLink: true });
       history.replaceState(null, '', location.pathname + location.search);
-      setTimeout(() => ctx.toast('Backup server added. Turn on cloud backup in Settings → Data & security.'), 600);
+      setTimeout(() => ctx.toast('Backup server added. Turn on cloud backup in Settings → Backup and data.'), 600);
     }
     auto('open');
     document.addEventListener('visibilitychange', () => { if (document.hidden) auto('hide'); });

@@ -30,15 +30,38 @@ export function createGoals(ctx) {
     return `${(Math.round((p.target - p.value) * 10) / 10).toLocaleString()} mi to go`;
   };
   const clubPct = (p, v) => Math.max(0, Math.min(100, (v / p.target) * 100)).toFixed(1);
-  const bar = (p) => {
+  const bar = (p, key = true) => {
     if (p.type !== 'club') return `<span class="goal-track" aria-hidden="true"><i style="width:${Math.round(p.pct * 100)}%"></i></span>`;
     const notch = p.pending && p.pending < p.target ? `<b class="gb-notch" style="left:${clubPct(p, p.pending)}%"></b>` : '';
     return `<span class="gb-wrap" aria-hidden="true"><span class="goal-track gb"><i class="gb-est" style="width:${clubPct(p, p.value)}%"></i><i class="gb-lift" style="width:${clubPct(p, p.lifted)}%"></i></span>${notch}</span>
-      ${p.lifted ? `<span class="gb-key"><span><i class="k-lift"></i>Lifted <b>${esc(wtEst(p.lifted))}</b></span><span><i class="k-est"></i>Estimated ${esc(wtEst(p.value))}</span></span>` : ''}`;
+      ${key && p.lifted ? `<span class="gb-key"><span><i class="k-lift"></i>Lifted <b>${esc(wtEst(p.lifted))}</b></span><span><i class="k-est"></i>Estimated ${esc(wtEst(p.value))}</span></span>` : ''}`;
   };
-  function card() {
+  // Lifted first (gold), then estimated: the same order as the bar.
+  const liftPair = (l) => `<b class="gold">${l.lifted ? wtEst(l.lifted.w) : '—'}</b> · <b>${wtEst(l.v)}</b>`;
+  const miniBar = (l, top) => `<span class="gl-bar"><i class="gb-est" style="width:${((l.v / top) * 100).toFixed(1)}%"></i><i class="gb-lift" style="width:${(((l.lifted?.w || 0) / top) * 100).toFixed(1)}%"></i></span>`;
+  // On Progress: compact (name, number, bar, one line). On Strength (detail): the three lifts too.
+  function card({ detail = false } = {}) {
     if (!getGoal(ctx.db).on) return '';
     const p = goalProgress(ctx.db);
+    if (p.type === 'club' && !detail) {
+      return `<button class="goal-card compact" data-a="goal-detail" aria-label="Big goal: ${esc(p.title)}. ${esc(valueText(p))}${p.lifted ? `, ${esc(wtEst(p.lifted))} lifted` : ''}. ${esc(leftText(p))}. See details.">
+      <span class="goal-top"><span class="goal-name">${esc(p.title)}</span>${icon('right', 'chev')}</span>
+      <b class="goal-val num">${esc(valueText(p))}</b>
+      ${bar(p, false)}
+      <span class="goal-sub">${p.lifted ? `<b class="gold">${esc(wtEst(p.lifted))} lifted</b> · ` : ''}${esc(leftText(p))}</span>
+    </button>`;
+    }
+    if (p.type === 'club' && detail && !p.missing.length) {
+      const d = goalDetails(ctx.db);
+      const top = Math.max(1, ...d.lifts.map((l) => Math.max(l.v, l.lifted?.w || 0)));
+      return `<button class="goal-card" data-a="goal-detail" aria-label="Big goal: ${esc(p.title)}. ${esc(valueText(p))}${p.lifted ? `, ${esc(wtEst(p.lifted))} lifted` : ''}. ${esc(leftText(p))}. See details.">
+      <span class="goal-top"><span class="goal-name">${esc(p.title)}</span>${icon('right', 'chev')}</span>
+      <b class="goal-val num">${esc(valueText(p))}</b>
+      ${bar(p)}
+      <span class="goal-lifts">${d.lifts.map((l) => `<span class="gc-lift"><span class="gl-top"><span>${l.name}</span><span>${liftPair(l)}</span></span>${miniBar(l, top)}</span>`).join('')}</span>
+      <span class="goal-sub">${esc(leftText(p))}</span>
+    </button>`;
+    }
     return `<button class="goal-card" data-a="goal-detail" aria-label="Big goal: ${esc(p.title)}. ${esc(valueText(p))}${p.type === 'club' && p.lifted ? `, ${esc(wtEst(p.lifted))} actually lifted` : ''}. ${esc(leftText(p))}. See details.">
       <span class="goal-top"><span class="goal-name">${esc(p.title)}</span>${icon('right', 'chev')}</span>
       <b class="goal-val num">${esc(valueText(p))}</b>
@@ -62,16 +85,17 @@ export function createGoals(ctx) {
     if (p.type === 'club') {
       const top = Math.max(1, ...d.lifts.map((l) => Math.max(l.v, l.lifted?.w || 0)));
       const rows = d.lifts.map((l) => `<button class="list-row goal-lift" ${l.v ? `data-a="chart-open" data-id="${l.exId}"` : 'disabled'}><span class="grow">
-        <span class="gl-top"><b>${l.name}</b>${l.v ? `<span><b>${wtEst(l.v)}</b> · <b class="gold">${l.lifted ? wtEst(l.lifted.w) : '—'}</b></span>` : '<span>Not logged yet</span>'}</span>
-        ${l.v ? `<span class="gl-bar"><i class="gb-est" style="width:${((l.v / top) * 100).toFixed(1)}%"></i><i class="gb-lift" style="width:${(((l.lifted?.w || 0) / top) * 100).toFixed(1)}%"></i></span>` : ''}</span>${l.v ? icon('right', 'chev') : ''}</button>`).join('');
-      // Where a max test has the most to show: a club still to lift, or the biggest gap.
-      const gaps = [...d.lifts].filter((l) => l.gap > 0).sort((a, b) => b.gap - a.gap);
+        <span class="gl-top"><b>${l.name}</b>${l.v ? `<span>${liftPair(l)}</span>` : '<span>Not logged yet</span>'}</span>
+        ${l.v ? miniBar(l, top) : ''}</span>${l.v ? icon('right', 'chev') : ''}</button>`).join('');
+      // Only when a max test has something real to show: a club the estimate passed but the lifts
+      // haven't, or a lift whose heaviest is more than 10% under its estimate.
+      const gaps = [...d.lifts].filter((l) => l.gap > 0).sort((a, b) => b.gap / b.v - a.gap / a.v);
       const g = gaps[0];
-      const nudge = !p.missing.length && (p.pending || (g && g.gap >= 5)) ? `<div class="goal-nudge"><b class="grow">${p.pending ? `${wtEst(p.pending - p.lifted)} to lift the ${p.pending.toLocaleString()}-lb club` : `${wtEst(g.gap)} to lift on ${g.name.toLowerCase()}`}</b>
+      const nudge = !p.missing.length && (p.pending || (g && g.gap > g.v * 0.1)) ? `<div class="goal-nudge"><b class="grow">${p.pending ? `${wtEst(p.pending - p.lifted)} to lift the ${p.pending.toLocaleString()}-lb club` : `${wtEst(g.gap)} to lift on ${g.name.toLowerCase()}`}</b>
         <button class="btn gold-btn" data-a="goal-maxday" data-ids="${[...gaps, ...d.lifts.filter((l) => !gaps.includes(l))].map((l) => l.exId).join(',')}">Plan a max day</button></div>` : '';
       const ladder = d.clubs.map((c) => `<div class="goal-club ${c.lifted ? 'sealed' : c.date ? 'done' : c.t === p.target ? 'next' : ''}"><b class="num">${c.t.toLocaleString()}</b>${c.lifted ? '<i class="gc-check" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M4 8.4 L7 11.2 L12.4 5.2"/></svg></i>' : ''}<span>${c.lifted ? 'Lifted' : c.date ? (p.pending === c.t ? 'To lift' : 'Estimated') : c.t === p.target ? 'Next' : ''}</span></div>`).join('');
       const eta = !p.missing.length && etaText(d.etaWeeks) ? kv(`Reaching ${p.target.toLocaleString()}`, etaText(d.etaWeeks), 'At your recent pace') : '';
-      return `<h3 class="sheet-h gl-head"><span>Your three lifts</span><span class="gl-cols">Estimated · <span class="gold">Lifted</span></span></h3><div class="list-group">${rows}</div>
+      return `<h3 class="sheet-h gl-head"><span>Your three lifts</span><span class="gl-cols"><span class="gold">Lifted</span> · Estimated</span></h3><div class="list-group">${rows}</div>
         ${nudge}
         <h3 class="sheet-h">Clubs</h3><div class="goal-clubs" style="--n:${CLUBS.length}">${ladder}</div>
         ${eta ? `<div class="kv-list">${eta}</div>` : ''}
@@ -99,7 +123,8 @@ export function createGoals(ctx) {
     const d = goalDetails(ctx.db);
     const setText = (l) => (l.r === 1 ? wt(l.w) : `${wt(l.w)} × ${l.r}${l.rir ? ` + ${l.rir} in reserve` : ''}`);
     const day = (s) => ctx.fmtDate(s).replace(/^w+,s*/, '');
-    const rows = d.lifts.filter((l) => l.v).map((l) => `<div class="kv"><span>${l.name}<span class="pick-sub">${l.tested ? `Tested ${day(l.date)}` : `From ${setText(l)}, ${day(l.date)}`}${l.alone ? ' · waiting for another session to back it up' : ''}</span><span class="pick-sub">${l.lifted ? `Heaviest lifted ${l.lifted.r === 1 ? wt(l.lifted.w) : `${wt(l.lifted.w)} × ${l.lifted.r}`}, ${day(l.lifted.date)}` : ''}</span></span><b>${wtEst(l.v)}</b></div>`).join('');
+    // Lifted first, then where the estimate came from (the same order as the bar).
+    const rows = d.lifts.filter((l) => l.v).map((l) => `<div class="kv"><span>${l.name}<span class="pick-sub">${l.lifted ? `Lifted ${l.lifted.r === 1 ? wt(l.lifted.w) : `${wt(l.lifted.w)} × ${l.lifted.r}`}, ${day(l.lifted.date)}` : 'Nothing lifted yet'}</span><span class="pick-sub">${l.tested ? `Estimated: tested ${day(l.date)}` : `Estimated from ${setText(l)}, ${day(l.date)}`}${l.alone ? ' · waiting for another session to back it up' : ''}</span></span><b>${wtEst(l.v)}</b></div>`).join('');
     const c = d.cal;
     const acc = c.n ? `Checked against ${c.n} tested ${c.n === 1 ? 'max' : 'maxes'}: off by ${Math.round(c.err * 1000) / 10}% on average.${c.factor !== 1 ? ` Estimates are adjusted ${c.factor > 1 ? 'up' : 'down'} ${Math.round(Math.abs(c.factor - 1) * 1000) / 10}% for you.` : c.n < 3 ? ' After 3 tests, estimates adjust to you.' : ''}` : 'No tested maxes yet. Each test checks the estimate, and after 3 they adjust to you.';
     ctx.openSheet(`<h2>How it's worked out</h2>

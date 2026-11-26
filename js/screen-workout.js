@@ -492,7 +492,7 @@ export function createWorkoutScreens(A) {
         ${rows}
       </div>
       ${!ended ? `<button class="text-btn" data-a="add-set" data-uid="${item.uid}">${icon('plus')} ${conditioning ? 'Add round' : 'Add set'}</button>${conditioning || entry?.maxTest ? '' : `<button class="text-btn" data-a="add-drop" data-uid="${item.uid}">${icon('plus')} Add drop set</button>`}` : ''}
-      ${ex.rules?.rehab && !ended && !entry?.maxTest ? `<label class="toggle"><input type="checkbox" data-a="painfree" data-uid="${item.uid}" ${entry?.painFree ? 'checked' : ''}><span>Pain-free today (needed to increase weight)</span></label>` : ''}
+      ${ex.rules?.rehab && !ended && !entry?.maxTest ? `<label class="toggle"><input type="checkbox" data-a="painfree" data-uid="${item.uid}" ${entry?.painFree ? 'checked' : ''}><span>Pain-free today<span class="pick-sub">Weight goes up only after pain-free sessions</span></span></label>` : ''}
       ${checkin}
       <div class="chips quick-row">
         <button class="chip" data-a="ex-info" data-id="${ex.id}">${icon('play')} How-to</button>

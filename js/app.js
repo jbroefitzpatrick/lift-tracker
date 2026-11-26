@@ -42,6 +42,7 @@ import { createStreak } from './ui-streak.js';
 import { syncStreak } from './streak.js';
 import { goalProgress, goalHit, getGoal } from './big-goal.js';
 import { recordCheck } from './estimate.js';
+import { onFinish as tuneOnFinish, unsent as tuneUnsent } from './tuning.js';
 import { createPeople } from './ui-people.js';
 import { moveDay, copyDayTo, catchUpDay, laggingMuscles, maxDayTo } from './week.js';
 import { estimatedMax, testPlan, PEAKS, peakLength, peakWeek, startPeak, peakTestDate, TEST_REST, MAX_AIM } from './maxes.js';
@@ -757,6 +758,8 @@ function finishWorkout() {
     const top = e.sets.filter((x) => x.done !== false && !x.pain && x.type !== 'w' && x.reps >= 1 && x.weight > 0).reduce((a, x) => (x.weight > (a?.weight || 0) ? x : a), null);
     if (top) recordCheck(db, e.exerciseId, top.weight, saved.date, saved.id);
   }
+  // Tuning records (docs/TUNING.md), kept on the phone; sent only when sharing is on.
+  try { tuneOnFinish(db, s, saved, stateBefore); } catch {}
   setTimeout(sendChecks, 1500);
   const goalBefore = getGoal(db).on ? goalProgress(db) : null;
   db.sessions.push(saved);
@@ -874,6 +877,14 @@ async function sendChecks() {
   if (account()?.token && db.settings.calibForget && navigator.onLine) { try { await api('/v2/calib/forget', {}, { auth: true }); delete db.settings.calibForget; persist(); } catch {} }
   if (!account()?.token || !shareChecks() || !navigator.onLine) return;
   const unsent = (db.calib || []).filter((k) => !k.sent && k.id);
+  const recs = tuneUnsent(db);
+  if (recs.length) {
+    try {
+      await api('/v2/tune', { records: recs.map(({ sent, ...r }) => r) }, { auth: true });
+      recs.forEach((r) => { r.sent = true; });
+      persist();
+    } catch {}
+  }
   if (!unsent.length) return;
   const sex = db.about?.sex || db.profile?.sex || null;
   const age = +(db.about?.age || db.profile?.age) || null;
@@ -1374,7 +1385,7 @@ function openBlockReview(index) {
     <p class="muted small">Block ${index + 1} keeps the same focus lifts. To change them, use Edit focus on the Plan tab after saving.</p>
     <div class="field"><span>Notes</span><textarea id="block-note" rows="2" placeholder="What worked, what to change"></textarea></div>
     <button class="btn primary block big" data-a="block-save" data-i="${index}">Save check-in</button>
-    <p class="muted small">Want different exercises or rep ranges for the next block? Rebuild from Goals & plan builder, or edit days in Plan.</p>`);
+    <p class="muted small">Want different exercises or rep ranges next block? Rebuild your plan from Training goals, or edit days in Plan.</p>`);
 }
 
 // ---------- Cardio ----------
@@ -1554,7 +1565,7 @@ function openCardioAll(day) {
     return rows.length ? `<h3 class="sect">${label} <span class="muted small">${rows.length}</span></h3>${rows.map(cardioRow).join('')}` : '';
   };
   openSheet(`<h2>Cardio options</h2>
-    <p class="muted small">Ranked by how fresh the muscles each one uses are, and what you lift in the next two days.</p>
+    <p class="muted small">Ranked by how recovered the muscles are, and by what you lift in the next two days.</p>
     <input class="search list-filter" type="search" placeholder="Search cardio" data-filter="#pk-list" autocomplete="off" enterkeyhint="search">
     <div id="pk-list">${sect('good', 'Good fits')}${sect('ok', 'OK')}${sect('skip', 'Better another day')}</div>
     <button class="btn block" data-a="close-sheet">Close</button>`);
@@ -2072,7 +2083,7 @@ function draftEdit(day, uid, fn) {
   const o = draftDay(day);
   let hit = false;
   for (const list of [o.items, o.base || []]) { const it = list.find((i) => i.uid === uid); if (it) { fn(it, list); hit = true; } }
-  if (!hit) { toast('That part of the workout can be changed once it starts.'); return false; }
+  if (!hit) { toast('You can change that once the workout starts.'); return false; }
   persist();
   return true;
 }
@@ -2236,7 +2247,7 @@ function screenSettings() {
       <label class="toggle"><input type="checkbox" data-a="deload-off" ${s.deloadOff ? 'checked' : ''}><span>No scheduled deloads (deload when you choose, from day options)</span></label>
       <div class="field"><span>Deload week</span><div class="segmented small-seg" role="radiogroup" aria-label="Deload style">${Object.entries(DELOAD_STYLES).map(([k, v]) => `<button class="${deloadOf(db).style === k ? 'on' : ''}" data-a="deload-style" data-v="${k}" role="radio" aria-checked="${deloadOf(db).style === k}">${v.name}</button>`).join('')}</div><p class="muted small">${esc(deloadText(db))}. Percentage programs like 5/3/1 use their own deload.</p></div>
       <div class="field"><span>Accessories in a deload</span><div class="segmented small-seg" role="radiogroup" aria-label="Accessories in a deload">${Object.entries(DELOAD_ACCESSORIES).map(([k, v]) => `<button class="${deloadOf(db).accessories === k ? 'on' : ''}" data-a="deload-acc" data-v="${k}" role="radio" aria-checked="${deloadOf(db).accessories === k}">${v}</button>`).join('')}</div></div>
-      <div class="field"><span>Effort ramp · reps in reserve in week 1 → before deload</span>
+      <div class="field"><span>Effort ramp: reps in reserve from week 1 to the week before deload</span>
         <div class="row"><div class="segmented small-seg grow" role="radiogroup" aria-label="Week 1 reps in reserve">${[2, 3, 4].map((n) => `<button class="${(s.rampStart ?? 3) === n ? 'on' : ''}" data-a="ramp-start" data-v="${n}" role="radio" aria-checked="${(s.rampStart ?? 3) === n}">${n}</button>`).join('')}</div>
         <span class="muted">→</span>
         <div class="segmented small-seg grow" role="radiogroup" aria-label="Last week reps in reserve">${[0, 1, 2].map((n) => `<button class="${(s.rampEnd ?? db.profile?.rx?.rirLo ?? 1) === n ? 'on' : ''}" data-a="ramp-end" data-v="${n}" role="radio" aria-checked="${(s.rampEnd ?? db.profile?.rx?.rirLo ?? 1) === n}">${n}</button>`).join('')}</div></div></div>
@@ -2253,7 +2264,7 @@ function screenSettings() {
     <div class="card">
       <label class="toggle"><input type="checkbox" data-a="set-warmups" ${s.warmups ? 'checked' : ''}><span>Ramp-up sets on the first big lift</span></label>
       <label class="toggle"><input type="checkbox" data-a="set-autoadvance" ${s.autoAdvance !== false ? 'checked' : ''}><span>Auto-advance in supersets</span></label>
-      <label class="toggle"><input type="checkbox" data-a="set-ramp" ${s.rampEffort ? 'checked' : ''}><span>Ramp effort through each block (reps in reserve 3 → 1)</span></label>
+      <label class="toggle"><input type="checkbox" data-a="set-ramp" ${s.rampEffort ? 'checked' : ''}><span>Ramp up effort through each block (3 to 1 reps in reserve)</span></label>
       ${legacy ? `<details class="sub-details"><summary>Sample-plan options</summary>
         <div class="field"><span>Thursday row compound</span><div class="row between"><b>${esc(db.exercises[ROW_ROTATION[s.rowRotation % 3]].name)}</b><button class="mini" data-a="rotate-yes">Rotate now</button></div></div>
         <label class="toggle"><input type="checkbox" data-a="race" ${s.raceBlock ? 'checked' : ''}><span>Race block (deadlift moves to Monday, RDL on Friday, no glute ham raises)</span></label>
@@ -2308,7 +2319,7 @@ function screenSettings() {
       ${row('settings-page', 'appearance', 'Appearance and units', `${{ dark: 'Rubber', light: 'Chalk', system: 'Match iPhone' }[s.theme] || ''} · ${wUnit()}`)}
       ${row('open-share', '', 'Share the app', '')}
       ${row('tour-replay', '', 'Show the tour again', '')}
-      <label class="list-row toggle-row"><span class="grow"><b>Help improve max estimates</b><span class="pick-sub">${shareChecks() ? 'Tested maxes and their estimates, without your name, when signed in' : 'Off. Nothing is shared'}</span></span><input type="checkbox" switch data-a="set-share-checks" ${shareChecks() ? 'checked' : ''} aria-label="Help improve max estimates"></label>
+      <label class="list-row toggle-row"><span class="grow"><b>Help improve the app's estimates</b><span class="pick-sub">${shareChecks() ? 'Tested maxes, starting weights, workout lengths and progress, without your name, when signed in' : 'Off. Nothing is shared'}</span></span><input type="checkbox" switch data-a="set-share-checks" ${shareChecks() ? 'checked' : ''} aria-label="Help improve the app's estimates"></label>
       <a class="list-row" href="privacy.html#research" target="_blank" rel="noopener"><span class="grow"><b>Privacy policy</b></span>${icon('right', 'chev')}</a>
     </div>
     <p class="muted small center pad">ProFitz (working title) · ${db.sessions.length} workouts logged</p>`;
@@ -2779,9 +2790,9 @@ const actions = {
   'settings-back': () => { if (ui.setPage) { ui.setPage = null; window.scrollTo(0, 0); return render(); } ui.tab = ui.prevTab || 'today'; window.scrollTo(0, 0); render(); },
   'set-share-checks': async (d, el) => {
     db.settings.shareChecks = !!el.checked;
-    if (el.checked) { (db.calib || []).forEach((k) => { delete k.sent; }); persist(); render(); sendChecks(); return; }
+    if (el.checked) { [...(db.calib || []), ...(db.tuneQueue || [])].forEach((k) => { delete k.sent; }); persist(); render(); sendChecks(); return; }
     persist(); render();
-    if (account()?.token) { try { await api('/v2/calib/forget', {}, { auth: true }); toast('Turned off. Checks you shared were removed.'); } catch { toast('Turned off. Will remove shared checks when online.'); db.settings.calibForget = true; persist(); } }
+    if (account()?.token) { try { await api('/v2/calib/forget', {}, { auth: true }); toast('Turned off. What you shared was removed.'); } catch { toast("Turned off. What you shared is removed when you're next online."); db.settings.calibForget = true; persist(); } }
   },
   'set-food': (d, el) => { db.settings.foodTracking = !!el.checked; persist(); render(); toast(foodOn() ? 'Food tracking is on.' : 'Food tracking is off.'); },
   'food-off': async () => {
@@ -3221,7 +3232,7 @@ const actions = {
     }
     if (notStarted()) {
       const o = draftDay(ui.day);
-      if (!o.items.some((i) => i.uid === d.uid)) return toast('That part of the workout can be moved once it starts.');
+      if (!o.items.some((i) => i.uid === d.uid)) return toast('You can move that once the workout starts.');
       pushUndo();
       for (const list of [o.items, o.base].filter(Boolean)) {
         const i = list.findIndex((it) => it.uid === d.uid);
@@ -3484,7 +3495,7 @@ const actions = {
   'logmax-save': (d) => {
     const w = fromDisp(num('lm-w')); const r = Math.round(num('lm-r') || 1); const date = $('#lm-d')?.value || todayStr();
     if (!(w > 0)) return toast('Enter the weight.');
-    if (!(r >= 1 && r <= 10)) return toast('Reps from 1 to 10.');
+    if (!(r >= 1 && r <= 10)) return toast('Enter 1 to 10 reps.');
     if (r === 1) recordCheck(db, d.id, w, date > todayStr() ? todayStr() : date);
     (db.maxes ||= []).push({ id: `m${Date.now()}`, exerciseId: d.id, date: date > todayStr() ? todayStr() : date, weight: w, reps: r });
     persist(); closeSheet(); render(); toast('Max saved.'); sendChecks();

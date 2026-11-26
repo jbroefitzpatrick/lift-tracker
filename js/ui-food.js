@@ -328,7 +328,7 @@ export function createFood(ctx) {
 
   function openMine() {
     const db = ctx.db;
-    ctx.openSheet(`<h2>My foods & meals</h2>
+    ctx.openSheet(`<h2>My foods and meals</h2>
       <h3 class="sect">Saved meals</h3>
       ${db.meals.map((m) => `<div class="list-row"><span class="grow"><b>${esc(m.name)}</b><span class="pick-sub">${m.items.length} items · ${r0(m.items.reduce((a, x) => a + x.kcal, 0))} kcal</span></span><button class="mini danger" data-a="meal-del" data-id="${m.id}">${icon('x')}</button></div>`).join('') || '<p class="muted small">None yet — use "Save meal" on a meal.</p>'}
       <h3 class="sect">My foods</h3>

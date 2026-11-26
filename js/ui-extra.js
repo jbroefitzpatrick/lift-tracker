@@ -56,7 +56,7 @@ export function createExtras(ctx) {
       </div>
     </div>
     ${rec ? `<div class="card"><h3>Personal records</h3>
-      ${rec.e1.v ? `<div class="rx-row"><span class="muted">Best est. max</span><b>${wtEst(rec.e1.v)} <span class="muted small">(${toDisp(rec.e1.w)}×${rec.e1.r}, ${ctx.fmtDate(rec.e1.date)})</span></b></div>` : ''}
+      ${rec.e1.v ? `<div class="rx-row"><span class="muted">Best estimated max</span><b>${wtEst(rec.e1.v)} <span class="muted small">(${toDisp(rec.e1.w)}×${rec.e1.r}, ${ctx.fmtDate(rec.e1.date)})</span></b></div>` : ''}
       ${rec.heavy.v ? `<div class="rx-row"><span class="muted">Heaviest set</span><b>${wt(rec.heavy.v)}${rec.heavy.r ? ` × ${rec.heavy.r}` : ''}</b></div>` : ''}
       ${rec.reps.v ? `<div class="rx-row"><span class="muted">Most reps</span><b>${rec.reps.v}${rec.reps.w ? ` @ ${wt(rec.reps.w)}` : ''}</b></div>` : ''}
       ${rec.vol.v ? `<div class="rx-row"><span class="muted">Best workout volume</span><b>${Math.round(toDisp(rec.vol.v)).toLocaleString()} ${wUnit()}</b></div>` : ''}
@@ -222,7 +222,7 @@ export function createExtras(ctx) {
       <button class="list-row" data-a="export-csv"><span class="grow">Export history as CSV</span>${chev}</button>
       <label class="list-row"><span class="grow">Check a backup file</span>${chev}<input id="check-file" type="file" accept="application/json,.json" hidden></label>
       <label class="list-row"><span class="grow">Import a backup</span>${chev}<input id="import-file" type="file" accept="application/json,.json" hidden></label>
-      <label class="list-row"><span class="grow">Import from Strong, Hevy or FitBod<span class="pick-sub">Your workout history from their CSV export</span></span>${chev}<input id="apps-file" type="file" accept=".csv,text/csv" hidden></label>
+      <label class="list-row"><span class="grow">Import from Strong, Hevy or Fitbod<span class="pick-sub">Your workout history from their CSV export</span></span>${chev}<input id="apps-file" type="file" accept=".csv,text/csv" hidden></label>
       <label class="list-row"><span class="grow">Import runs, rides and swims<span class="pick-sub">Strava, Garmin, Runkeeper, Apple Health, or GPX and TCX files</span></span>${chev}<input id="act-file" type="file" accept=".csv,.gpx,.tcx,.xml,text/csv,application/xml,text/xml" multiple hidden></label>
       <button class="list-row" data-a="snapshots"><span class="grow">Restore an automatic snapshot</span>${chev}</button>
       <button class="list-row" data-a="persist-req"><span class="grow">Keep data permanently</span>${chev}</button>
@@ -322,7 +322,7 @@ export function createExtras(ctx) {
       pendingImport = data;
       ctx.openSheet(`<h2>Encrypted backup</h2>
         <div class="field"><span>Passphrase</span><input id="imp-pass" type="password" autocomplete="current-password"></div>
-        <button class="btn primary block big" data-a="import-decrypt">Unlock & restore</button>
+        <button class="btn primary block big" data-a="import-decrypt">Unlock and restore</button>
         <button class="btn block" data-a="close-sheet">Cancel</button>`);
       return;
     }
@@ -459,7 +459,7 @@ export function createExtras(ctx) {
         <div class="field"><span>Passphrase (8+ characters)</span><input id="enc-pass" type="password" autocomplete="new-password"></div>
         <div class="field"><span>Repeat passphrase</span><input id="enc-pass2" type="password" autocomplete="new-password"></div>
         <label class="toggle"><input type="checkbox" id="enc-remember" checked><span>Remember on this device for one-tap backups</span></label>
-        <button class="btn primary block big" data-a="export-enc-go">Encrypt & save</button>
+        <button class="btn primary block big" data-a="export-enc-go">Encrypt and save</button>
         <button class="btn block" data-a="close-sheet">Cancel</button>`);
     },
     'export-enc-go': async () => {
@@ -577,7 +577,7 @@ export function createExtras(ctx) {
       <button class="btn primary block big" data-a="act-import" ${plan.fresh.length ? '' : 'disabled'}>Import ${plan.fresh.length} ${plan.fresh.length === 1 ? 'activity' : 'activities'}</button>`);
   }
 
-  // ---------- Import from Strong, Hevy or FitBod ----------
+  // ---------- Import from Strong, Hevy or Fitbod ----------
   const APP_NAMES = { strong: 'Strong', hevy: 'Hevy', fitbod: 'FitBod' };
   const monthYear = (d) => new Date(`${d}T12:00:00`).toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
   let appImport = null; // { rows, format, unit }

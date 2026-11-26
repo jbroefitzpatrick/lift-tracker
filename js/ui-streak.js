@@ -21,7 +21,8 @@ export function createStreak(ctx) {
     const label = { hit: 'hit', frozen: 'frozen', missed: 'missed', current: 'in progress' };
     const row = `${'<i class="sw-dot"></i>'.repeat(blanks)}${dots.map((w) => `<i class="sw-dot ${x.states[w]}" title="Week of ${w}: ${label[x.states[w]]}"></i>`).join('')}`;
     const week = x.thisWeek;
-    const sub = week.hit ? 'This week is in the bank' : `${week.done} of ${week.target} ${week.target === 1 ? 'day' : 'days'} this week`;
+    // The streak's own minimum, which can be lower than the workouts planned (docs/ROADMAP.md: to explore).
+    const sub = week.hit ? 'This week is in the bank' : `Goal: ${week.target} ${week.target === 1 ? 'day' : 'days'} a week · ${week.done} so far`;
     // While the freeze question is open, show the streak that's still at stake.
     const shown = x.offer ? x.offer.saved + x.current : x.current;
     return `<div class="streak-hero ${shown ? 'on' : ''}" role="group" aria-label="${shown ? `${weeksText(shown)} streak` : 'No streak yet'}. ${sub}. ${x.hits} of the last 12 weeks hit.">

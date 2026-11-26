@@ -7,14 +7,14 @@ import { autoPick, rankOf } from './exercise-rank.js';
 export const GOALS = {
   strength: { label: 'Strength', desc: 'Lift heavier on the big compound lifts.' },
   hypertrophy: { label: 'Muscle growth', desc: 'Build overall muscle size.' },
-  physique: { label: 'Bodybuilding / physique', desc: 'Balanced, aesthetic development — extra isolation for delts, arms and calves.' },
+  physique: { label: 'Physique', desc: 'A balanced look, with extra isolation for delts, arms and calves.' },
   stamina: { label: 'Muscular endurance', desc: 'More reps, shorter rests, better work capacity.' },
   endurance: { label: 'Cardio endurance', desc: 'Aerobic fitness for running, cycling or events.' },
   fatLoss: { label: 'Fat loss', desc: 'Lose fat while keeping muscle.' },
 };
 
 export const EXPERIENCE = {
-  beginner: { label: 'Beginner', desc: 'Under ~1 year of consistent lifting' },
+  beginner: { label: 'Beginner', desc: 'Less than a year of steady lifting' },
   intermediate: { label: 'Intermediate', desc: '1–3 years; progress week to week has slowed' },
   advanced: { label: 'Advanced', desc: '3+ years; progress takes months' },
 };
@@ -214,9 +214,9 @@ export function suggestDays(p, rx) {
 
 export const SPLITS = {
   fb: { label: 'Full body', short: 'FB' },
-  ul: { label: 'Upper / Lower', short: 'UL' },
-  ppl: { label: 'Push / Pull / Legs', short: 'PPL' },
-  ulppl: { label: 'Upper / Lower + Push / Pull / Legs', short: 'ULPPL' },
+  ul: { label: 'Upper and lower', short: 'UL' },
+  ppl: { label: 'Push, pull, legs', short: 'PPL' },
+  ulppl: { label: 'Upper and lower, plus push, pull, legs', short: 'ULPPL' },
 };
 
 const LAYOUT = {

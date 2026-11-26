@@ -161,7 +161,7 @@ export function createTrain(ctx) {
     ctx.openSheet(`<h2>Adjust ${day === todayKey() ? 'today' : FULL[day]}</h2>
       <p class="muted small">Planned: about ${est} min. Pick the time you have; supersets and accessories adjust to fit, and focus lifts stay.</p>
       <div class="field"><span>Time available</span><div class="chips">${MIN_CHOICES.map((m) => `<button class="chip ${st.adjust.minutes === m ? 'on' : ''}" data-a="adj-min" data-v="${m}">${m} min</button>`).join('')}</div></div>
-      ${db.gyms.length > 1 ? `<div class="field"><span>Where you're training</span><select id="adj-gym"><option value="">Usual gym</option>${db.gyms.map((g) => `<option value="${g.id}" ${st.adjust.gymId === g.id ? 'selected' : ''}>${esc(g.name)}</option>`).join('')}</select></div>` : '<p class="muted small">Training somewhere with less equipment? Add it under Settings → Gym & equipment, then pick it here.</p>'}
+      ${db.gyms.length > 1 ? `<div class="field"><span>Where you're training</span><select id="adj-gym"><option value="">Usual gym</option>${db.gyms.map((g) => `<option value="${g.id}" ${st.adjust.gymId === g.id ? 'selected' : ''}>${esc(g.name)}</option>`).join('')}</select></div>` : '<p class="muted small">Training somewhere with less equipment? Add it under Settings → Gym, then pick it here.</p>'}
       <button class="btn primary block big" data-a="adj-apply">Apply</button>
       <div class="list-group">
         <button class="list-row" data-a="adj-split"><span class="grow">Split into two workouts</span>${icon('right', 'chev')}</button>
@@ -310,16 +310,16 @@ export function createTrain(ctx) {
       <p class="small">Anyone can use it, free, with nothing to download from an app store. Send them this link:</p>
       <p class="code-box small-code">${APP_URL}</p>
       <div class="row"><button class="btn primary grow" data-a="share-app">Share link</button><button class="btn grow" data-a="cloud-copy" data-v="${APP_URL}">Copy link</button></div>
-      <h3 class="sheet-h">Put it on the home screen</h3>
+      <h3 class="sheet-h">Put it on the Home Screen</h3>
       <ol class="steps">
         ${ios ? `<li>Open the link in <b>Safari</b> (the compass icon).</li>
         <li>Tap the <b>Share</b> button (a square with an arrow pointing up) at the bottom.</li>
         <li>Scroll down and tap <b>Add to Home Screen</b>, then <b>Add</b>.</li>` : `<li>Open the link in <b>Chrome</b>.</li>
         <li>Tap the <b>⋮</b> menu at the top right.</li>
-        <li>Tap <b>Add to Home screen</b> (or <b>Install app</b>), then <b>Install</b>.</li>`}
+        <li>Tap <b>Add to Home Screen</b> (or <b>Install app</b>), then <b>Install</b>.</li>`}
         <li>Open it from the new icon. It works like a normal app, even offline.</li>
       </ol>
-      <p class="muted small">Each person's data stays on their own phone. To keep a copy safe, turn on cloud backup in Settings → Data & security.</p>
+      <p class="muted small">Each person's data stays on their own phone. To keep a copy safe, turn on cloud backup in Settings → Backup and data.</p>
       <button class="btn plain block" data-a="close-sheet">Done</button>`);
   }
 
@@ -327,7 +327,7 @@ export function createTrain(ctx) {
   function installHint() {
     const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
     if (standalone || ctx.db.settings.installHintDismissed) return '';
-    return `<div class="slim-banner"><span class="grow"><b>Add to home screen</b><span class="pick-sub">It opens full screen, works offline, and keeps your data safer.</span></span>
+    return `<div class="slim-banner"><span class="grow"><b>Add to Home Screen</b><span class="pick-sub">It opens full screen, works offline, and keeps your data safer.</span></span>
       <button class="btn sm primary" data-a="open-share">How</button><button class="icon-btn subtle" data-a="install-dismiss" aria-label="Dismiss">${icon('x')}</button></div>`;
   }
 

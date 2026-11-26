@@ -186,7 +186,7 @@ export function createPlanScreens(A) {
         <div class="field"><span>Target per round</span><input id="pe-target" type="text" inputmode="numeric" value="${it.target ?? ''}" placeholder="sec, m, cal or reps"></div>
       </div>
       <p class="muted small">Measure and target are for conditioning: time, distance or calories per round. Lifts use reps and the rep range above.</p>
-      <div class="field"><span>Slot note (this day only)</span><input id="pe-note" type="text" value="${A.esc(it.note || '')}"></div>
+      <div class="field"><span>Note for this day</span><input id="pe-note" type="text" value="${A.esc(it.note || '')}"></div>
       ${it.exerciseId && !it.role ? (() => {
         const opts = similarExercises(A.db.exercises, it.exerciseId, 12).filter((x) => x.samePattern).slice(0, 8);
         if (!opts.length) return '';
@@ -201,7 +201,7 @@ export function createPlanScreens(A) {
         <div class="field"><span>Type</span><select id="pe-type">${Object.entries(TYPES).map(([k, v]) => `<option value="${k}" ${k === ex.type ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
         <div class="field"><span>Increment (${wUnit()})</span><input id="pe-inc" type="text" inputmode="decimal" value="${toDisp(ex.increment)}"></div>
         <div class="field"><span>Target weight</span><input id="pe-weight" type="text" inputmode="decimal" value="${st.targetWeight ?? ''}" placeholder="TBD"></div>
-        <div class="field"><span>Min RIR to progress</span><input id="pe-rir" type="text" inputmode="numeric" value="${ex.minRir || 0}"></div>
+        <div class="field"><span>Reps in reserve needed to progress</span><input id="pe-rir" type="text" inputmode="numeric" value="${ex.minRir || 0}"></div>
       </div>
       <div class="grid2">
         <div class="field"><span>Category</span><select id="pe-cat">${Object.entries(CATEGORIES).map(([k, v]) => `<option value="${k}" ${k === (ex.category || 'accessory') ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
@@ -209,10 +209,10 @@ export function createPlanScreens(A) {
       </div>
       <div class="field"><span>Primary muscles</span><div class="chips wrap mus" id="pe-prim">${muscleChips(ex.primary)}</div></div>
       <div class="field"><span>Secondary muscles</span><div class="chips wrap mus" id="pe-sec">${muscleChips(ex.secondary)}</div></div>
-      <div class="field"><span>Substitute (shown on pain)</span><input id="pe-sub" type="text" value="${A.esc(ex.substitute)}"></div>
+      <div class="field"><span>Swap to when it hurts</span><input id="pe-sub" type="text" value="${A.esc(ex.substitute)}"></div>
       <div class="field"><span>Notes</span><input id="pe-notes" type="text" value="${A.esc(ex.notes)}"></div>
       <label class="toggle"><input id="pe-drop" type="checkbox" ${ex.rules?.dropSet ? 'checked' : ''}><span>Allow drop-set mode</span></label>
-      <label class="toggle"><input id="pe-rehab" type="checkbox" ${ex.rules?.rehab ? 'checked' : ''}><span>Rehab rule (go up only when pain-free)</span></label>
+      <label class="toggle"><input id="pe-rehab" type="checkbox" ${ex.rules?.rehab ? 'checked' : ''}><span>Rehab: weight goes up only after pain-free sessions</span></label>
       <button class="btn primary block big" data-a="pe-save" data-i="${i}">Save</button>
       ${isNew ? '' : `<div class="list-group">
         <button class="list-row" data-a="plan-swap" data-i="${i}"><span class="grow">Swap exercise</span></button>

@@ -1,7 +1,7 @@
 // Progress tab: this week's rings, calendar, strength, exercise history and body weight.
 // Split out of app.js. App state and the helpers this needs come from A: live getters (and
 // setters for variables), so db and the rest stay shared with app.js.
-import { setMax } from './estimate.js';
+import { setMax, liftMax } from './estimate.js';
 import { addDays, daysBetween, mondayOf, parseDate, todayStr, weekOrder, weekPos } from './store.js';
 import { doneTemplates, liftTemplates } from './week.js';
 import { cardioTargetFor } from './year.js';
@@ -168,13 +168,13 @@ export function createProgressScreens(A) {
     { id: 'pull', name: 'Pull', ids: ['bb-row', 'pendlay-row', 't-bar-row', 'yates-row', 'chest-supported-tbar', 'db-row', 'iso-row', 'machine-row', 'cable-row', 'lat-pulldown', 'machine-pulldown'] },
   ];
 
-  // Per lift: estimated max now (best of the last three workouts), eight weeks ago, all-time best.
+  // Per lift: estimated max now (the same estimate as the big goal: js/estimate.js), eight weeks ago, all-time best.
   function liftStats(id) {
     const ex = A.db.exercises[id];
     if (!ex || ex.category === 'conditioning' || ex.type === 'bodyweight' || ex.noLoad) return null;
     const h = exerciseHistory(id).filter((x) => !x.isDeload && !x.excluded && x.best1rm > 0);
     if (!h.length) return null;
-    const now = Math.max(...h.slice(-3).map((x) => x.best1rm));
+    const now = Math.round(liftMax(A.db, [id])?.v || Math.max(...h.slice(-3).map((x) => x.best1rm)));
     const cut = addDays(todayStr(), -56);
     const then = [...h].reverse().find((x) => x.date <= cut) || h[0];
     const best = Math.max(...h.map((x) => x.best1rm));
@@ -272,7 +272,7 @@ export function createProgressScreens(A) {
     return `<section class="std-panel">
       <div class="row between"><h3>How you compare</h3>${tier ? `<span class="small"><b>${tier.name}</b> · stronger than ${tier.avg}%</span>` : ''}</div>
       <div class="lv-rows">${list.map(rowFor).join('')}</div>
-      <p class="str-note">Percent of lifters your sex, size and age you out-lift.</p>
+      <p class="str-note">The share of lifters your sex, size and age that you out-lift.</p>
       ${missing.length ? `<p class="muted small">Add your ${missing.join(', ').replace(/, ([^,]*)$/, ' and $1')} in <button class="text-link small-link" data-a="open-builder">Training goals</button> for a closer comparison.</p>` : ''}
     </section>`;
   }
@@ -314,7 +314,7 @@ export function createProgressScreens(A) {
       }).join('')}</div>`
         : `${keys.length ? `<div class="list-group">${keys.map(liftRow).join('')}</div>` : '<p class="muted small pad">Log a main lift to see it here.</p>'}${prs8 ? `<p class="str-note">${prs8} new ${prs8 === 1 ? 'best' : 'bests'} in the last 8 weeks.${overall != null ? ` Overall ${overall > 0 ? '+' : ''}${overall}%.` : ''}</p>` : ''}`;
     return `${A.subHeader('Strength', 'progress-back')}
-      ${getGoal(A.db).on && getGoal(A.db).type === 'club' ? A.goals.card() : ''}
+      ${getGoal(A.db).on && getGoal(A.db).type === 'club' ? A.goals.card({ detail: true }) : ''}
       ${tabs}
       ${body}
 `;

@@ -67,7 +67,7 @@ export function createPain(ctx) {
       <div id="pain-sel" class="chips pain-sel" aria-live="polite"></div>
       <details class="pain-list"><summary>Choose from a list instead</summary>
         <div class="row"><select id="pain-area" aria-label="Area">${options}</select>
-        <select id="pain-side" aria-label="Side"><option value="left">Left</option><option value="right">Right</option><option value="center">Middle / both</option></select>
+        <select id="pain-side" aria-label="Side"><option value="left">Left</option><option value="right">Right</option><option value="center">Middle or both</option></select>
         <button class="btn sm" data-a="pain-add">Add</button></div>
       </details>
       <h3 class="sheet-h">How bad is it?</h3>
