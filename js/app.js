@@ -177,6 +177,10 @@ let afterPersist = null;
 const persist = () => { if (!save(db)) toast('Could not save. Storage may be full.'); afterPersist?.(); };
 // iPhone ignores the vibration call; toggling a hidden switch control gives a light tap (iOS 18+).
 let tapLabel = null;
+// Fields that bring up the keyboard. Checkboxes, switches and radios don't, so they never count as
+// typing (the iPhone haptic below works by clicking a hidden switch).
+const TEXT_FIELD = 'textarea, input:not([type]), input[type="text"], input[type="number"], input[type="search"], input[type="email"], input[type="tel"], input[type="password"], input[type="url"], input[type="date"], input[type="time"]';
+const isTextField = (el) => !!el?.matches?.(TEXT_FIELD);
 function iosTap() {
   if (!tapLabel) {
     tapLabel = document.createElement('label');
@@ -187,7 +191,11 @@ function iosTap() {
     tapLabel.appendChild(sw);
     document.body.appendChild(tapLabel);
   }
+  const before = document.activeElement;
   tapLabel.click();
+  // The click focuses the hidden switch; give focus straight back so nothing thinks the page changed.
+  tapLabel.firstChild.blur();
+  if (before && before !== document.body && before !== tapLabel.firstChild && isTextField(before)) before.focus({ preventScroll: true });
 }
 const haptic = (ms = 15) => { try { if (navigator.vibrate) navigator.vibrate(ms); else iosTap(); } catch {} };
 
@@ -2577,7 +2585,7 @@ function render() {
   if (Math.abs(window.scrollY - restoreY) > 1 && document.body.style.position !== 'fixed') window.scrollTo(0, restoreY);
   // Elsewhere in the app mid-workout: a pill to get back.
   if (db.activeSession && !['today', 'exercise', 'summary'].includes(ui.tab)) $('#main').insertAdjacentHTML('beforeend', '<button class="back-to-workout" data-a="back-to-workout">Back to workout</button>');
-  if (!document.activeElement?.matches?.('input, textarea')) document.body.classList.remove('typing');
+  if (!isTextField(document.activeElement)) document.body.classList.remove('typing');
   refreshRecovery();
   tour.maybe();
   if (ui.tab === 'summary' && ui.summaryFresh) countUp();
@@ -2722,7 +2730,7 @@ const actions = {
   check: (d) => {
     // Typing in a set's field hides the timer and Next for the keyboard; logging the set ends typing
     // (on iPhone, tapping a button doesn't take focus from the field by itself).
-    if (document.activeElement?.matches?.('input, textarea')) document.activeElement.blur();
+    if (isTextField(document.activeElement)) document.activeElement.blur();
     document.body.classList.remove('typing');
     const session = sessionFor(ui.day) || ensureSession(ui.day);
     if (!session) return;
@@ -4042,9 +4050,9 @@ document.addEventListener('error', (e) => {
 document.addEventListener('visibilitychange', () => { if (!document.hidden) renderRest(); });
 matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', applyTheme);
 // Typing on a phone: the keyboard would lift the pinned rest timer over the fields, so it steps aside.
-document.addEventListener('focusin', (e) => { if (e.target.matches?.('input, textarea')) document.body.classList.add('typing'); });
+document.addEventListener('focusin', (e) => { if (isTextField(e.target)) document.body.classList.add('typing'); });
 document.addEventListener('focusout', () => setTimeout(() => {
-  if (document.activeElement?.matches?.('input, textarea')) return;
+  if (isTextField(document.activeElement)) return;
   document.body.classList.remove('typing');
   if (ui.dialStale) { ui.dialStale = false; if (ui.tab === 'exercise' && $('#sheet').hidden) render(); }
 }, 50));
